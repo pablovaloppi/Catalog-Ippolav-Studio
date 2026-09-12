@@ -1,0 +1,100 @@
+{
+  "entities": {
+    "admin": {
+      "title": "Admin",
+      "description": "Administrator of the IPPOLAV STUDIO",
+      "type": "object",
+      "properties": {
+        "email": {
+          "type": "string",
+          "description": "Email address of the admin"
+        }
+      },
+      "required": ["email"]
+    },
+    "figure": {
+      "title": "Figure",
+      "description": "A collectible sculpture or figure",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "maxLength": 100 },
+        "franchiseId": { "type": "string", "maxLength": 50 },
+        "designerId": { "type": "string", "maxLength": 50 },
+        "status": {
+          "type": "string",
+          "enum": ["disponible", "consultar", "proximamente"]
+        },
+        "imageUrls": {
+          "type": "array",
+          "description": "List of image URLs. The first one is the cover.",
+          "maxLength": 10,
+          "items": { "type": "string", "maxLength": 2048 }
+        },
+        "finish": { "type": "string", "maxLength": 100 },
+        "scale": {
+          "type": "array",
+          "items": { "type": "string", "maxLength": 50 },
+          "maxLength": 10
+        },
+        "material": { "type": "string", "maxLength": 100 },
+        "description": { "type": "string", "maxLength": 1000 },
+        "badge": { "type": "string", "maxLength": 50 },
+        "whatsappMessage": { "type": "string", "maxLength": 1000 },
+        "order": { "type": "number" },
+        "createdAt": { "type": "timestamp" },
+        "updatedAt": { "type": "timestamp" }
+      },
+      "required": [
+        "title",
+        "franchiseId",
+        "status",
+        "imageUrls",
+        "finish",
+        "scale",
+        "material",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "category": {
+      "title": "Category",
+      "description": "A franchise or category of figures",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "maxLength": 50 },
+        "icon": { "type": "string", "maxLength": 50 },
+        "parentId": { "type": "string", "maxLength": 50 },
+        "order": { "type": "number" }
+      },
+      "required": ["name", "icon"]
+    },
+    "designer": {
+      "title": "Designer",
+      "description": "A designer or artist",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "maxLength": 100 },
+        "order": { "type": "number" }
+      },
+      "required": ["name"]
+    }
+  },
+  "firestore": {
+    "admins/{userId}": {
+      "schema": "admin",
+      "description": "Stores admin users."
+    },
+    "figures/{figureId}": {
+      "schema": "figure",
+      "description": "Stores the collectible figures."
+    },
+    "categories/{categoryId}": {
+      "schema": "category",
+      "description": "Stores the franchises/categories."
+    },
+    "designers/{designerId}": {
+      "schema": "designer",
+      "description": "Stores the designers/artists."
+    }
+  }
+}

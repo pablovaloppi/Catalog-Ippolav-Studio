@@ -1,0 +1,96 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (exists(/databases/$(database)/documents/admins/$(request.auth.uid)) || request.auth.token.email == 'pablovaloppi@gmail.com');
+    }
+
+    function isValidId(id) { 
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); 
+    }
+
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+
+    function isValidFigure(data) {
+      return data.keys().hasAll(['title', 'franchiseId', 'status', 'imageUrls', 'finish', 'scale', 'material', 'createdAt', 'updatedAt'])
+        && data.title is string && data.title.size() <= 100
+        && data.franchiseId is string && data.franchiseId.size() <= 50
+        && data.get('designerId', '') is string && data.get('designerId', '').size() <= 50
+        && data.status is string && data.status.matches('^(disponible|consultar|proximamente)$')
+        && data.imageUrls is list && data.imageUrls.size() <= 10 && (data.imageUrls.size() == 0 || data.imageUrls[0] is string)
+        && data.finish is string && data.finish.size() <= 100
+        && data.scale is list && data.scale.size() <= 10 && (data.scale.size() == 0 || data.scale[0] is string)
+        && data.material is string && data.material.size() <= 100
+        && data.get('description', '') is string && data.get('description', '').size() <= 1000
+        && data.get('badge', '') is string && data.get('badge', '').size() <= 50
+        && data.get('whatsappMessage', '') is string && data.get('whatsappMessage', '').size() <= 1000
+        && data.get('order', 0) is number
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidCategory(data) {
+      return data.keys().hasAll(['name', 'icon'])
+        && data.name is string && data.name.size() <= 50
+        && data.icon is string && data.icon.size() <= 50
+        && data.get('parentId', '') is string && data.get('parentId', '').size() <= 50
+        && data.get('order', 0) is number;
+    }
+
+    function isValidDesigner(data) {
+      return data.keys().hasAll(['name'])
+        && data.name is string && data.name.size() <= 100
+        && data.get('order', 0) is number;
+    }
+
+    match /admins/{userId} {
+      allow read: if isSignedIn() && request.auth.uid == userId;
+    }
+
+    match /figures/{figureId} {
+      allow read: if true;
+      allow create: if isAdmin() 
+        && isValidId(figureId) 
+        && isValidFigure(incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isAdmin() 
+        && isValidId(figureId)
+        && isValidFigure(incoming())
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time;
+      allow delete: if isAdmin() && isValidId(figureId);
+    }
+
+    match /categories/{categoryId} {
+      allow read: if true;
+      allow create: if isAdmin() 
+        && isValidId(categoryId)
+        && isValidCategory(incoming());
+      allow update: if isAdmin() 
+        && isValidId(categoryId)
+        && isValidCategory(incoming());
+      allow delete: if isAdmin() && isValidId(categoryId);
+    }
+
+    match /designers/{designerId} {
+      allow read: if true;
+      allow create: if isAdmin() 
+        && isValidId(designerId)
+        && isValidDesigner(incoming());
+      allow update: if isAdmin() 
+        && isValidId(designerId)
+        && isValidDesigner(incoming());
+      allow delete: if isAdmin() && isValidId(designerId);
+    }
+  }
+}
