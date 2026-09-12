@@ -18,6 +18,9 @@ export function Storefront() {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [franchiseFilter, setFranchiseFilter] = useState('all');
+  const [finishFilter, setFinishFilter] = useState('all');
+  const [scaleFilter, setScaleFilter] = useState('all');
+  
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   
   const [products, setProducts] = useState<Product[]>([]);
@@ -64,17 +67,54 @@ export function Storefront() {
     };
   }, []);
 
+  const availableFinishes = useMemo(() => {
+    const finishes = new Set(products.map(p => p.finish).filter(Boolean));
+    return Array.from(finishes);
+  }, [products]);
+
+  const availableScales = useMemo(() => {
+    const scales = new Set<string>();
+    products.forEach(p => {
+      if (Array.isArray(p.scale)) {
+        p.scale.forEach(s => scales.add(s));
+      }
+    });
+    return Array.from(scales).sort();
+  }, [products]);
+
   const filteredProducts = useMemo(() => {
     return products.filter((product) => {
+      const getCategoryNames = (categoryId: string) => {
+        const cat = categories.find(c => c.id === categoryId);
+        if (!cat) return '';
+        let names = cat.name.toLowerCase();
+        if (cat.parentId) {
+          const parent = categories.find(c => c.id === cat.parentId);
+          if (parent) {
+            names += ' ' + parent.name.toLowerCase();
+          }
+        }
+        return names;
+      };
+
       const matchesSearch =
         product.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (categories.find(c => c.id === product.franchiseId)?.name.toLowerCase().includes(searchQuery.toLowerCase()) || false);
+        getCategoryNames(product.franchiseId).includes(searchQuery.toLowerCase());
+        
       const matchesStatus = statusFilter === 'all' || product.status === statusFilter;
-      const matchesFranchise = franchiseFilter === 'all' || product.franchiseId === franchiseFilter;
+      
+      const productCategory = categories.find(c => c.id === product.franchiseId);
+      const matchesFranchise = 
+        franchiseFilter === 'all' || 
+        product.franchiseId === franchiseFilter || 
+        productCategory?.parentId === franchiseFilter;
 
-      return matchesSearch && matchesStatus && matchesFranchise;
+      const matchesFinish = finishFilter === 'all' || product.finish === finishFilter;
+      const matchesScale = scaleFilter === 'all' || (Array.isArray(product.scale) && product.scale.includes(scaleFilter));
+
+      return matchesSearch && matchesStatus && matchesFranchise && matchesFinish && matchesScale;
     });
-  }, [searchQuery, statusFilter, franchiseFilter, products]);
+  }, [searchQuery, statusFilter, franchiseFilter, finishFilter, scaleFilter, products, categories]);
 
   return (
     <>
@@ -90,6 +130,13 @@ export function Storefront() {
           setStatusFilter={setStatusFilter}
           franchiseFilter={franchiseFilter}
           setFranchiseFilter={setFranchiseFilter}
+          finishFilter={finishFilter}
+          setFinishFilter={setFinishFilter}
+          scaleFilter={scaleFilter}
+          setScaleFilter={setScaleFilter}
+          categories={categories}
+          availableFinishes={availableFinishes}
+          availableScales={availableScales}
         />
         {loading ? (
           <div className="flex justify-center items-center py-24 text-primary">
@@ -98,11 +145,10 @@ export function Storefront() {
         ) : (
           <Catalog products={filteredProducts} categories={categories} onSelectProduct={setSelectedProduct} />
         )}
-        <Franchises onSelectFranchise={setFranchiseFilter} />
+        <Franchises onSelectFranchise={setFranchiseFilter} categories={categories} />
         <HowToBuy />
         <Contact />
       </main>
-
       <Footer />
       
       <ProductModal 
