@@ -669,7 +669,7 @@ function FigureForm({ figure, categories, designers, onBack, orderCount }: { fig
     setLoading(false);
   };
 
-  const scaleOptions = ['1:8', '1:6', '1:4', '1:2', '1:1'];
+  const scaleOptions = ['1:8', '1:6', '1:4', '1:2', '1:1', 'Chibi'];
 
   return (
     <div className="max-w-3xl mx-auto space-y-6">
