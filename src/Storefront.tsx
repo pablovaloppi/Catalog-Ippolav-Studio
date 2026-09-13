@@ -9,8 +9,8 @@ import { HowToBuy } from './components/HowToBuy';
 import { Contact } from './components/Contact';
 import { Footer } from './components/Footer';
 import { ProductModal } from './components/ProductModal';
-import { Product, Category, Designer } from './types';
-import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
+import { Product, Category, Designer, SiteConfig } from './types';
+import { collection, doc, onSnapshot, query, orderBy } from 'firebase/firestore';
 import { db } from './firebase';
 
 export function Storefront() {
@@ -26,6 +26,7 @@ export function Storefront() {
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [designers, setDesigners] = useState<Designer[]>([]);
+  const [siteConfig, setSiteConfig] = useState<SiteConfig | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -60,10 +61,17 @@ export function Storefront() {
       setDesigners(data);
     });
 
+    const unsubConfig = onSnapshot(doc(db, 'config', 'site'), (docSnapshot) => {
+      if (docSnapshot.exists()) {
+        setSiteConfig(docSnapshot.data() as SiteConfig);
+      }
+    });
+
     return () => {
       unsubProducts();
       unsubCats();
       unsubDesigners();
+      unsubConfig();
     };
   }, []);
 
@@ -147,15 +155,16 @@ export function Storefront() {
         )}
         <Franchises onSelectFranchise={setFranchiseFilter} categories={categories} />
         <HowToBuy />
-        <Contact />
+        <Contact config={siteConfig} />
       </main>
-      <Footer />
+      <Footer config={siteConfig} />
       
       <ProductModal 
         product={selectedProduct} 
         categoryName={selectedProduct ? categories.find(c => c.id === selectedProduct.franchiseId)?.name : undefined}
         designerName={selectedProduct && selectedProduct.designerId ? designers.find(d => d.id === selectedProduct.designerId)?.name : undefined}
         onClose={() => setSelectedProduct(null)} 
+        config={siteConfig}
       />
     </>
   );

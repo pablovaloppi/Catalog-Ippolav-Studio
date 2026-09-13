@@ -1,15 +1,16 @@
 import { useState } from 'react';
 import { X, MessageCircle, HelpCircle, View, ChevronLeft, ChevronRight } from 'lucide-react';
-import { Product } from '../types';
+import { Product, SiteConfig } from '../types';
 
 interface ProductModalProps {
   product: Product | null;
   categoryName?: string;
   designerName?: string;
   onClose: () => void;
+  config?: SiteConfig | null;
 }
 
-export function ProductModal({ product, categoryName, designerName, onClose }: ProductModalProps) {
+export function ProductModal({ product, categoryName, designerName, onClose, config }: ProductModalProps) {
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [isFullScreen, setIsFullScreen] = useState(false);
   const [touchStart, setTouchStart] = useState<number | null>(null);
@@ -62,7 +63,14 @@ export function ProductModal({ product, categoryName, designerName, onClose }: P
     }
   };
 
-  const whatsappMessage = encodeURIComponent(`Hola IPPOLAV STUDIO, me interesa encargar la figura ${product.title}. ¿Tienen disponibilidad?`);
+  const whatsappMessage = encodeURIComponent(
+    config?.whatsappMessageTemplate 
+      ? config.whatsappMessageTemplate.replace('{figura}', product.title) 
+      : `Hola IPPOLAV STUDIO, me interesa encargar la figura ${product.title}. ¿Tienen disponibilidad?`
+  );
+  
+  const whatsappNumber = config?.whatsapp || "5491100000000";
+  const whatsappUrl = `https://wa.me/${whatsappNumber}?text=${whatsappMessage}`;
   
   const currentImageUrl = product.imageUrls?.[currentImageIndex] || '';
 
@@ -177,7 +185,7 @@ export function ProductModal({ product, categoryName, designerName, onClose }: P
         <div className="space-y-2.5 pt-2">
           {product.status === 'disponible' ? (
             <a
-              href={`https://wa.me/5491100000000?text=${whatsappMessage}`}
+              href={whatsappUrl}
               target="_blank"
               rel="noopener noreferrer"
               className="w-full gold-shimmer text-on-primary-fixed text-sm font-bold py-3.5 px-4 rounded-lg flex items-center justify-center gap-2 shadow-lg tracking-wider uppercase hover:brightness-110 active:scale-95 transition-all"
@@ -187,7 +195,7 @@ export function ProductModal({ product, categoryName, designerName, onClose }: P
             </a>
           ) : (
             <a
-              href={`https://wa.me/5491100000000?text=${whatsappMessage}`}
+              href={whatsappUrl}
               target="_blank"
               rel="noopener noreferrer"
               className="w-full gold-shimmer text-on-primary-fixed text-sm font-bold py-3.5 px-4 rounded-lg flex items-center justify-center gap-2 shadow-lg tracking-wider uppercase hover:brightness-110 active:scale-95 transition-all"

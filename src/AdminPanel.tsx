@@ -2,14 +2,15 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from './contexts/AuthContext';
 import { loginWithGoogle, logout, db } from './firebase';
 import { collection, addDoc, setDoc, onSnapshot, query, orderBy, deleteDoc, doc, updateDoc, serverTimestamp, writeBatch } from 'firebase/firestore';
-import { Product, Category, Designer } from './types';
+import { Product, Category, Designer, SiteConfig } from './types';
 import { products as initialProducts } from './data';
-import { Plus, ChevronUp, ChevronDown, Trash2, Edit2, LogOut, ImagePlus, UserCircle } from 'lucide-react';
+import { Plus, ChevronUp, ChevronDown, Trash2, Edit2, LogOut, ImagePlus, UserCircle, Settings } from 'lucide-react';
 
 // Removed inline Category interface
 
 export function AdminPanel() {
   const { user, isAdmin, loading } = useAuth();
+
   
   if (loading) {
     return (
@@ -61,10 +62,17 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   const [figures, setFigures] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [designers, setDesigners] = useState<Designer[]>([]);
+  const [siteConfig, setSiteConfig] = useState<SiteConfig>({
+    whatsapp: '',
+    instagram: '',
+    facebook: '',
+    youtube: '',
+    whatsappMessageTemplate: 'Hola IPPOLAV STUDIO, me interesa encargar la figura {figura}. ¿Tienen disponibilidad?'
+  });
   const [loading, setLoading] = useState(true);
   
-  // views: figures-list, figure-form, categories-list, category-form, designers-list, designer-form
-  const [view, setView] = useState<'figures-list' | 'figure-form' | 'categories-list' | 'category-form' | 'designers-list' | 'designer-form'>('figures-list');
+  // views: figures-list, figure-form, categories-list, category-form, designers-list, designer-form, config
+  const [view, setView] = useState<'figures-list' | 'figure-form' | 'categories-list' | 'category-form' | 'designers-list' | 'designer-form' | 'config'>('figures-list');
   const [editingFigure, setEditingFigure] = useState<Product | null>(null);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const [editingDesigner, setEditingDesigner] = useState<Designer | null>(null);
@@ -92,7 +100,13 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
       setDesigners(data);
     });
 
-    return () => { unsubFig(); unsubCat(); unsubDes(); };
+    const unsubConfig = onSnapshot(doc(db, 'config', 'site'), (docSnapshot) => {
+      if (docSnapshot.exists()) {
+        setSiteConfig(docSnapshot.data() as SiteConfig);
+      }
+    });
+
+    return () => { unsubFig(); unsubCat(); unsubDes(); unsubConfig(); };
   }, []);
 
   const seedData = async () => {
@@ -210,6 +224,12 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                 className={`text-sm font-semibold transition-colors ${view.startsWith('designer') ? 'text-primary' : 'text-on-surface-variant hover:text-on-surface'}`}
               >
                 Diseñadores
+              </button>
+              <button 
+                onClick={() => { setView('config'); }} 
+                className={`text-sm font-semibold transition-colors flex items-center gap-1 ${view === 'config' ? 'text-primary' : 'text-on-surface-variant hover:text-on-surface'}`}
+              >
+                <Settings className="w-4 h-4" /> Configuración
               </button>
             </nav>
           </div>
@@ -355,6 +375,8 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
             onBack={() => { setView('designers-list'); setEditingDesigner(null); }}
             orderCount={designers.length}
           />
+        ) : view === 'config' ? (
+          <ConfigForm config={siteConfig} />
         ) : (
           <FigureForm 
             figure={editingFigure} 
@@ -765,6 +787,93 @@ function FigureForm({ figure, categories, designers, onBack, orderCount }: { fig
           <button type="submit" disabled={loading} className="px-6 py-2 gold-shimmer text-on-primary-fixed font-bold rounded-lg hover:brightness-110 active:scale-95 transition-all disabled:opacity-50 flex items-center gap-2">
             {loading ? <span className="material-symbols-outlined animate-spin text-sm">progress_activity</span> : null}
             Guardar Figura
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function ConfigForm({ config }: { config: SiteConfig }) {
+  const [formData, setFormData] = useState<SiteConfig>(config);
+  const [loading, setLoading] = useState(false);
+  const [success, setSuccess] = useState(false);
+
+  useEffect(() => {
+    setFormData(config);
+  }, [config]);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    setFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
+    setSuccess(false);
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setSuccess(false);
+    try {
+      await setDoc(doc(db, 'config', 'site'), formData);
+      setSuccess(true);
+    } catch (error) {
+      console.error(error);
+      alert('Error al guardar configuración');
+    }
+    setLoading(false);
+  };
+
+  return (
+    <div className="max-w-2xl mx-auto space-y-6">
+      <div className="flex items-center justify-between">
+        <h2 className="text-2xl font-serif font-bold">Configuración del Sitio</h2>
+      </div>
+      
+      <form onSubmit={handleSubmit} className="bg-surface-container-low border border-outline-variant/30 rounded-xl p-6 space-y-6">
+        <div className="space-y-4">
+          <h3 className="text-lg font-bold text-primary">Redes Sociales y Contacto</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-1">
+              <label className="text-sm font-bold text-on-surface">WhatsApp (Número)</label>
+              <input type="text" name="whatsapp" value={formData.whatsapp} onChange={handleChange} placeholder="Ej: 5491112345678" className="w-full p-3 bg-surface-container border border-outline-variant/30 rounded-lg text-sm" />
+              <p className="text-xs text-outline">Incluye el código de país sin el +</p>
+            </div>
+            <div className="space-y-1">
+              <label className="text-sm font-bold text-on-surface">Instagram URL</label>
+              <input type="url" name="instagram" value={formData.instagram} onChange={handleChange} placeholder="https://instagram.com/tu-usuario" className="w-full p-3 bg-surface-container border border-outline-variant/30 rounded-lg text-sm" />
+            </div>
+            <div className="space-y-1">
+              <label className="text-sm font-bold text-on-surface">Facebook URL</label>
+              <input type="url" name="facebook" value={formData.facebook} onChange={handleChange} placeholder="https://facebook.com/tu-pagina" className="w-full p-3 bg-surface-container border border-outline-variant/30 rounded-lg text-sm" />
+            </div>
+            <div className="space-y-1">
+              <label className="text-sm font-bold text-on-surface">YouTube URL</label>
+              <input type="url" name="youtube" value={formData.youtube} onChange={handleChange} placeholder="https://youtube.com/c/tu-canal" className="w-full p-3 bg-surface-container border border-outline-variant/30 rounded-lg text-sm" />
+            </div>
+          </div>
+        </div>
+
+        <div className="w-full h-px bg-outline-variant/30 my-6"></div>
+
+        <div className="space-y-4">
+          <h3 className="text-lg font-bold text-primary">Mensaje de WhatsApp (Catálogo)</h3>
+          <div className="space-y-1">
+            <label className="text-sm font-bold text-on-surface">Plantilla de Mensaje</label>
+            <textarea 
+              name="whatsappMessageTemplate" 
+              value={formData.whatsappMessageTemplate} 
+              onChange={handleChange} 
+              rows={4}
+              className="w-full p-3 bg-surface-container border border-outline-variant/30 rounded-lg text-sm"
+              placeholder="Hola, me interesa la figura {figura}."
+            />
+            <p className="text-xs text-outline mt-1">Usa la etiqueta <strong className="text-primary">{'{figura}'}</strong> para que sea reemplazada automáticamente por el nombre del producto.</p>
+          </div>
+        </div>
+
+        <div className="flex justify-end gap-3 pt-6 border-t border-outline-variant/20">
+          {success && <span className="text-green-500 font-bold self-center mr-4">¡Guardado!</span>}
+          <button type="submit" disabled={loading} className="px-6 py-2 bg-primary text-on-primary font-bold rounded-lg hover:brightness-110 active:scale-95 transition-all disabled:opacity-50">
+            {loading ? 'Guardando...' : 'Guardar Configuración'}
           </button>
         </div>
       </form>

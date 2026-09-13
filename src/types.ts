@@ -27,3 +27,11 @@ export interface Designer {
   name: string;
   order?: number;
 }
+
+export interface SiteConfig {
+  whatsapp: string;
+  instagram: string;
+  facebook: string;
+  youtube: string;
+  whatsappMessageTemplate: string;
+}

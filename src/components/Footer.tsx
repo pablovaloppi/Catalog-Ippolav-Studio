@@ -1,4 +1,8 @@
-export function Footer() {
+import { SiteConfig } from '../types';
+
+export function Footer({ config }: { config: SiteConfig | null }) {
+  const whatsappUrl = config?.whatsapp ? `https://wa.me/${config.whatsapp}` : "https://wa.me/5491100000000";
+  
   return (
     <footer className="w-full px-5 md:px-12 py-16 max-w-7xl mx-auto flex flex-col items-center text-center space-y-6 bg-surface-container-lowest border-t border-outline-variant/20">
       <a href="#hero" className="flex flex-col items-center space-y-3 group">
@@ -17,8 +21,10 @@ export function Footer() {
         <a href="#franquicias" className="text-on-surface-variant hover:text-primary transition-colors">Franquicias</a>
         <a href="#proceso" className="text-on-surface-variant hover:text-primary transition-colors">Proceso de Compra</a>
         <a href="#contacto" className="text-on-surface-variant hover:text-primary transition-colors">Bespoke Commissions</a>
-        <a href="https://wa.me/5491100000000" target="_blank" rel="noopener noreferrer" className="text-on-surface-variant hover:text-primary transition-colors">WhatsApp</a>
-        <a href="#contacto" className="text-on-surface-variant hover:text-primary transition-colors">Términos y Autenticidad</a>
+        <a href={whatsappUrl} target="_blank" rel="noopener noreferrer" className="text-on-surface-variant hover:text-primary transition-colors">WhatsApp</a>
+        {config?.instagram && <a href={config.instagram} target="_blank" rel="noopener noreferrer" className="text-on-surface-variant hover:text-primary transition-colors">Instagram</a>}
+        {config?.facebook && <a href={config.facebook} target="_blank" rel="noopener noreferrer" className="text-on-surface-variant hover:text-primary transition-colors">Facebook</a>}
+        {config?.youtube && <a href={config.youtube} target="_blank" rel="noopener noreferrer" className="text-on-surface-variant hover:text-primary transition-colors">YouTube</a>}
       </nav>
 
       <div className="space-y-1">
