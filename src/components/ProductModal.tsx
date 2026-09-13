@@ -63,11 +63,17 @@ export function ProductModal({ product, categoryName, designerName, onClose, con
     }
   };
 
-  const whatsappMessage = encodeURIComponent(
-    config?.whatsappMessageTemplate 
-      ? config.whatsappMessageTemplate.replace('{figura}', product.title) 
-      : `Hola IPPOLAV STUDIO, me interesa encargar la figura ${product.title}. ¿Tienen disponibilidad?`
-  );
+  const mainImageUrl = product.imageUrls?.[0] || '';
+  
+  let rawMessage = config?.whatsappMessageTemplate 
+    ? config.whatsappMessageTemplate.replace('{figura}', product.title) 
+    : `Hola IPPOLAV STUDIO, me interesa encargar la figura ${product.title}. ¿Tienen disponibilidad?`;
+
+  if (rawMessage.includes('{imagen}')) {
+    rawMessage = rawMessage.replace('{imagen}', mainImageUrl);
+  }
+    
+  const whatsappMessage = encodeURIComponent(rawMessage);
   
   const whatsappNumber = config?.whatsapp || "5491100000000";
   const whatsappUrl = `https://wa.me/${whatsappNumber}?text=${whatsappMessage}`;
