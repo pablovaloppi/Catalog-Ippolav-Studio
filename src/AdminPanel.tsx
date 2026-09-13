@@ -538,7 +538,7 @@ function FigureForm({ figure, categories, designers, onBack, orderCount }: { fig
     title: '',
     franchiseId: categories[0]?.id || 'marvel',
     designerId: '',
-    status: 'disponible',
+    status: 'consultar',
     imageUrls: [],
     finish: 'Hiperrealista',
     scale: [],
@@ -780,8 +780,8 @@ function FigureForm({ figure, categories, designers, onBack, orderCount }: { fig
             <textarea name="description" value={formData.description} onChange={handleChange} rows={2} className="w-full bg-surface-container border border-outline-variant/40 rounded p-2 text-sm focus:border-primary outline-none" />
           </div>
           <div className="space-y-1 md:col-span-2 pt-4 border-t border-outline-variant/20">
-            <label className="text-xs font-bold text-on-surface-variant uppercase">Mensaje WhatsApp Pre-Cargado</label>
-            <textarea required name="whatsappMessage" value={formData.whatsappMessage} onChange={handleChange} rows={3} className="w-full bg-surface-container border border-outline-variant/40 rounded p-2 text-sm focus:border-primary outline-none" />
+            <label className="text-xs font-bold text-on-surface-variant uppercase">Mensaje WhatsApp Pre-Cargado (Opcional)</label>
+            <textarea name="whatsappMessage" value={formData.whatsappMessage} onChange={handleChange} rows={3} className="w-full bg-surface-container border border-outline-variant/40 rounded p-2 text-sm focus:border-primary outline-none" />
           </div>
         </div>
 
