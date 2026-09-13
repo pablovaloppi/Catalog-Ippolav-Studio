@@ -202,38 +202,43 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   return (
     <div className="min-h-screen bg-background text-on-surface flex flex-col">
       <header className="bg-surface-container border-b border-outline-variant/30 sticky top-0 z-10">
-        <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-6">
-            <span className="font-serif text-xl text-primary font-bold">IPPOLAV ADMIN</span>
-            <div className="h-6 w-px bg-outline-variant/50"></div>
-            <nav className="flex gap-4">
+        <div className="max-w-6xl mx-auto px-4 md:px-6 min-h-[64px] flex flex-col md:flex-row items-center justify-between py-3 md:py-0 gap-3 md:gap-0">
+          <div className="flex flex-col md:flex-row items-center gap-3 md:gap-6 w-full md:w-auto">
+            <div className="flex items-center justify-between w-full md:w-auto">
+              <span className="font-serif text-xl text-primary font-bold">IPPOLAV ADMIN</span>
+              <button onClick={onLogout} className="flex md:hidden items-center gap-2 text-sm text-on-surface-variant hover:text-error transition-colors">
+                <LogOut className="w-4 h-4" /> Salir
+              </button>
+            </div>
+            <div className="hidden md:block h-6 w-px bg-outline-variant/50"></div>
+            <nav className="flex items-center gap-4 overflow-x-auto w-full md:w-auto pb-1 md:pb-0 no-scrollbar justify-start">
               <button 
                 onClick={() => { setView('figures-list'); setEditingFigure(null); }} 
-                className={`text-sm font-semibold transition-colors ${view.startsWith('figure') ? 'text-primary' : 'text-on-surface-variant hover:text-on-surface'}`}
+                className={`text-sm font-semibold whitespace-nowrap transition-colors ${view.startsWith('figure') ? 'text-primary' : 'text-on-surface-variant hover:text-on-surface'}`}
               >
                 Figuras
               </button>
               <button 
                 onClick={() => { setView('categories-list'); setEditingCategory(null); }} 
-                className={`text-sm font-semibold transition-colors ${view.startsWith('category') ? 'text-primary' : 'text-on-surface-variant hover:text-on-surface'}`}
+                className={`text-sm font-semibold whitespace-nowrap transition-colors ${view.startsWith('category') ? 'text-primary' : 'text-on-surface-variant hover:text-on-surface'}`}
               >
                 Categorías
               </button>
               <button 
                 onClick={() => { setView('designers-list'); setEditingDesigner(null); }} 
-                className={`text-sm font-semibold transition-colors ${view.startsWith('designer') ? 'text-primary' : 'text-on-surface-variant hover:text-on-surface'}`}
+                className={`text-sm font-semibold whitespace-nowrap transition-colors ${view.startsWith('designer') ? 'text-primary' : 'text-on-surface-variant hover:text-on-surface'}`}
               >
                 Diseñadores
               </button>
               <button 
                 onClick={() => { setView('config'); }} 
-                className={`text-sm font-semibold transition-colors flex items-center gap-1 ${view === 'config' ? 'text-primary' : 'text-on-surface-variant hover:text-on-surface'}`}
+                className={`text-sm font-semibold whitespace-nowrap transition-colors flex items-center gap-1 ${view === 'config' ? 'text-primary' : 'text-on-surface-variant hover:text-on-surface'}`}
               >
                 <Settings className="w-4 h-4" /> Configuración
               </button>
             </nav>
           </div>
-          <button onClick={onLogout} className="flex items-center gap-2 text-sm text-on-surface-variant hover:text-error transition-colors">
+          <button onClick={onLogout} className="hidden md:flex items-center gap-2 text-sm text-on-surface-variant hover:text-error transition-colors">
             <LogOut className="w-4 h-4" /> Salir
           </button>
         </div>
