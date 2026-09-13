@@ -864,11 +864,9 @@ function ConfigForm({ config }: { config: SiteConfig }) {
               onChange={handleChange} 
               rows={4}
               className="w-full p-3 bg-surface-container border border-outline-variant/30 rounded-lg text-sm"
-              placeholder="Hola, me interesa la figura {figura}. Te paso la foto: {imagen}"
+              placeholder="Hola, me interesa la figura {figura}."
             />
-            <p className="text-xs text-outline mt-1">
-              Etiquetas disponibles: <strong className="text-primary">{'{figura}'}</strong> (nombre del producto) y <strong className="text-primary">{'{imagen}'}</strong> (link a la foto principal).
-            </p>
+            <p className="text-xs text-outline mt-1">Usa la etiqueta <strong className="text-primary">{'{figura}'}</strong> para que sea reemplazada automáticamente por el nombre del producto.</p>
           </div>
         </div>
 
