@@ -17,10 +17,10 @@
       "description": "A collectible sculpture or figure",
       "type": "object",
       "properties": {
-        "title": { "type": "string", "maxLength": 100 },
-        "numericId": { "type": "string", "maxLength": 50 },
-        "franchiseId": { "type": "string", "maxLength": 50 },
-        "designerId": { "type": "string", "maxLength": 50 },
+        "title": { "type": "string", "maxLength": 300 },
+        "numericId": { "type": "string", "maxLength": 100 },
+        "franchiseId": { "type": "string", "maxLength": 100 },
+        "designerId": { "type": "string", "maxLength": 100 },
         "status": {
           "type": "string",
           "enum": ["disponible", "consultar", "proximamente"]
@@ -28,19 +28,19 @@
         "imageUrls": {
           "type": "array",
           "description": "List of image URLs. The first one is the cover.",
-          "maxLength": 10,
-          "items": { "type": "string", "maxLength": 2048 }
+          "maxLength": 20,
+          "items": { "type": "string" }
         },
         "finish": { "type": "string", "maxLength": 100 },
         "scale": {
           "type": "array",
           "items": { "type": "string", "maxLength": 50 },
-          "maxLength": 10
+          "maxLength": 20
         },
         "material": { "type": "string", "maxLength": 100 },
-        "description": { "type": "string", "maxLength": 1000 },
-        "badge": { "type": "string", "maxLength": 50 },
-        "whatsappMessage": { "type": "string", "maxLength": 1000 },
+        "description": { "type": "string", "maxLength": 10000 },
+        "badge": { "type": "string", "maxLength": 200 },
+        "whatsappMessage": { "type": "string", "maxLength": 5000 },
         "order": { "type": "number" },
         "createdAt": { "type": "timestamp" },
         "updatedAt": { "type": "timestamp" }
@@ -48,13 +48,7 @@
       "required": [
         "title",
         "franchiseId",
-        "status",
-        "imageUrls",
-        "finish",
-        "scale",
-        "material",
-        "createdAt",
-        "updatedAt"
+        "status"
       ]
     },
     "category": {
@@ -78,6 +72,18 @@
         "order": { "type": "number" }
       },
       "required": ["name"]
+    },
+    "config": {
+      "title": "SiteConfig",
+      "description": "General settings for the site",
+      "type": "object",
+      "properties": {
+        "whatsapp": { "type": "string" },
+        "whatsappMessageTemplate": { "type": "string" },
+        "instagram": { "type": "string" },
+        "facebook": { "type": "string" },
+        "youtube": { "type": "string" }
+      }
     }
   },
   "firestore": {
@@ -96,6 +102,10 @@
     "designers/{designerId}": {
       "schema": "designer",
       "description": "Stores the designers/artists."
+    },
+    "config/{configId}": {
+      "schema": "config",
+      "description": "Stores the store configuration."
     }
   }
 }

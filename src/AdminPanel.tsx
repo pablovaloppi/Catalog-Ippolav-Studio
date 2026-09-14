@@ -99,7 +99,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
 
     setAssigningIds(true);
     try {
-      const batchSize = 400;
+      const batchSize = 100;
       for (let i = 0; i < targets.length; i += batchSize) {
         const batch = writeBatch(db);
         const chunk = targets.slice(i, i + batchSize);
@@ -117,10 +117,10 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
           const finalId = `${autoIdPrefix}${padded}`;
 
           const docRef = doc(db, 'figures', fig.id);
-          batch.update(docRef, {
+          batch.set(docRef, {
             numericId: finalId,
             updatedAt: serverTimestamp()
-          });
+          }, { merge: true });
         });
 
         await batch.commit();
@@ -128,9 +128,38 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
 
       alert(`¡Éxito! Se actualizaron ${targets.length} figuras directamente en la base de datos.`);
       setShowAutoIdModal(false);
-    } catch (error) {
-      console.error('Error al actualizar identificadores en Firestore:', error);
-      alert('Ocurrió un error al guardar los identificadores en la base de datos.');
+    } catch (batchError: any) {
+      console.warn('Error en lote, intentando actualización secuencial individual...', batchError);
+      try {
+        let successCount = 0;
+        for (let idx = 0; idx < targets.length; idx++) {
+          const fig = targets[idx];
+          let numberVal: number;
+          if (autoIdMode === 'onlyMissing') {
+            const pos = figures.findIndex(f => f.id === fig.id);
+            numberVal = pos !== -1 ? pos + 1 : (idx + 1);
+          } else {
+            numberVal = idx + 1;
+          }
+
+          const padded = String(numberVal).padStart(autoIdDigits, '0');
+          const finalId = `${autoIdPrefix}${padded}`;
+
+          const docRef = doc(db, 'figures', fig.id);
+          await setDoc(docRef, {
+            numericId: finalId,
+            updatedAt: serverTimestamp()
+          }, { merge: true });
+          successCount++;
+        }
+
+        alert(`¡Éxito! Se actualizaron ${successCount} figuras en la base de datos.`);
+        setShowAutoIdModal(false);
+      } catch (singleError: any) {
+        console.error('Error al actualizar identificadores en Firestore:', singleError);
+        const msg = singleError?.message || batchError?.message || 'Error desconocido';
+        alert(`Ocurrió un error al guardar los identificadores: ${msg}`);
+      }
     } finally {
       setAssigningIds(false);
     }
