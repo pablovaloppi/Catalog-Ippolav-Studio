@@ -25,6 +25,7 @@ service cloud.firestore {
         && data.title is string && data.title.size() <= 100
         && data.franchiseId is string && data.franchiseId.size() <= 50
         && data.get('designerId', '') is string && data.get('designerId', '').size() <= 50
+        && data.get('numericId', '') is string && data.get('numericId', '').size() <= 50
         && data.status is string && data.status.matches('^(disponible|consultar|proximamente)$')
         && data.imageUrls is list && data.imageUrls.size() <= 10 && (data.imageUrls.size() == 0 || data.imageUrls[0] is string)
         && data.finish is string && data.finish.size() <= 100

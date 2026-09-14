@@ -18,6 +18,7 @@
       "type": "object",
       "properties": {
         "title": { "type": "string", "maxLength": 100 },
+        "numericId": { "type": "string", "maxLength": 50 },
         "franchiseId": { "type": "string", "maxLength": 50 },
         "designerId": { "type": "string", "maxLength": 50 },
         "status": {

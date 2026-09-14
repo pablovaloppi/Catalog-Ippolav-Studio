@@ -3,6 +3,7 @@ import { Product } from './types';
 export const products: Product[] = [
   {
     id: 'p1',
+    numericId: '#001',
     title: 'Ryujin Dragon Knight',
     franchiseId: 'videojuegos',
     status: 'disponible',
@@ -14,6 +15,7 @@ export const products: Product[] = [
   },
   {
     id: 'p2',
+    numericId: '#002',
     title: 'Ares Vanguard Paladin',
     franchiseId: 'anime',
     status: 'consultar',
@@ -25,6 +27,7 @@ export const products: Product[] = [
   },
   {
     id: 'p3',
+    numericId: '#003',
     title: 'The Shadow Crusader',
     franchiseId: 'dc',
     status: 'disponible',
@@ -36,6 +39,7 @@ export const products: Product[] = [
   },
   {
     id: 'p4',
+    numericId: '#004',
     title: 'Awakened Warrior Prime',
     franchiseId: 'anime',
     status: 'disponible',
@@ -47,6 +51,7 @@ export const products: Product[] = [
   },
   {
     id: 'p5',
+    numericId: '#005',
     title: 'Titanium Mark LXXXV',
     franchiseId: 'marvel',
     status: 'consultar',
@@ -58,6 +63,7 @@ export const products: Product[] = [
   },
   {
     id: 'p6',
+    numericId: '#006',
     title: 'Kromium Drifter',
     franchiseId: 'cinema',
     status: 'proximamente',
