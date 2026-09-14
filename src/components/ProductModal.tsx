@@ -63,11 +63,11 @@ export function ProductModal({ product, categoryName, designerName, onClose, con
     }
   };
 
-  const whatsappMessage = encodeURIComponent(
-    config?.whatsappMessageTemplate 
-      ? config.whatsappMessageTemplate.replace('{figura}', product.title) 
-      : `Hola IPPOLAV STUDIO, me interesa encargar la figura ${product.title}. ¿Tienen disponibilidad?`
-  );
+  const baseMessage = config?.whatsappMessageTemplate 
+    ? config.whatsappMessageTemplate.replace('{figura}', product.title).replace('{codigo}', product.numericId || '') 
+    : `Hola IPPOLAV STUDIO, me interesa encargar la figura ${product.title}${product.numericId ? ` (${product.numericId})` : ''}. ¿Tienen disponibilidad?`;
+
+  const whatsappMessage = encodeURIComponent(baseMessage);
   
   const whatsappNumber = config?.whatsapp || "5491100000000";
   const whatsappUrl = `https://wa.me/${whatsappNumber}?text=${whatsappMessage}`;

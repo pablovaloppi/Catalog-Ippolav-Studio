@@ -1,5 +1,6 @@
 export interface Product {
   id: string;
+  numericId?: string;
   title: string;
   franchiseId: string;
   designerId?: string;

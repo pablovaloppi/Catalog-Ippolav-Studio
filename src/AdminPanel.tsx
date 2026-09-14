@@ -77,6 +77,16 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const [editingDesigner, setEditingDesigner] = useState<Designer | null>(null);
 
+  const [figureSearch, setFigureSearch] = useState('');
+  const [figureFilterCategory, setFigureFilterCategory] = useState('all');
+
+  const filteredAdminFigures = figures.filter((fig) => {
+    const matchesSearch = fig.title.toLowerCase().includes(figureSearch.toLowerCase()) || 
+                          (fig.numericId && fig.numericId.toLowerCase().includes(figureSearch.toLowerCase()));
+    const matchesCategory = figureFilterCategory === 'all' || fig.franchiseId === figureFilterCategory;
+    return matchesSearch && matchesCategory;
+  });
+
   useEffect(() => {
     const qFig = query(collection(db, 'figures'), orderBy('order', 'asc'));
     const unsubFig = onSnapshot(qFig, (snapshot) => {
@@ -265,22 +275,43 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
               </div>
             </div>
 
+            <div className="flex flex-col sm:flex-row gap-4 mb-4">
+              <input 
+                type="text" 
+                placeholder="Buscar por título o identificador..." 
+                value={figureSearch} 
+                onChange={(e) => setFigureSearch(e.target.value)}
+                className="flex-1 bg-surface-container border border-outline-variant/40 rounded p-2 text-sm focus:border-primary outline-none"
+              />
+              <select 
+                value={figureFilterCategory} 
+                onChange={(e) => setFigureFilterCategory(e.target.value)}
+                className="bg-surface-container border border-outline-variant/40 rounded p-2 text-sm focus:border-primary outline-none"
+              >
+                <option value="all">Todas las categorías</option>
+                {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            </div>
+
             <div className="bg-surface-container-low border border-outline-variant/30 rounded-xl overflow-hidden">
-              {figures.length === 0 ? (
-                <div className="p-8 text-center text-on-surface-variant">No hay figuras en el catálogo.</div>
+              {filteredAdminFigures.length === 0 ? (
+                <div className="p-8 text-center text-on-surface-variant">No se encontraron figuras.</div>
               ) : (
                 <div className="divide-y divide-outline-variant/20">
-                  {figures.map((fig, index) => (
+                  {filteredAdminFigures.map((fig, index) => (
                     <div key={fig.id} className="flex items-center p-4 hover:bg-surface-container transition-colors group">
                       <div className="flex flex-col gap-1 pr-4">
-                        <button onClick={() => moveFigure(index, -1)} disabled={index === 0} className="text-outline hover:text-primary disabled:opacity-30"><ChevronUp className="w-5 h-5" /></button>
-                        <button onClick={() => moveFigure(index, 1)} disabled={index === figures.length - 1} className="text-outline hover:text-primary disabled:opacity-30"><ChevronDown className="w-5 h-5" /></button>
+                        <button onClick={() => moveFigure(figures.indexOf(fig), -1)} disabled={figures.indexOf(fig) === 0} className="text-outline hover:text-primary disabled:opacity-30"><ChevronUp className="w-5 h-5" /></button>
+                        <button onClick={() => moveFigure(figures.indexOf(fig), 1)} disabled={figures.indexOf(fig) === figures.length - 1} className="text-outline hover:text-primary disabled:opacity-30"><ChevronDown className="w-5 h-5" /></button>
                       </div>
                       <div className="w-16 h-16 rounded bg-surface-container-lowest border border-outline-variant/30 overflow-hidden flex-shrink-0">
                         {fig.imageUrls?.[0] ? <img src={fig.imageUrls[0]} alt={fig.title} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-outline"><ImagePlus className="w-6 h-6" /></div>}
                       </div>
                       <div className="ml-4 flex-1">
-                        <h3 className="font-semibold text-on-surface">{fig.title}</h3>
+                        <h3 className="font-semibold text-on-surface">
+                          {fig.numericId && <span className="text-primary mr-2 font-mono text-xs border border-primary/30 bg-primary/10 px-1 rounded">{fig.numericId}</span>}
+                          {fig.title}
+                        </h3>
                         <p className="text-xs text-on-surface-variant">Categoría: {categories.find(c => c.id === fig.franchiseId)?.name || fig.franchiseId} • {fig.status}</p>
                       </div>
                       <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -535,6 +566,7 @@ function CategoryForm({ category, categories, onBack, orderCount }: { category: 
 
 function FigureForm({ figure, categories, designers, onBack, orderCount }: { figure: Product | null, categories: Category[], designers: Designer[], onBack: () => void, orderCount: number }) {
   const [formData, setFormData] = useState<Partial<Product>>(figure || {
+    numericId: '',
     title: '',
     franchiseId: categories[0]?.id || 'marvel',
     designerId: '',
@@ -635,6 +667,7 @@ function FigureForm({ figure, categories, designers, onBack, orderCount }: { fig
     setLoading(true);
     try {
       const payload = {
+        numericId: formData.numericId || '',
         title: formData.title || '',
         franchiseId: formData.franchiseId || categories[0]?.id || 'marvel',
         designerId: formData.designerId || '',
@@ -680,6 +713,10 @@ function FigureForm({ figure, categories, designers, onBack, orderCount }: { fig
 
       <form onSubmit={handleSubmit} className="space-y-6 bg-surface-container-low p-6 rounded-xl border border-outline-variant/30 gold-border-glow">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="space-y-1">
+            <label className="text-xs font-bold text-on-surface-variant uppercase">Identificador (Ej: #001)</label>
+            <input name="numericId" value={formData.numericId || ''} onChange={handleChange} placeholder="Opcional" className="w-full bg-surface-container border border-outline-variant/40 rounded p-2 text-sm focus:border-primary outline-none" />
+          </div>
           <div className="space-y-1">
             <label className="text-xs font-bold text-on-surface-variant uppercase">Título</label>
             <input required name="title" value={formData.title} onChange={handleChange} className="w-full bg-surface-container border border-outline-variant/40 rounded p-2 text-sm focus:border-primary outline-none" />
@@ -871,7 +908,9 @@ function ConfigForm({ config }: { config: SiteConfig }) {
               className="w-full p-3 bg-surface-container border border-outline-variant/30 rounded-lg text-sm"
               placeholder="Hola, me interesa la figura {figura}."
             />
-            <p className="text-xs text-outline mt-1">Usa la etiqueta <strong className="text-primary">{'{figura}'}</strong> para que sea reemplazada automáticamente por el nombre del producto.</p>
+            <p className="text-xs text-outline mt-1">
+              Etiquetas disponibles: <strong className="text-primary">{'{figura}'}</strong> (nombre del producto) y <strong className="text-primary">{'{codigo}'}</strong> (identificador numérico).
+            </p>
           </div>
         </div>
 
