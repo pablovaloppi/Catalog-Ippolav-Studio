@@ -1,3 +1,4 @@
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { ArrowRight, PlusCircle } from 'lucide-react';
 import { Product, Category } from '../types';
 
@@ -7,7 +8,44 @@ interface CatalogProps {
   onSelectProduct: (product: Product) => void;
 }
 
+const ITEMS_PER_PAGE = 12;
+
 export function Catalog({ products, categories, onSelectProduct }: CatalogProps) {
+  const [visibleCount, setVisibleCount] = useState(ITEMS_PER_PAGE);
+  const observerTarget = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    // Reset visible count when products array changes (e.g., user filters or searches)
+    setVisibleCount(ITEMS_PER_PAGE);
+  }, [products]);
+
+  const handleObserver = useCallback((entries: IntersectionObserverEntry[]) => {
+    const target = entries[0];
+    if (target.isIntersecting) {
+      setVisibleCount((prev) => Math.min(prev + ITEMS_PER_PAGE, products.length));
+    }
+  }, [products.length]);
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(handleObserver, {
+      root: null,
+      rootMargin: '200px', // Load more slightly before they hit the bottom
+      threshold: 0.1,
+    });
+
+    if (observerTarget.current) {
+      observer.observe(observerTarget.current);
+    }
+
+    return () => {
+      if (observerTarget.current) {
+        observer.unobserve(observerTarget.current);
+      }
+    };
+  }, [handleObserver]);
+
+  const visibleProducts = products.slice(0, visibleCount);
+
   return (
     <section id="catalogo" className="px-5 md:px-12 py-12">
       <div className="flex flex-col sm:flex-row sm:items-end justify-between mb-8 pb-4 border-b border-outline-variant/20 gap-2">
@@ -22,7 +60,7 @@ export function Catalog({ products, categories, onSelectProduct }: CatalogProps)
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-        {products.map((product) => (
+        {visibleProducts.map((product) => (
           <article
             key={product.id}
             onClick={() => onSelectProduct(product)}
@@ -32,6 +70,7 @@ export function Catalog({ products, categories, onSelectProduct }: CatalogProps)
               <img
                 src={product.imageUrls?.[0] || ''}
                 alt={product.title}
+                loading="lazy"
                 className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
               />
               <div className="absolute top-3 left-3 flex flex-col gap-1.5">
@@ -52,7 +91,6 @@ export function Catalog({ products, categories, onSelectProduct }: CatalogProps)
                 )}
               </div>
             </div>
-
             <div className="p-4 space-y-3 flex-1 flex flex-col justify-between">
               <div>
                 <span className="text-[10px] font-bold text-primary tracking-wider uppercase block">
@@ -76,6 +114,11 @@ export function Catalog({ products, categories, onSelectProduct }: CatalogProps)
           </article>
         ))}
       </div>
+      
+      {/* Invisible element to trigger loading more items */}
+      {visibleCount < products.length && (
+        <div ref={observerTarget} className="h-10 w-full mt-4" />
+      )}
 
       <div className="mt-12 text-center">
         <a
