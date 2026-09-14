@@ -4,7 +4,8 @@ import { loginWithGoogle, logout, db } from './firebase';
 import { collection, addDoc, setDoc, onSnapshot, query, orderBy, deleteDoc, doc, updateDoc, serverTimestamp, writeBatch } from 'firebase/firestore';
 import { Product, Category, Designer, SiteConfig } from './types';
 import { products as initialProducts } from './data';
-import { Plus, ChevronUp, ChevronDown, Trash2, Edit2, LogOut, ImagePlus, UserCircle, Settings, Hash, Sparkles } from 'lucide-react';
+import { Plus, ChevronUp, ChevronDown, Trash2, Edit2, LogOut, ImagePlus, UserCircle, Settings, Hash, Sparkles, Eye } from 'lucide-react';
+import { ProductModal } from './components/ProductModal';
 
 // Removed inline Category interface
 
@@ -74,6 +75,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   // views: figures-list, figure-form, categories-list, category-form, designers-list, designer-form, config
   const [view, setView] = useState<'figures-list' | 'figure-form' | 'categories-list' | 'category-form' | 'designers-list' | 'designer-form' | 'config'>('figures-list');
   const [editingFigure, setEditingFigure] = useState<Product | null>(null);
+  const [previewingFigure, setPreviewingFigure] = useState<Product | null>(null);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const [editingDesigner, setEditingDesigner] = useState<Designer | null>(null);
 
@@ -543,24 +545,48 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
               ) : (
                 <div className="divide-y divide-outline-variant/20">
                   {filteredAdminFigures.map((fig, index) => (
-                    <div key={fig.id} className="flex items-center p-4 hover:bg-surface-container transition-colors group">
-                      <div className="flex flex-col gap-1 pr-4">
+                    <div 
+                      key={fig.id} 
+                      onClick={() => setPreviewingFigure(fig)}
+                      className="flex items-center p-4 hover:bg-surface-container transition-colors group cursor-pointer"
+                      title="Haz clic para ver la vista previa de los datos de esta figura"
+                    >
+                      <div className="flex flex-col gap-1 pr-4" onClick={(e) => e.stopPropagation()}>
                         <button onClick={() => moveFigure(figures.indexOf(fig), -1)} disabled={figures.indexOf(fig) === 0} className="text-outline hover:text-primary disabled:opacity-30"><ChevronUp className="w-5 h-5" /></button>
                         <button onClick={() => moveFigure(figures.indexOf(fig), 1)} disabled={figures.indexOf(fig) === figures.length - 1} className="text-outline hover:text-primary disabled:opacity-30"><ChevronDown className="w-5 h-5" /></button>
                       </div>
                       <div className="w-16 h-16 rounded bg-surface-container-lowest border border-outline-variant/30 overflow-hidden flex-shrink-0">
-                        {fig.imageUrls?.[0] ? <img src={fig.imageUrls[0]} alt={fig.title} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-outline"><ImagePlus className="w-6 h-6" /></div>}
+                        {fig.imageUrls?.[0] ? <img src={fig.imageUrls[0]} alt={fig.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform" /> : <div className="w-full h-full flex items-center justify-center text-outline"><ImagePlus className="w-6 h-6" /></div>}
                       </div>
-                      <div className="ml-4 flex-1">
-                        <h3 className="font-semibold text-on-surface">
-                          {fig.numericId && <span className="text-primary mr-2 font-mono text-xs border border-primary/30 bg-primary/10 px-1 rounded">{fig.numericId}</span>}
-                          {fig.title}
+                      <div className="ml-4 flex-1 min-w-0 pr-2">
+                        <h3 className="font-semibold text-on-surface truncate group-hover:text-primary transition-colors flex items-center gap-2">
+                          {fig.numericId && <span className="text-primary font-mono text-xs border border-primary/30 bg-primary/10 px-1.5 py-0.5 rounded flex-shrink-0">{fig.numericId}</span>}
+                          <span className="truncate">{fig.title}</span>
                         </h3>
-                        <p className="text-xs text-on-surface-variant">Categoría: {categories.find(c => c.id === fig.franchiseId)?.name || fig.franchiseId} • {fig.status}</p>
+                        <p className="text-xs text-on-surface-variant truncate mt-0.5">Categoría: {categories.find(c => c.id === fig.franchiseId)?.name || fig.franchiseId} • {fig.status}</p>
                       </div>
-                      <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button onClick={() => { setEditingFigure(fig); setView('figure-form'); }} className="p-2 text-on-surface hover:text-primary rounded-lg bg-surface-container-highest"><Edit2 className="w-4 h-4" /></button>
-                        <button onClick={() => confirm('¿Eliminar figura?') && deleteDoc(doc(db, 'figures', fig.id))} className="p-2 text-on-surface hover:text-error rounded-lg bg-surface-container-highest"><Trash2 className="w-4 h-4" /></button>
+                      <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                        <button 
+                          onClick={() => setPreviewingFigure(fig)} 
+                          title="Ver vista previa"
+                          className="p-2 text-on-surface hover:text-primary rounded-lg bg-surface-container-highest transition-colors opacity-80 hover:opacity-100"
+                        >
+                          <Eye className="w-4 h-4" />
+                        </button>
+                        <button 
+                          onClick={() => { setEditingFigure(fig); setView('figure-form'); }} 
+                          title="Editar figura"
+                          className="p-2 text-on-surface hover:text-primary rounded-lg bg-surface-container-highest transition-colors opacity-80 hover:opacity-100"
+                        >
+                          <Edit2 className="w-4 h-4" />
+                        </button>
+                        <button 
+                          onClick={() => confirm('¿Eliminar figura?') && deleteDoc(doc(db, 'figures', fig.id))} 
+                          title="Eliminar figura"
+                          className="p-2 text-on-surface hover:text-error rounded-lg bg-surface-container-highest transition-colors opacity-80 hover:opacity-100"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
                       </div>
                     </div>
                   ))}
@@ -667,6 +693,17 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
           />
         )}
       </main>
+
+      {/* Modal de Vista Previa de la Figura */}
+      {previewingFigure && (
+        <ProductModal 
+          product={previewingFigure} 
+          categoryName={categories.find(c => c.id === previewingFigure.franchiseId)?.name}
+          designerName={designers.find(d => d.id === previewingFigure.designerId)?.name}
+          onClose={() => setPreviewingFigure(null)}
+          config={siteConfig}
+        />
+      )}
     </div>
   );
 }
