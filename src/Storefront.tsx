@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { Header } from './components/Header';
 import { NavigationDrawer } from './components/NavigationDrawer';
 import { Hero } from './components/Hero';
@@ -10,8 +10,21 @@ import { Contact } from './components/Contact';
 import { Footer } from './components/Footer';
 import { ProductModal } from './components/ProductModal';
 import { Product, Category, Designer, SiteConfig } from './types';
-import { collection, doc, onSnapshot, query, orderBy } from 'firebase/firestore';
+import {
+  collection,
+  doc,
+  onSnapshot,
+  query,
+  orderBy,
+  limit,
+  startAfter,
+  getDocs,
+  QueryDocumentSnapshot,
+  DocumentData,
+} from 'firebase/firestore';
 import { db } from './firebase';
+
+const BATCH_SIZE = 10;
 
 export function Storefront() {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
@@ -24,30 +37,53 @@ export function Storefront() {
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   
   const [products, setProducts] = useState<Product[]>([]);
+  const [lastDoc, setLastDoc] = useState<QueryDocumentSnapshot<DocumentData> | null>(null);
+  const [hasMore, setHasMore] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [categories, setCategories] = useState<Category[]>([]);
   const [designers, setDesigners] = useState<Designer[]>([]);
   const [siteConfig, setSiteConfig] = useState<SiteConfig | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // Carga inicial rápida: sólo las primeras 10 figuras para que la web abra instantáneamente
   useEffect(() => {
-    const qProducts = query(collection(db, 'figures'), orderBy('order', 'asc'));
-    const unsubProducts = onSnapshot(qProducts, (snapshot) => {
-      const data: Product[] = [];
-      snapshot.forEach((doc) => {
-        data.push({ id: doc.id, ...doc.data() } as Product);
-      });
-      setProducts(data);
-      setLoading(false);
-    }, (error) => {
-      console.error("Error fetching figures: ", error);
-      setLoading(false);
-    });
+    let isMounted = true;
+
+    async function fetchInitialProducts() {
+      try {
+        const qProducts = query(
+          collection(db, 'figures'),
+          orderBy('order', 'asc'),
+          limit(BATCH_SIZE)
+        );
+        const snapshot = await getDocs(qProducts);
+        if (!isMounted) return;
+
+        const data: Product[] = [];
+        snapshot.forEach((docSnap) => {
+          data.push({ id: docSnap.id, ...docSnap.data() } as Product);
+        });
+
+        setProducts(data);
+        const lastVisible = snapshot.docs[snapshot.docs.length - 1] || null;
+        setLastDoc(lastVisible);
+        setHasMore(snapshot.docs.length === BATCH_SIZE);
+      } catch (error) {
+        console.error("Error fetching initial figures: ", error);
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+        }
+      }
+    }
+
+    fetchInitialProducts();
 
     const qCats = query(collection(db, 'categories'), orderBy('order', 'asc'));
     const unsubCats = onSnapshot(qCats, (snapshot) => {
       const data: Category[] = [];
-      snapshot.forEach((doc) => {
-        data.push({ id: doc.id, ...doc.data() } as Category);
+      snapshot.forEach((docSnap) => {
+        data.push({ id: docSnap.id, ...docSnap.data() } as Category);
       });
       setCategories(data);
     });
@@ -55,8 +91,8 @@ export function Storefront() {
     const qDesigners = query(collection(db, 'designers'), orderBy('order', 'asc'));
     const unsubDesigners = onSnapshot(qDesigners, (snapshot) => {
       const data: Designer[] = [];
-      snapshot.forEach((doc) => {
-        data.push({ id: doc.id, ...doc.data() } as Designer);
+      snapshot.forEach((docSnap) => {
+        data.push({ id: docSnap.id, ...docSnap.data() } as Designer);
       });
       setDesigners(data);
     });
@@ -68,26 +104,62 @@ export function Storefront() {
     });
 
     return () => {
-      unsubProducts();
+      isMounted = false;
       unsubCats();
       unsubDesigners();
       unsubConfig();
     };
   }, []);
 
+  // Carga de siguientes lotes desde Firestore cuando el usuario scrollea hacia abajo
+  const loadMore = useCallback(async () => {
+    if (loadingMore || !hasMore || !lastDoc) return;
+    setLoadingMore(true);
+
+    try {
+      const qNext = query(
+        collection(db, 'figures'),
+        orderBy('order', 'asc'),
+        startAfter(lastDoc),
+        limit(BATCH_SIZE)
+      );
+      const snapshot = await getDocs(qNext);
+      const data: Product[] = [];
+      snapshot.forEach((docSnap) => {
+        data.push({ id: docSnap.id, ...docSnap.data() } as Product);
+      });
+
+      setProducts((prev) => {
+        const existingIds = new Set(prev.map((p) => p.id));
+        const newItems = data.filter((p) => !existingIds.has(p.id));
+        return [...prev, ...newItems];
+      });
+
+      const lastVisible = snapshot.docs[snapshot.docs.length - 1] || null;
+      setLastDoc(lastVisible);
+      setHasMore(snapshot.docs.length === BATCH_SIZE);
+    } catch (error) {
+      console.error("Error loading more figures: ", error);
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [loadingMore, hasMore, lastDoc]);
+
   const availableFinishes = useMemo(() => {
     const finishes = new Set(products.map(p => p.finish).filter(Boolean));
+    ['Hiperrealista', 'Realista', 'Custom Paint', 'Coleccionista'].forEach(f => finishes.add(f));
     return Array.from(finishes);
   }, [products]);
 
   const availableScales = useMemo(() => {
     const scales = new Set<string>();
+    ['1:8', '1:6', '1:4', '1:2', '1:1', 'Chibi'].forEach(s => scales.add(s));
     products.forEach(p => {
       if (Array.isArray(p.scale)) {
         p.scale.forEach(s => scales.add(s));
       }
     });
-    return Array.from(scales).sort();
+    return Array.from(scales);
   }, [products]);
 
   const filteredProducts = useMemo(() => {
@@ -124,6 +196,34 @@ export function Storefront() {
     });
   }, [searchQuery, statusFilter, franchiseFilter, finishFilter, scaleFilter, products, categories]);
 
+  // Si el usuario aplica un filtro o busca y aún hay pocas coincidencias cargadas, buscar en más lotes
+  useEffect(() => {
+    const isFiltering =
+      searchQuery.trim() !== '' ||
+      statusFilter !== 'all' ||
+      franchiseFilter !== 'all' ||
+      finishFilter !== 'all' ||
+      scaleFilter !== 'all';
+
+    if (isFiltering && hasMore && !loadingMore && !loading && filteredProducts.length < 6) {
+      const timeoutId = setTimeout(() => {
+        loadMore();
+      }, 350);
+      return () => clearTimeout(timeoutId);
+    }
+  }, [
+    searchQuery,
+    statusFilter,
+    franchiseFilter,
+    finishFilter,
+    scaleFilter,
+    filteredProducts.length,
+    hasMore,
+    loadingMore,
+    loading,
+    loadMore,
+  ]);
+
   return (
     <>
       <Header onOpenDrawer={() => setIsDrawerOpen(true)} />
@@ -151,7 +251,14 @@ export function Storefront() {
             <img src="/logo-ippolav.png" alt="Loading..." className="w-16 h-16 animate-scale-pulse object-contain" />
           </div>
         ) : (
-          <Catalog products={filteredProducts} categories={categories} onSelectProduct={setSelectedProduct} />
+          <Catalog
+            products={filteredProducts}
+            categories={categories}
+            onSelectProduct={setSelectedProduct}
+            hasMore={hasMore}
+            loadingMore={loadingMore}
+            onLoadMore={loadMore}
+          />
         )}
         <Franchises onSelectFranchise={setFranchiseFilter} categories={categories} />
         <HowToBuy />

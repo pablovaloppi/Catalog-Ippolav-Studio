@@ -1,50 +1,54 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
-import { ArrowRight, PlusCircle } from 'lucide-react';
+import { useRef, useEffect, useCallback } from 'react';
+import { ArrowRight, PlusCircle, Loader2 } from 'lucide-react';
 import { Product, Category } from '../types';
 
 interface CatalogProps {
   products: Product[];
   categories: Category[];
   onSelectProduct: (product: Product) => void;
+  hasMore?: boolean;
+  loadingMore?: boolean;
+  onLoadMore?: () => void;
 }
 
-const ITEMS_PER_PAGE = 10;
-
-export function Catalog({ products, categories, onSelectProduct }: CatalogProps) {
-  const [visibleCount, setVisibleCount] = useState(ITEMS_PER_PAGE);
+export function Catalog({
+  products,
+  categories,
+  onSelectProduct,
+  hasMore = false,
+  loadingMore = false,
+  onLoadMore,
+}: CatalogProps) {
   const observerTarget = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    // Reset visible count when products array changes (e.g., user filters or searches)
-    setVisibleCount(ITEMS_PER_PAGE);
-  }, [products]);
-
-  const handleObserver = useCallback((entries: IntersectionObserverEntry[]) => {
-    const target = entries[0];
-    if (target.isIntersecting) {
-      setVisibleCount((prev) => Math.min(prev + ITEMS_PER_PAGE, products.length));
-    }
-  }, [products.length]);
+  const handleObserver = useCallback(
+    (entries: IntersectionObserverEntry[]) => {
+      const target = entries[0];
+      if (target.isIntersecting && hasMore && !loadingMore && onLoadMore) {
+        onLoadMore();
+      }
+    },
+    [hasMore, loadingMore, onLoadMore]
+  );
 
   useEffect(() => {
     const observer = new IntersectionObserver(handleObserver, {
       root: null,
-      rootMargin: '200px', // Load more slightly before they hit the bottom
+      rootMargin: '350px', // Load more slightly before reaching the bottom
       threshold: 0.1,
     });
 
-    if (observerTarget.current) {
-      observer.observe(observerTarget.current);
+    const currentTarget = observerTarget.current;
+    if (currentTarget) {
+      observer.observe(currentTarget);
     }
 
     return () => {
-      if (observerTarget.current) {
-        observer.unobserve(observerTarget.current);
+      if (currentTarget) {
+        observer.unobserve(currentTarget);
       }
     };
   }, [handleObserver]);
-
-  const visibleProducts = products.slice(0, visibleCount);
 
   return (
     <section id="catalogo" className="px-5 md:px-12 py-12">
@@ -55,12 +59,14 @@ export function Catalog({ products, categories, onSelectProduct }: CatalogProps)
         </div>
         <div className="flex items-center gap-2">
           <span className="inline-block w-2 h-2 rounded-full bg-emerald-400"></span>
-          <span className="text-xs font-semibold text-on-surface-variant">{products.length} figuras disponibles</span>
+          <span className="text-xs font-semibold text-on-surface-variant">
+            {products.length} {products.length === 1 ? 'figura' : 'figuras'}{hasMore ? ' (deslizá para ver más)' : ''}
+          </span>
         </div>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-        {visibleProducts.map((product) => (
+        {products.map((product) => (
           <article
             key={product.id}
             onClick={() => onSelectProduct(product)}
@@ -115,9 +121,37 @@ export function Catalog({ products, categories, onSelectProduct }: CatalogProps)
         ))}
       </div>
       
-      {/* Invisible element to trigger loading more items */}
-      {visibleCount < products.length && (
-        <div ref={observerTarget} className="h-10 w-full mt-4" />
+      {products.length === 0 && !loadingMore && (
+        <div className="py-16 text-center space-y-3">
+          <p className="text-on-surface-variant text-base">No se encontraron figuras con esos filtros.</p>
+          {hasMore && onLoadMore && (
+            <button
+              onClick={onLoadMore}
+              className="px-4 py-2 rounded-lg bg-primary text-on-primary font-bold text-xs hover:brightness-110 transition-all"
+            >
+              Buscar en más figuras del catálogo
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Invisible element / loader to trigger loading more items from Firestore */}
+      {hasMore && (
+        <div ref={observerTarget} className="mt-8 py-6 flex flex-col items-center justify-center gap-3">
+          {loadingMore ? (
+            <div className="flex items-center gap-2 text-primary text-sm font-semibold">
+              <Loader2 className="w-5 h-5 animate-spin" />
+              <span>Cargando más figuras...</span>
+            </div>
+          ) : (
+            <button
+              onClick={onLoadMore}
+              className="px-5 py-2 rounded-lg border border-outline-variant/40 bg-surface-container-low hover:border-primary text-xs font-semibold text-on-surface-variant hover:text-primary transition-all active:scale-95"
+            >
+              Cargar más figuras
+            </button>
+          )}
+        </div>
       )}
 
       <div className="mt-12 text-center">
