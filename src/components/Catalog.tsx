@@ -8,7 +8,7 @@ interface CatalogProps {
   onSelectProduct: (product: Product) => void;
 }
 
-const ITEMS_PER_PAGE = 12;
+const ITEMS_PER_PAGE = 10;
 
 export function Catalog({ products, categories, onSelectProduct }: CatalogProps) {
   const [visibleCount, setVisibleCount] = useState(ITEMS_PER_PAGE);
