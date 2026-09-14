@@ -9,6 +9,7 @@ import { HowToBuy } from './components/HowToBuy';
 import { Contact } from './components/Contact';
 import { Footer } from './components/Footer';
 import { ProductModal } from './components/ProductModal';
+import { ScrollToCatalogButton } from './components/ScrollToCatalogButton';
 import { Product, Category, Designer, SiteConfig } from './types';
 import {
   collection,
@@ -273,6 +274,8 @@ export function Storefront() {
         onClose={() => setSelectedProduct(null)} 
         config={siteConfig}
       />
+
+      <ScrollToCatalogButton />
     </>
   );
 }
