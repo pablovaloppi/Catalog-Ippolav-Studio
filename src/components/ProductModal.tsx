@@ -16,46 +16,95 @@ export function ProductModal({ product, categoryName, designerName, onClose, con
   const [touchStart, setTouchStart] = useState<number | null>(null);
   const [touchEnd, setTouchEnd] = useState<number | null>(null);
 
-  const isClosedByPopstate = useRef(false);
-  const isFullScreenRef = useRef(isFullScreen);
+  const isFullScreenRef = useRef(false);
   isFullScreenRef.current = isFullScreen;
+  const isClosingFullScreenManually = useRef(false);
+  const isClosingModalManually = useRef(false);
+  const closedByHistoryRef = useRef(false);
 
-  // Manejo del historial del navegador/móvil para que el botón 'Atrás' cierre la vista de la figura
+  // Apertura de zoom apilando un estado en el historial
+  const openFullScreen = () => {
+    setIsFullScreen(true);
+    window.history.pushState({ modal: 'image-zoom', productId: product.id }, '');
+  };
+
+  // Cierre de zoom manual (botón X o tap exterior en zoom)
+  const closeFullScreen = () => {
+    if (isFullScreenRef.current) {
+      setIsFullScreen(false);
+      if (window.history.state?.modal === 'image-zoom') {
+        isClosingFullScreenManually.current = true;
+        window.history.back();
+      }
+    }
+  };
+
+  // Cierre del modal manual (botón X o tap exterior en modal)
+  const closeModal = () => {
+    if (isFullScreenRef.current) {
+      setIsFullScreen(false);
+    }
+    isClosingModalManually.current = true;
+    closedByHistoryRef.current = true;
+    onClose();
+
+    if (window.history.state?.modal === 'image-zoom') {
+      window.history.go(-2);
+    } else if (window.history.state?.modal === 'product-modal') {
+      window.history.back();
+    }
+  };
+
+  // Manejo del historial del navegador/móvil para retroceso en múltiples capas (zoom -> modal -> catálogo)
   useEffect(() => {
     if (!product) return;
 
-    // Resetear el índice de imagen al abrir un nuevo producto
+    // Resetear índices y banderas al abrir nuevo producto
     setCurrentImageIndex(0);
     setIsFullScreen(false);
-    isClosedByPopstate.current = false;
+    closedByHistoryRef.current = false;
+    isClosingFullScreenManually.current = false;
+    isClosingModalManually.current = false;
 
     // Bloquear scroll de fondo en la web mientras el modal está abierto
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
 
-    // Insertar estado en el historial del navegador para capturar el botón 'Atrás'
-    const modalState = { modal: 'product-preview', productId: product.id };
-    window.history.pushState(modalState, '');
+    // Insertar estado de la figura en el historial
+    window.history.pushState({ modal: 'product-modal', productId: product.id }, '');
 
     const handlePopState = () => {
-      // Si el usuario está viendo la imagen en pantalla completa, cerrar primero la pantalla completa
-      if (isFullScreenRef.current) {
-        setIsFullScreen(false);
-        window.history.pushState(modalState, '');
+      // Si se cerró manualmente la imagen en zoom por clic en X, ignorar el popstate provocado por history.back()
+      if (isClosingFullScreenManually.current) {
+        isClosingFullScreenManually.current = false;
         return;
       }
 
-      // Marcar que el cierre provino del botón Atrás del teléfono para no llamar a history.back() de nuevo
-      isClosedByPopstate.current = true;
+      // Si se cerró manualmente el modal por clic en X o fondo, ignorar el popstate provocado por history.back()
+      if (isClosingModalManually.current) {
+        isClosingModalManually.current = false;
+        return;
+      }
+
+      // 1. Si estaba viendo el zoom de la imagen y presionó 'Atrás' en el celular:
+      if (isFullScreenRef.current) {
+        // El navegador ya hizo pop de 'image-zoom' volviendo a 'product-modal'. Solo cerramos el zoom:
+        setIsFullScreen(false);
+        return;
+      }
+
+      // 2. Si estaba en la ventana de datos de la figura y presionó 'Atrás' en el celular:
+      // El navegador ya hizo pop de 'product-modal' volviendo al catálogo. Cerramos el modal:
+      closedByHistoryRef.current = true;
       onClose();
     };
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         if (isFullScreenRef.current) {
-          setIsFullScreen(false);
+          closeFullScreen();
         } else {
-          onClose();
+          closeModal();
         }
       }
     };
@@ -68,9 +117,11 @@ export function ProductModal({ product, categoryName, designerName, onClose, con
       window.removeEventListener('popstate', handlePopState);
       window.removeEventListener('keydown', handleKeyDown);
 
-      // Si el modal se cerró de forma manual (botón X, tap afuera, etc.), revertir la entrada del historial
-      if (!isClosedByPopstate.current) {
-        if (window.history.state?.modal === 'product-preview') {
+      // Si se desmontó sin navegación hacia atrás (ej. cambio forzado de estado del padre)
+      if (!closedByHistoryRef.current && !isClosingModalManually.current) {
+        if (window.history.state?.modal === 'image-zoom') {
+          window.history.go(-2);
+        } else if (window.history.state?.modal === 'product-modal') {
           window.history.back();
         }
       }
@@ -140,14 +191,14 @@ export function ProductModal({ product, categoryName, designerName, onClose, con
       className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/85 backdrop-blur-md p-0 md:p-6 transition-opacity duration-300"
       onClick={(e) => {
         if (e.target === e.currentTarget) {
-          onClose();
+          closeModal();
         }
       }}
     >
       <div className="bg-surface-container-low w-full max-w-2xl max-h-[92vh] overflow-y-auto rounded-t-2xl md:rounded-xl border border-primary/30 shadow-2xl p-6 relative space-y-6 animate-in slide-in-from-bottom-4 fade-in duration-300">
         
         <button
-          onClick={onClose}
+          onClick={closeModal}
           className="absolute top-4 right-4 z-10 w-9 h-9 rounded-full bg-surface-container flex items-center justify-center text-on-surface hover:text-primary border border-outline-variant/40"
         >
           <X className="w-5 h-5" />
@@ -168,7 +219,7 @@ export function ProductModal({ product, categoryName, designerName, onClose, con
           onTouchMove={onTouchMove}
           onTouchEnd={onTouchEndEvent}
         >
-          <button type="button" onClick={() => setIsFullScreen(true)} className="w-full h-full cursor-zoom-in">
+          <button type="button" onClick={openFullScreen} className="w-full h-full cursor-zoom-in">
             <img 
               src={currentImageUrl} 
               alt={product.title} 
@@ -279,14 +330,14 @@ export function ProductModal({ product, categoryName, designerName, onClose, con
       {isFullScreen && (
         <div 
           className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 backdrop-blur-md p-4 animate-in fade-in select-none"
-          onClick={() => setIsFullScreen(false)}
+          onClick={closeFullScreen}
           onTouchStart={onTouchStart}
           onTouchMove={onTouchMove}
           onTouchEnd={onTouchEndEvent}
         >
           <button 
             className="absolute top-6 right-6 text-on-surface-variant hover:text-white bg-surface-container/50 hover:bg-surface-container p-2 rounded-full transition-colors z-10"
-            onClick={(e) => { e.stopPropagation(); setIsFullScreen(false); }}
+            onClick={(e) => { e.stopPropagation(); closeFullScreen(); }}
           >
             <X className="w-6 h-6" />
           </button>
