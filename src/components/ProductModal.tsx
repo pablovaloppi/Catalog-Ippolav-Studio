@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { X, MessageCircle, HelpCircle, View, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Product, SiteConfig } from '../types';
 
@@ -15,6 +15,67 @@ export function ProductModal({ product, categoryName, designerName, onClose, con
   const [isFullScreen, setIsFullScreen] = useState(false);
   const [touchStart, setTouchStart] = useState<number | null>(null);
   const [touchEnd, setTouchEnd] = useState<number | null>(null);
+
+  const isClosedByPopstate = useRef(false);
+  const isFullScreenRef = useRef(isFullScreen);
+  isFullScreenRef.current = isFullScreen;
+
+  // Manejo del historial del navegador/móvil para que el botón 'Atrás' cierre la vista de la figura
+  useEffect(() => {
+    if (!product) return;
+
+    // Resetear el índice de imagen al abrir un nuevo producto
+    setCurrentImageIndex(0);
+    setIsFullScreen(false);
+    isClosedByPopstate.current = false;
+
+    // Bloquear scroll de fondo en la web mientras el modal está abierto
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    // Insertar estado en el historial del navegador para capturar el botón 'Atrás'
+    const modalState = { modal: 'product-preview', productId: product.id };
+    window.history.pushState(modalState, '');
+
+    const handlePopState = () => {
+      // Si el usuario está viendo la imagen en pantalla completa, cerrar primero la pantalla completa
+      if (isFullScreenRef.current) {
+        setIsFullScreen(false);
+        window.history.pushState(modalState, '');
+        return;
+      }
+
+      // Marcar que el cierre provino del botón Atrás del teléfono para no llamar a history.back() de nuevo
+      isClosedByPopstate.current = true;
+      onClose();
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (isFullScreenRef.current) {
+          setIsFullScreen(false);
+        } else {
+          onClose();
+        }
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      window.removeEventListener('popstate', handlePopState);
+      window.removeEventListener('keydown', handleKeyDown);
+
+      // Si el modal se cerró de forma manual (botón X, tap afuera, etc.), revertir la entrada del historial
+      if (!isClosedByPopstate.current) {
+        if (window.history.state?.modal === 'product-preview') {
+          window.history.back();
+        }
+      }
+    };
+  }, [product?.id, onClose]);
 
   if (!product) return null;
 
@@ -75,7 +136,14 @@ export function ProductModal({ product, categoryName, designerName, onClose, con
   const currentImageUrl = product.imageUrls?.[currentImageIndex] || '';
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/85 backdrop-blur-md p-0 md:p-6 transition-opacity duration-300">
+    <div 
+      className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/85 backdrop-blur-md p-0 md:p-6 transition-opacity duration-300"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) {
+          onClose();
+        }
+      }}
+    >
       <div className="bg-surface-container-low w-full max-w-2xl max-h-[92vh] overflow-y-auto rounded-t-2xl md:rounded-xl border border-primary/30 shadow-2xl p-6 relative space-y-6 animate-in slide-in-from-bottom-4 fade-in duration-300">
         
         <button

@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect, memo } from 'react';
-import { ArrowRight, PlusCircle, Loader2 } from 'lucide-react';
+import { ArrowRight, PlusCircle } from 'lucide-react';
 import { Product, Category } from '../types';
 
 // Memoria global de URLs de imágenes ya cargadas durante la sesión del usuario
@@ -58,6 +58,7 @@ interface CatalogCardProps {
   index: number;
   categoryName?: string;
   onSelect: (product: Product) => void;
+  articleRef?: React.Ref<HTMLElement>;
 }
 
 const CatalogCard = memo(function CatalogCard({
@@ -65,6 +66,7 @@ const CatalogCard = memo(function CatalogCard({
   index,
   categoryName,
   onSelect,
+  articleRef,
 }: CatalogCardProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const imageUrl = product.imageUrls?.[0] || '';
@@ -102,6 +104,7 @@ const CatalogCard = memo(function CatalogCard({
 
   return (
     <article
+      ref={articleRef}
       onClick={() => onSelect(product)}
       className="group bg-surface-container-low rounded-xl border border-outline-variant/30 overflow-hidden flex flex-col justify-between gold-border-glow transition-all duration-300 cursor-pointer"
     >
@@ -182,29 +185,48 @@ export function Catalog({
   onLoadMore,
   totalFiguresInDb,
 }: CatalogProps) {
-  const observerTarget = useRef<HTMLDivElement>(null);
+  // Punto de anticipación de carga de figuras:
+  // Se activa en la 6ª figura cargada (índice 5), y luego 3 figuras antes de finalizar cada lote
+  const triggerIndex = products.length >= 6
+    ? Math.max(5, products.length - 3)
+    : products.length - 1;
+
+  const triggerTargetRef = useRef<HTMLElement | null>(null);
+  const bottomSentinelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!hasMore || loadingMore || !onLoadMore) return;
-    const target = observerTarget.current;
-    if (!target) return;
 
     const observer = new IntersectionObserver(
       (entries) => {
-        if (entries[0]?.isIntersecting) {
+        if (entries.some((entry) => entry.isIntersecting)) {
           onLoadMore();
         }
       },
       {
         root: null,
-        rootMargin: '450px',
+        // Anticipa 600px antes de que la tarjeta o el centinela entre en pantalla
+        rootMargin: '600px',
         threshold: 0,
       }
     );
 
-    observer.observe(target);
-    return () => observer.disconnect();
-  }, [hasMore, loadingMore, onLoadMore]);
+    const triggerEl = triggerTargetRef.current;
+    const bottomEl = bottomSentinelRef.current;
+
+    if (triggerEl) {
+      observer.observe(triggerEl);
+    }
+    if (bottomEl) {
+      observer.observe(bottomEl);
+    }
+
+    return () => {
+      if (triggerEl) observer.unobserve(triggerEl);
+      if (bottomEl) observer.unobserve(bottomEl);
+      observer.disconnect();
+    };
+  }, [hasMore, loadingMore, onLoadMore, triggerIndex, products.length]);
 
   const displayTotal = totalFiguresInDb !== null && totalFiguresInDb !== undefined
     ? totalFiguresInDb
@@ -226,15 +248,19 @@ export function Catalog({
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-        {products.map((product, index) => (
-          <CatalogCard
-            key={product.id}
-            product={product}
-            index={index}
-            categoryName={categories.find((c) => c.id === product.franchiseId)?.name}
-            onSelect={onSelectProduct}
-          />
-        ))}
+        {products.map((product, index) => {
+          const isTrigger = index === triggerIndex;
+          return (
+            <CatalogCard
+              key={product.id}
+              product={product}
+              index={index}
+              categoryName={categories.find((c) => c.id === product.franchiseId)?.name}
+              onSelect={onSelectProduct}
+              articleRef={isTrigger ? (el) => { triggerTargetRef.current = el; } : undefined}
+            />
+          );
+        })}
       </div>
       
       {products.length === 0 && !loadingMore && (
@@ -251,29 +277,15 @@ export function Catalog({
         </div>
       )}
 
-      {/* Control de carga progresiva infinita y botón manual */}
+      {/* Centinela invisible de precarga: la carga ocurre silenciosamente sin spinners que interrumpan el scroll */}
       {hasMore && (
-        <div ref={observerTarget} className="mt-8 py-6 flex flex-col items-center justify-center gap-3">
-          {loadingMore ? (
-            <div className="flex items-center gap-2 text-primary text-sm font-semibold">
-              <Loader2 className="w-5 h-5 animate-spin" />
-              <span>Cargando más figuras...</span>
-            </div>
-          ) : (
-            <button
-              onClick={onLoadMore}
-              className="px-6 py-2.5 rounded-lg border border-primary/40 bg-surface-container-low hover:border-primary text-xs font-semibold text-primary transition-all active:scale-95 shadow-sm"
-            >
-              Cargar más figuras ({products.length} visibles)
-            </button>
-          )}
-        </div>
+        <div ref={bottomSentinelRef} className="h-4 w-full pointer-events-none opacity-0" />
       )}
 
       {!hasMore && products.length > 0 && (
         <div className="mt-8 py-4 text-center">
           <span className="text-xs text-on-surface-variant/80 font-medium tracking-wide">
-            ✓ Has explorado todas las figuras disponibles ({products.length})
+            ✓ Has explorado todas las figuras disponibles ({displayTotal})
           </span>
         </div>
       )}

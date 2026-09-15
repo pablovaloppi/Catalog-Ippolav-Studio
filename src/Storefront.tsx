@@ -28,9 +28,8 @@ import {
 } from 'firebase/firestore';
 import { db } from './firebase';
 
-const INITIAL_STEP = 3;
-const INITIAL_TARGET = 12;
-const BATCH_SIZE = 12;
+const INITIAL_STEP = 6;
+const BATCH_SIZE = 3;
 
 function buildFiguresQuery(
   franchiseFilter: string,
@@ -201,15 +200,13 @@ export function Storefront() {
     };
   }, []);
 
-  // Carga de siguientes lotes: de 3 en 3 hasta las primeras 12, luego en lotes de 12
-  const loadMore = useCallback(async (customStep?: number) => {
+  // Carga de siguientes lotes continuos de 3 en 3 anticipados por el scroll
+  const loadMore = useCallback(async () => {
     if (loadingMore || !hasMore || !lastDoc) return;
     setLoadingMore(true);
 
-    const step = customStep ?? (products.length < INITIAL_TARGET ? INITIAL_STEP : BATCH_SIZE);
-
     try {
-      const qNext = buildFiguresQuery(franchiseFilter, statusFilter, categories, lastDoc, step);
+      const qNext = buildFiguresQuery(franchiseFilter, statusFilter, categories, lastDoc, BATCH_SIZE);
       const snapshot = await getDocs(qNext);
       const data: Product[] = [];
       snapshot.forEach((docSnap) => {
@@ -224,23 +221,13 @@ export function Storefront() {
 
       const nextLastDoc = snapshot.docs[snapshot.docs.length - 1] || null;
       setLastDoc(nextLastDoc);
-      setHasMore(snapshot.docs.length === step);
+      setHasMore(snapshot.docs.length === BATCH_SIZE);
     } catch (error) {
       console.error("Error cargando siguiente lote de figuras: ", error);
     } finally {
       setLoadingMore(false);
     }
-  }, [loadingMore, hasMore, lastDoc, franchiseFilter, statusFilter, categories, products.length]);
-
-  // Cascada progresiva automática de las primeras 12 figuras: 3, luego 3, luego 3, luego 3
-  useEffect(() => {
-    if (!loading && !loadingMore && hasMore && products.length > 0 && products.length < INITIAL_TARGET) {
-      const timer = setTimeout(() => {
-        loadMore(INITIAL_STEP);
-      }, 100);
-      return () => clearTimeout(timer);
-    }
-  }, [loading, loadingMore, hasMore, products.length, loadMore]);
+  }, [loadingMore, hasMore, lastDoc, franchiseFilter, statusFilter, categories]);
 
   const availableFinishes = useMemo(() => {
     const finishes = new Set(products.map(p => p.finish).filter(Boolean));
