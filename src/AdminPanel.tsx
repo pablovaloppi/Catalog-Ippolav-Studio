@@ -1,7 +1,25 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from './contexts/AuthContext';
 import { loginWithGoogle, logout, db } from './firebase';
-import { collection, addDoc, setDoc, onSnapshot, query, orderBy, deleteDoc, doc, updateDoc, serverTimestamp, writeBatch } from 'firebase/firestore';
+import { 
+  collection, 
+  addDoc, 
+  setDoc, 
+  onSnapshot, 
+  query, 
+  orderBy, 
+  deleteDoc, 
+  doc, 
+  updateDoc, 
+  serverTimestamp, 
+  writeBatch,
+  getDocs,
+  getCountFromServer,
+  limit,
+  startAfter,
+  where,
+  QueryDocumentSnapshot
+} from 'firebase/firestore';
 import { Product, Category, Designer, SiteConfig } from './types';
 import { products as initialProducts } from './data';
 import { Plus, ChevronUp, ChevronDown, Trash2, Edit2, LogOut, ImagePlus, UserCircle, Settings, Hash, Sparkles, Eye, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Heart } from 'lucide-react';
@@ -59,8 +77,85 @@ export function AdminPanel() {
   return <AdminDashboard onLogout={logout} />;
 }
 
+const globalAdminLoadedImages = new Set<string>();
+
+function AdminFigureThumbnail({ src, alt }: { src?: string; alt: string }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [shouldLoad, setShouldLoad] = useState(() => (src ? globalAdminLoadedImages.has(src) : false));
+  const [isLoaded, setIsLoaded] = useState(() => (src ? globalAdminLoadedImages.has(src) : false));
+  const [hasError, setHasError] = useState(false);
+
+  useEffect(() => {
+    if (!src || globalAdminLoadedImages.has(src)) {
+      setShouldLoad(true);
+      if (src && globalAdminLoadedImages.has(src)) setIsLoaded(true);
+      return;
+    }
+
+    const el = containerRef.current;
+    if (!el) return;
+
+    if (!('IntersectionObserver' in window)) {
+      setShouldLoad(true);
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            setShouldLoad(true);
+            observer.disconnect();
+          }
+        });
+      },
+      { rootMargin: '300px 0px 300px 0px' }
+    );
+
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [src]);
+
+  if (!src || hasError) {
+    return (
+      <div ref={containerRef} className="w-full h-full flex items-center justify-center text-outline bg-surface-container-lowest">
+        <ImagePlus className="w-6 h-6 opacity-30" />
+      </div>
+    );
+  }
+
+  return (
+    <div ref={containerRef} className="w-full h-full relative overflow-hidden bg-surface-container-lowest">
+      {!isLoaded && (
+        <div className="absolute inset-0 bg-surface-container-high/40 animate-pulse flex items-center justify-center">
+          <ImagePlus className="w-5 h-5 text-outline/30" />
+        </div>
+      )}
+      {shouldLoad && (
+        <img
+          src={src}
+          alt={alt}
+          loading="lazy"
+          decoding="async"
+          onError={() => setHasError(true)}
+          onLoad={() => {
+            globalAdminLoadedImages.add(src);
+            setIsLoaded(true);
+          }}
+          className={`w-full h-full object-cover group-hover:scale-105 transition-all duration-300 ${
+            isLoaded ? 'opacity-100' : 'opacity-0'
+          }`}
+        />
+      )}
+    </div>
+  );
+}
+
 function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   const [figures, setFigures] = useState<Product[]>([]);
+  const [figuresLoading, setFiguresLoading] = useState(true);
+  const [totalAdminFigures, setTotalAdminFigures] = useState(0);
+
   const [categories, setCategories] = useState<Category[]>([]);
   const [designers, setDesigners] = useState<Designer[]>([]);
   const [siteConfig, setSiteConfig] = useState<SiteConfig>({
@@ -70,7 +165,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
     youtube: '',
     whatsappMessageTemplate: 'Hola IPPOLAV STUDIO, me interesa encargar la figura {figura}. ¿Tienen disponibilidad?'
   });
-  const [loading, setLoading] = useState(true);
+  const [initialLoading, setInitialLoading] = useState(true);
   
   // views: figures-list, figure-form, categories-list, category-form, designers-list, designer-form, config
   const [view, setView] = useState<'figures-list' | 'figure-form' | 'categories-list' | 'category-form' | 'designers-list' | 'designer-form' | 'config'>('figures-list');
@@ -80,9 +175,14 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   const [editingDesigner, setEditingDesigner] = useState<Designer | null>(null);
 
   const [figureSearch, setFigureSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [figureFilterCategory, setFigureFilterCategory] = useState('all');
   const [figuresPerPage, setFiguresPerPage] = useState<number>(10);
   const [currentPage, setCurrentPage] = useState<number>(1);
+
+  // Firestore pagination cursors and in-memory cache
+  const pageCursorsRef = useRef<Map<number, QueryDocumentSnapshot>>(new Map());
+  const pageCacheRef = useRef<Map<number, Product[]>>(new Map());
 
   // Auto assign identifiers modal
   const [showAutoIdModal, setShowAutoIdModal] = useState(false);
@@ -90,10 +190,170 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   const [autoIdDigits, setAutoIdDigits] = useState(3);
   const [autoIdMode, setAutoIdMode] = useState<'onlyMissing' | 'all'>('onlyMissing');
   const [assigningIds, setAssigningIds] = useState(false);
+  const [autoIdFigures, setAutoIdFigures] = useState<Product[]>([]);
+  const [loadingAutoIdFigures, setLoadingAutoIdFigures] = useState(false);
+
+  // Debounce search input
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(figureSearch);
+      setCurrentPage(1);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [figureSearch]);
+
+  const invalidateCache = useCallback(() => {
+    pageCacheRef.current.clear();
+    pageCursorsRef.current.clear();
+  }, []);
+
+  // Carga paginada optimizada de figuras
+  const loadFigures = useCallback(async (page: number, pageSize: number, catFilter: string, search: string) => {
+    setFiguresLoading(true);
+    try {
+      const trimmedSearch = search.trim().toLowerCase();
+
+      // Búsqueda activa
+      if (trimmedSearch) {
+        const searchQ = catFilter === 'all'
+          ? query(collection(db, 'figures'), orderBy('order', 'asc'), limit(200))
+          : query(collection(db, 'figures'), where('franchiseId', '==', catFilter), orderBy('order', 'asc'), limit(200));
+
+        const snap = await getDocs(searchQ);
+        const allFetched: Product[] = [];
+        snap.forEach(d => allFetched.push({ id: d.id, ...d.data() } as Product));
+
+        const matched = allFetched.filter(fig => 
+          fig.title.toLowerCase().includes(trimmedSearch) ||
+          (fig.numericId && fig.numericId.toLowerCase().includes(trimmedSearch))
+        );
+
+        setTotalAdminFigures(matched.length);
+        const startIndex = (page - 1) * pageSize;
+        setFigures(matched.slice(startIndex, startIndex + pageSize));
+        setFiguresLoading(false);
+        return;
+      }
+
+      // Conteo total rápido vía getCountFromServer sin descargar figuras
+      const countQ = catFilter === 'all'
+        ? collection(db, 'figures')
+        : query(collection(db, 'figures'), where('franchiseId', '==', catFilter));
+
+      const countSnap = await getCountFromServer(countQ);
+      const totalCount = countSnap.data().count;
+      setTotalAdminFigures(totalCount);
+
+      if (totalCount === 0) {
+        setFigures([]);
+        setFiguresLoading(false);
+        return;
+      }
+
+      // Si la página está en caché en memoria
+      if (pageCacheRef.current.has(page)) {
+        setFigures(pageCacheRef.current.get(page)!);
+        setFiguresLoading(false);
+        return;
+      }
+
+      const cursor = pageCursorsRef.current.get(page);
+
+      if (page === 1 || !cursor) {
+        const fetchLimit = cursor ? pageSize : Math.max(pageSize, page * pageSize);
+        const baseQ = catFilter === 'all'
+          ? query(collection(db, 'figures'), orderBy('order', 'asc'), limit(fetchLimit))
+          : query(collection(db, 'figures'), where('franchiseId', '==', catFilter), orderBy('order', 'asc'), limit(fetchLimit));
+
+        const snap = await getDocs(baseQ);
+        const allDocs = snap.docs;
+
+        for (let p = 1; p <= Math.ceil(allDocs.length / pageSize); p++) {
+          const lastDocOfPage = allDocs[Math.min(p * pageSize - 1, allDocs.length - 1)];
+          if (lastDocOfPage) {
+            pageCursorsRef.current.set(p + 1, lastDocOfPage);
+          }
+          const sliceStart = (p - 1) * pageSize;
+          const sliceEnd = Math.min(p * pageSize, allDocs.length);
+          const pageData = allDocs.slice(sliceStart, sliceEnd).map(d => ({ id: d.id, ...d.data() } as Product));
+          pageCacheRef.current.set(p, pageData);
+        }
+
+        const startIndex = (page - 1) * pageSize;
+        const pageDocs = allDocs.slice(startIndex, startIndex + pageSize);
+        setFigures(pageDocs.map(d => ({ id: d.id, ...d.data() } as Product)));
+      } else {
+        const baseQ = catFilter === 'all'
+          ? query(collection(db, 'figures'), orderBy('order', 'asc'), startAfter(cursor), limit(pageSize))
+          : query(collection(db, 'figures'), where('franchiseId', '==', catFilter), orderBy('order', 'asc'), startAfter(cursor), limit(pageSize));
+
+        const snap = await getDocs(baseQ);
+        const docs = snap.docs;
+        if (docs.length > 0) {
+          pageCursorsRef.current.set(page + 1, docs[docs.length - 1]);
+        }
+        const pageData = docs.map(d => ({ id: d.id, ...d.data() } as Product));
+        pageCacheRef.current.set(page, pageData);
+        setFigures(pageData);
+      }
+    } catch (error) {
+      console.error("Error al cargar figuras en el panel de administración:", error);
+    } finally {
+      setFiguresLoading(false);
+    }
+  }, []);
+
+  // Efecto para recargar cuando cambian los parámetros de paginación o filtro
+  useEffect(() => {
+    loadFigures(currentPage, figuresPerPage, figureFilterCategory, debouncedSearch);
+  }, [currentPage, figuresPerPage, figureFilterCategory, debouncedSearch, loadFigures]);
+
+  // Carga inicial no bloqueante de colecciones ligeras (categorías, diseñadores, configuración)
+  useEffect(() => {
+    const qCat = query(collection(db, 'categories'), orderBy('order', 'asc'));
+    const unsubCat = onSnapshot(qCat, (snapshot) => {
+      const data: Category[] = [];
+      snapshot.forEach((doc) => data.push({ id: doc.id, ...doc.data() } as Category));
+      setCategories(data);
+      setInitialLoading(false);
+    });
+
+    const qDes = query(collection(db, 'designers'), orderBy('order', 'asc'));
+    const unsubDes = onSnapshot(qDes, (snapshot) => {
+      const data: Designer[] = [];
+      snapshot.forEach((doc) => data.push({ id: doc.id, ...doc.data() } as Designer));
+      setDesigners(data);
+    });
+
+    const unsubConfig = onSnapshot(doc(db, 'config', 'site'), (docSnapshot) => {
+      if (docSnapshot.exists()) {
+        setSiteConfig(docSnapshot.data() as SiteConfig);
+      }
+    });
+
+    return () => { unsubCat(); unsubDes(); unsubConfig(); };
+  }, []);
+
+  // Apertura bajo demanda del modal de identificadores automáticos
+  const openAutoIdModal = async () => {
+    setShowAutoIdModal(true);
+    setLoadingAutoIdFigures(true);
+    try {
+      const q = query(collection(db, 'figures'), orderBy('order', 'asc'));
+      const snap = await getDocs(q);
+      const data: Product[] = [];
+      snap.forEach(d => data.push({ id: d.id, ...d.data() } as Product));
+      setAutoIdFigures(data);
+    } catch (err) {
+      console.error("Error cargando figuras para asignación automática:", err);
+    } finally {
+      setLoadingAutoIdFigures(false);
+    }
+  };
 
   const handleAutoAssignIds = async () => {
-    const unassigned = figures.filter(f => !f.numericId || f.numericId.trim() === '');
-    const targets = autoIdMode === 'onlyMissing' ? unassigned : figures;
+    const unassigned = autoIdFigures.filter(f => !f.numericId || f.numericId.trim() === '');
+    const targets = autoIdMode === 'onlyMissing' ? unassigned : autoIdFigures;
 
     if (targets.length === 0) {
       alert('Todas las figuras ya cuentan con un identificador.');
@@ -111,7 +371,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
         chunk.forEach((fig, chunkIdx) => {
           let numberVal: number;
           if (autoIdMode === 'onlyMissing') {
-            const pos = figures.findIndex(f => f.id === fig.id);
+            const pos = autoIdFigures.findIndex(f => f.id === fig.id);
             numberVal = pos !== -1 ? pos + 1 : (i + chunkIdx + 1);
           } else {
             numberVal = i + chunkIdx + 1;
@@ -132,6 +392,8 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
 
       alert(`¡Éxito! Se actualizaron ${targets.length} figuras directamente en la base de datos.`);
       setShowAutoIdModal(false);
+      invalidateCache();
+      loadFigures(currentPage, figuresPerPage, figureFilterCategory, debouncedSearch);
     } catch (batchError: any) {
       console.warn('Error en lote, intentando actualización secuencial individual...', batchError);
       try {
@@ -140,7 +402,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
           const fig = targets[idx];
           let numberVal: number;
           if (autoIdMode === 'onlyMissing') {
-            const pos = figures.findIndex(f => f.id === fig.id);
+            const pos = autoIdFigures.findIndex(f => f.id === fig.id);
             numberVal = pos !== -1 ? pos + 1 : (idx + 1);
           } else {
             numberVal = idx + 1;
@@ -159,6 +421,8 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
 
         alert(`¡Éxito! Se actualizaron ${successCount} figuras en la base de datos.`);
         setShowAutoIdModal(false);
+        invalidateCache();
+        loadFigures(currentPage, figuresPerPage, figureFilterCategory, debouncedSearch);
       } catch (singleError: any) {
         console.error('Error al actualizar identificadores en Firestore:', singleError);
         const msg = singleError?.message || batchError?.message || 'Error desconocido';
@@ -169,55 +433,65 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
     }
   };
 
-  const filteredAdminFigures = figures.filter((fig) => {
-    const matchesSearch = fig.title.toLowerCase().includes(figureSearch.toLowerCase()) || 
-                          (fig.numericId && fig.numericId.toLowerCase().includes(figureSearch.toLowerCase()));
-    const matchesCategory = figureFilterCategory === 'all' || fig.franchiseId === figureFilterCategory;
-    return matchesSearch && matchesCategory;
-  });
+  const handleDeleteFigure = async (figId: string) => {
+    if (!confirm('¿Eliminar figura?')) return;
+    try {
+      await deleteDoc(doc(db, 'figures', figId));
+      setFigures(prev => prev.filter(f => f.id !== figId));
+      setTotalAdminFigures(prev => Math.max(0, prev - 1));
+      invalidateCache();
+    } catch (err) {
+      console.error("Error al eliminar figura:", err);
+      alert("Error al eliminar la figura");
+    }
+  };
 
-  const totalAdminFigures = filteredAdminFigures.length;
+  const moveFigure = async (index: number, direction: -1 | 1) => {
+    const targetIndex = index + direction;
+    if (targetIndex < 0 || targetIndex >= figures.length) return;
+
+    const figA = figures[index];
+    const figB = figures[targetIndex];
+    if (!figA || !figB) return;
+
+    const newFigures = [...figures];
+    newFigures[index] = figB;
+    newFigures[targetIndex] = figA;
+    setFigures(newFigures);
+
+    try {
+      const orderA = figA.order ?? index;
+      const orderB = figB.order ?? targetIndex;
+      const finalOrderA = orderA === orderB ? orderA + direction : orderB;
+      const finalOrderB = orderA;
+
+      const batch = writeBatch(db);
+      batch.update(doc(db, 'figures', figA.id), { order: finalOrderA, updatedAt: serverTimestamp() });
+      batch.update(doc(db, 'figures', figB.id), { order: finalOrderB, updatedAt: serverTimestamp() });
+      await batch.commit();
+
+      invalidateCache();
+    } catch (e) {
+      console.error("Error al reordenar figuras:", e);
+      setFigures(figures);
+    }
+  };
+
+  const handleFigureFormBack = () => {
+    setView('figures-list');
+    setEditingFigure(null);
+    invalidateCache();
+    loadFigures(currentPage, figuresPerPage, figureFilterCategory, debouncedSearch);
+  };
+
   const totalFigurePages = Math.max(1, Math.ceil(totalAdminFigures / figuresPerPage));
   const safeCurrentPage = Math.min(Math.max(1, currentPage), totalFigurePages);
   const startFigureIndex = (safeCurrentPage - 1) * figuresPerPage;
-  const endFigureIndex = Math.min(startFigureIndex + figuresPerPage, totalAdminFigures);
-  const paginatedAdminFigures = filteredAdminFigures.slice(startFigureIndex, endFigureIndex);
-
-  useEffect(() => {
-    const qFig = query(collection(db, 'figures'), orderBy('order', 'asc'));
-    const unsubFig = onSnapshot(qFig, (snapshot) => {
-      const data: Product[] = [];
-      snapshot.forEach((doc) => data.push({ id: doc.id, ...doc.data() } as Product));
-      setFigures(data);
-      setLoading(false);
-    });
-
-    const qCat = query(collection(db, 'categories'), orderBy('order', 'asc'));
-    const unsubCat = onSnapshot(qCat, (snapshot) => {
-      const data: Category[] = [];
-      snapshot.forEach((doc) => data.push({ id: doc.id, ...doc.data() } as Category));
-      setCategories(data);
-    });
-
-    const qDes = query(collection(db, 'designers'), orderBy('order', 'asc'));
-    const unsubDes = onSnapshot(qDes, (snapshot) => {
-      const data: Designer[] = [];
-      snapshot.forEach((doc) => data.push({ id: doc.id, ...doc.data() } as Designer));
-      setDesigners(data);
-    });
-
-    const unsubConfig = onSnapshot(doc(db, 'config', 'site'), (docSnapshot) => {
-      if (docSnapshot.exists()) {
-        setSiteConfig(docSnapshot.data() as SiteConfig);
-      }
-    });
-
-    return () => { unsubFig(); unsubCat(); unsubDes(); unsubConfig(); };
-  }, []);
+  const endFigureIndex = Math.min(startFigureIndex + figures.length, totalAdminFigures);
 
   const seedData = async () => {
     if (confirm('¿Estás seguro de que quieres cargar los datos iniciales? Esto añadirá las figuras y categorías de prueba a la base de datos.')) {
-      setLoading(true);
+      setFiguresLoading(true);
       try {
         const batch = writeBatch(db);
         
@@ -259,25 +533,15 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
         
         await batch.commit();
         alert('Datos iniciales cargados correctamente.');
+        invalidateCache();
+        loadFigures(1, figuresPerPage, figureFilterCategory, debouncedSearch);
       } catch (e) {
         console.error(e);
         alert('Error al cargar datos iniciales.');
+      } finally {
+        setFiguresLoading(false);
       }
-      setLoading(false);
     }
-  };
-
-  const moveFigure = async (index: number, direction: -1 | 1) => {
-    if (index + direction < 0 || index + direction >= figures.length) return;
-    const newItems = [...figures];
-    const temp = newItems[index];
-    newItems[index] = newItems[index + direction];
-    newItems[index + direction] = temp;
-    setFigures(newItems);
-
-    const batch = writeBatch(db);
-    newItems.forEach((item, i) => batch.update(doc(db, 'figures', item.id), { order: i, updatedAt: serverTimestamp() }));
-    await batch.commit();
   };
 
   const moveCategory = async (index: number, direction: -1 | 1) => {
@@ -352,7 +616,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
       </header>
 
       <main className="max-w-6xl mx-auto px-6 py-8 flex-1 w-full">
-        {loading ? (
+        {initialLoading ? (
           <div className="flex justify-center items-center py-24">
             <img src="/logo-ippolav.png" alt="Loading..." className="w-16 h-16 animate-scale-pulse object-contain" />
           </div>
@@ -361,14 +625,14 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
             <div className="flex items-center justify-between">
               <h2 className="text-2xl font-serif font-bold">Catálogo de Figuras</h2>
               <div className="flex gap-3">
-                {figures.length === 0 && (
+                {totalAdminFigures === 0 && (
                   <button onClick={seedData} className="px-4 py-2 border border-outline-variant/50 hover:text-primary rounded-lg text-sm font-semibold transition-colors">
                     Cargar Datos Demo
                   </button>
                 )}
-                {figures.length > 0 && (
+                {totalAdminFigures > 0 && (
                   <button 
-                    onClick={() => setShowAutoIdModal(true)} 
+                    onClick={openAutoIdModal} 
                     className="flex items-center gap-2 px-3 py-2 border border-primary/40 text-primary hover:bg-primary/10 font-semibold rounded-lg text-sm transition-all"
                     title="Asignar identificadores numéricos a las figuras"
                   >
@@ -406,22 +670,31 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
 
                   {/* Estadísticas */}
                   <div className="grid grid-cols-3 gap-3 bg-surface-container-low p-3 rounded-xl border border-outline-variant/20 text-center text-xs">
-                    <div>
-                      <span className="text-on-surface-variant block">Total Figuras</span>
-                      <strong className="text-sm text-on-surface font-mono">{figures.length}</strong>
-                    </div>
-                    <div>
-                      <span className="text-on-surface-variant block">Con Identificador</span>
-                      <strong className="text-sm text-green-400 font-mono">
-                        {figures.filter(f => f.numericId && f.numericId.trim() !== '').length}
-                      </strong>
-                    </div>
-                    <div>
-                      <span className="text-on-surface-variant block">Sin Identificador</span>
-                      <strong className="text-sm text-amber-400 font-mono">
-                        {figures.filter(f => !f.numericId || f.numericId.trim() === '').length}
-                      </strong>
-                    </div>
+                    {loadingAutoIdFigures ? (
+                      <div className="col-span-3 py-3 text-center text-xs text-on-surface-variant flex items-center justify-center gap-2">
+                        <span className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                        Analizando figuras de la base de datos...
+                      </div>
+                    ) : (
+                      <>
+                        <div>
+                          <span className="text-on-surface-variant block">Total Figuras</span>
+                          <strong className="text-sm text-on-surface font-mono">{autoIdFigures.length}</strong>
+                        </div>
+                        <div>
+                          <span className="text-on-surface-variant block">Con Identificador</span>
+                          <strong className="text-sm text-green-400 font-mono">
+                            {autoIdFigures.filter(f => f.numericId && f.numericId.trim() !== '').length}
+                          </strong>
+                        </div>
+                        <div>
+                          <span className="text-on-surface-variant block">Sin Identificador</span>
+                          <strong className="text-sm text-amber-400 font-mono">
+                            {autoIdFigures.filter(f => !f.numericId || f.numericId.trim() === '').length}
+                          </strong>
+                        </div>
+                      </>
+                    )}
                   </div>
 
                   {/* Opciones */}
@@ -580,12 +853,33 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
             </div>
 
             <div className="bg-surface-container-low border border-outline-variant/30 rounded-xl overflow-hidden">
-              {filteredAdminFigures.length === 0 ? (
+              {figuresLoading ? (
+                <div className="divide-y divide-outline-variant/20 animate-pulse">
+                  {[...Array(Math.min(figuresPerPage, 6))].map((_, i) => (
+                    <div key={i} className="flex items-center p-4">
+                      <div className="flex flex-col gap-1 pr-4 opacity-30">
+                        <div className="w-5 h-5 bg-surface-container-high rounded" />
+                        <div className="w-5 h-5 bg-surface-container-high rounded" />
+                      </div>
+                      <div className="w-16 h-16 rounded bg-surface-container-high flex-shrink-0" />
+                      <div className="ml-4 flex-1 min-w-0 pr-2 space-y-2">
+                        <div className="h-4 bg-surface-container-high rounded w-2/5" />
+                        <div className="h-3 bg-surface-container-high rounded w-1/4" />
+                      </div>
+                      <div className="flex items-center gap-2 opacity-30">
+                        <div className="w-8 h-8 rounded-lg bg-surface-container-high" />
+                        <div className="w-8 h-8 rounded-lg bg-surface-container-high" />
+                        <div className="w-8 h-8 rounded-lg bg-surface-container-high" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : figures.length === 0 ? (
                 <div className="p-8 text-center text-on-surface-variant">No se encontraron figuras.</div>
               ) : (
                 <>
                   <div className="divide-y divide-outline-variant/20">
-                    {paginatedAdminFigures.map((fig) => (
+                    {figures.map((fig, index) => (
                       <div 
                         key={fig.id} 
                         onClick={() => setPreviewingFigure(fig)}
@@ -593,11 +887,23 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                         title="Haz clic para ver la vista previa de los datos de esta figura"
                       >
                         <div className="flex flex-col gap-1 pr-4" onClick={(e) => e.stopPropagation()}>
-                          <button onClick={() => moveFigure(figures.indexOf(fig), -1)} disabled={figures.indexOf(fig) === 0} className="text-outline hover:text-primary disabled:opacity-30"><ChevronUp className="w-5 h-5" /></button>
-                          <button onClick={() => moveFigure(figures.indexOf(fig), 1)} disabled={figures.indexOf(fig) === figures.length - 1} className="text-outline hover:text-primary disabled:opacity-30"><ChevronDown className="w-5 h-5" /></button>
+                          <button 
+                            onClick={() => moveFigure(index, -1)} 
+                            disabled={index === 0 && safeCurrentPage === 1} 
+                            className="text-outline hover:text-primary disabled:opacity-30"
+                          >
+                            <ChevronUp className="w-5 h-5" />
+                          </button>
+                          <button 
+                            onClick={() => moveFigure(index, 1)} 
+                            disabled={index === figures.length - 1 && safeCurrentPage === totalFigurePages} 
+                            className="text-outline hover:text-primary disabled:opacity-30"
+                          >
+                            <ChevronDown className="w-5 h-5" />
+                          </button>
                         </div>
                         <div className="w-16 h-16 rounded bg-surface-container-lowest border border-outline-variant/30 overflow-hidden flex-shrink-0">
-                          {fig.imageUrls?.[0] ? <img src={fig.imageUrls[0]} alt={fig.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform" /> : <div className="w-full h-full flex items-center justify-center text-outline"><ImagePlus className="w-6 h-6" /></div>}
+                          <AdminFigureThumbnail src={fig.imageUrls?.[0]} alt={fig.title} />
                         </div>
                         <div className="ml-4 flex-1 min-w-0 pr-2">
                           <h3 className="font-semibold text-on-surface truncate group-hover:text-primary transition-colors flex items-center gap-2">
@@ -630,7 +936,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                             <Edit2 className="w-4 h-4" />
                           </button>
                           <button 
-                            onClick={() => confirm('¿Eliminar figura?') && deleteDoc(doc(db, 'figures', fig.id))} 
+                            onClick={() => handleDeleteFigure(fig.id)} 
                             title="Eliminar figura"
                             className="p-2 text-on-surface hover:text-error rounded-lg bg-surface-container-highest transition-colors opacity-80 hover:opacity-100"
                           >
@@ -829,8 +1135,8 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
             figure={editingFigure} 
             categories={categories}
             designers={designers}
-            onBack={() => { setView('figures-list'); setEditingFigure(null); }} 
-            orderCount={figures.length} 
+            onBack={handleFigureFormBack} 
+            orderCount={totalAdminFigures} 
           />
         )}
       </main>
