@@ -1850,13 +1850,11 @@ function FigureForm({ figure, categories, designers, onBack, orderCount }: { fig
     whatsappMessage: ''
   });
   const [loading, setLoading] = useState(false);
-  const [loadingSuggestedId, setLoadingSuggestedId] = useState(!figure);
 
-  // Pre-calcular de forma asíncrona el identificador sugerido mientras el usuario llena el formulario
+  // Pre-calcular de forma asíncrona el identificador correlativo en segundo plano mientras el usuario llena el formulario
   useEffect(() => {
     let isMounted = true;
     if (!figure) {
-      setLoadingSuggestedId(true);
       getNextFigureNumericId().then((suggested) => {
         if (isMounted) {
           setFormData(prev => {
@@ -1865,11 +1863,9 @@ function FigureForm({ figure, categories, designers, onBack, orderCount }: { fig
             }
             return prev;
           });
-          setLoadingSuggestedId(false);
         }
       }).catch(err => {
         console.error("Error obteniendo correlativo sugerido:", err);
-        if (isMounted) setLoadingSuggestedId(false);
       });
     }
     return () => { isMounted = false; };
@@ -2095,23 +2091,18 @@ function FigureForm({ figure, categories, designers, onBack, orderCount }: { fig
 
       <form onSubmit={handleSubmit} className="space-y-6 bg-surface-container-low p-6 rounded-xl border border-outline-variant/30 gold-border-glow">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="space-y-1">
-            <div className="flex items-center justify-between">
+          {figure && (
+            <div className="space-y-1">
               <label className="text-xs font-bold text-on-surface-variant uppercase">Identificador</label>
-              <span className="text-[10px] text-primary/80 font-medium">
-                {!figure 
-                  ? (loadingSuggestedId ? 'Calculando correlativo...' : 'Asignado automáticamente (editable)') 
-                  : 'Identificador único'}
-              </span>
+              <input 
+                name="numericId" 
+                value={formData.numericId || ''} 
+                onChange={handleChange} 
+                placeholder="Ej: #001" 
+                className="w-full bg-surface-container border border-outline-variant/40 rounded p-2 text-sm focus:border-primary outline-none font-mono" 
+              />
             </div>
-            <input 
-              name="numericId" 
-              value={formData.numericId || ''} 
-              onChange={handleChange} 
-              placeholder={loadingSuggestedId ? "Calculando correlativo..." : "Ej: #001"} 
-              className="w-full bg-surface-container border border-outline-variant/40 rounded p-2 text-sm focus:border-primary outline-none font-mono" 
-            />
-          </div>
+          )}
           <div className="space-y-1">
             <label className="text-xs font-bold text-on-surface-variant uppercase">Título</label>
             <input required name="title" value={formData.title} onChange={handleChange} className="w-full bg-surface-container border border-outline-variant/40 rounded p-2 text-sm focus:border-primary outline-none" />
