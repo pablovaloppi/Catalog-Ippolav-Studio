@@ -1,6 +1,6 @@
 {
-  "name": "",
-  "description": "",
+  "name": "IPPOLAV STUDIO",
+  "description": "Figuras de colección acabadas a mano con el más alto rigor de detalle.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

@@ -13,7 +13,7 @@ import {
   Check,
   Heart
 } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Category, SortOption } from '../types';
 
 interface FilterSectionProps {
@@ -112,6 +112,26 @@ export function FilterSection({
   const [isFilterMenuOpen, setIsFilterMenuOpen] = useState(false);
   const [isSortMenuOpen, setIsSortMenuOpen] = useState(false);
   
+  // Categorías ordenadas alfabéticamente A-Z para selección precisa por teclado
+  const sortedCategories = useMemo(() => {
+    return categories
+      .map(cat => {
+        const parent = cat.parentId ? categories.find(c => c.id === cat.parentId) : null;
+        const label = parent ? `${cat.name} (${parent.name})` : cat.name;
+        return {
+          id: cat.id,
+          name: cat.name,
+          parentName: parent?.name || '',
+          label,
+        };
+      })
+      .sort((a, b) => {
+        const cmp = a.name.localeCompare(b.name, 'es', { sensitivity: 'base' });
+        if (cmp !== 0) return cmp;
+        return a.label.localeCompare(b.label, 'es', { sensitivity: 'base' });
+      });
+  }, [categories]);
+
   // Only display top-level categories in the quick filter for simplicity
   const topLevelCategories = categories.filter(c => !c.parentId);
   
@@ -183,10 +203,10 @@ export function FilterSection({
                     onChange={(e) => setFranchiseFilter(e.target.value)}
                     className="w-full p-2 bg-surface-container border border-outline-variant/30 rounded-lg text-sm text-on-surface outline-none focus:border-primary"
                   >
-                    <option value="all">Todas las categorías</option>
-                    {categories.map(c => (
+                    <option value="all">Todas las categorías (A-Z)</option>
+                    {sortedCategories.map(c => (
                       <option key={c.id} value={c.id}>
-                        {c.parentId ? `└ ${c.name}` : c.name}
+                        {c.label}
                       </option>
                     ))}
                   </select>

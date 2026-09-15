@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useAuth } from './contexts/AuthContext';
 import { loginWithGoogle, logout, db } from './firebase';
 import { 
@@ -179,6 +179,47 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   const [figureFilterCategory, setFigureFilterCategory] = useState('all');
   const [figuresPerPage, setFiguresPerPage] = useState<number>(10);
   const [currentPage, setCurrentPage] = useState<number>(1);
+
+  // Categorías ordenadas alfabéticamente A-Z para filtros rápidos y visualización
+  const sortedCategories = useMemo(() => {
+    return categories
+      .map(cat => {
+        const parent = cat.parentId ? categories.find(c => c.id === cat.parentId) : null;
+        const label = parent ? `${cat.name} (${parent.name})` : cat.name;
+        return {
+          id: cat.id,
+          name: cat.name,
+          parentName: parent?.name || '',
+          isSubcategory: !!parent,
+          label,
+        };
+      })
+      .sort((a, b) => {
+        const cmp = a.name.localeCompare(b.name, 'es', { sensitivity: 'base' });
+        if (cmp !== 0) return cmp;
+        return a.label.localeCompare(b.label, 'es', { sensitivity: 'base' });
+      });
+  }, [categories]);
+
+  const handleFilterCategoryKeyDown = (e: React.KeyboardEvent<HTMLSelectElement>) => {
+    if (e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {
+      const char = e.key.toLowerCase();
+      const normalize = (str: string) => str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+      const normChar = normalize(char);
+
+      const matching = sortedCategories.filter(item => 
+        normalize(item.name).startsWith(normChar) ||
+        normalize(item.label).startsWith(normChar)
+      );
+
+      if (matching.length > 0) {
+        const currIndex = matching.findIndex(item => item.id === figureFilterCategory);
+        const nextMatch = currIndex !== -1 ? matching[(currIndex + 1) % matching.length] : matching[0];
+        setFigureFilterCategory(nextMatch.id);
+        setCurrentPage(1);
+      }
+    }
+  };
 
   // Firestore pagination cursors and in-memory cache
   const pageCursorsRef = useRef<Map<number, QueryDocumentSnapshot>>(new Map());
@@ -821,10 +862,15 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                     setFigureFilterCategory(e.target.value);
                     setCurrentPage(1);
                   }}
+                  onKeyDown={handleFilterCategoryKeyDown}
                   className="bg-surface-container border border-outline-variant/40 rounded p-2 text-sm focus:border-primary outline-none"
                 >
-                  <option value="all">Todas las categorías</option>
-                  {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  <option value="all">Todas las categorías (A-Z)</option>
+                  {sortedCategories.map(c => (
+                    <option key={c.id} value={c.id}>
+                      {c.label}
+                    </option>
+                  ))}
                 </select>
               </div>
 
@@ -1250,7 +1296,9 @@ function CategoryForm({ category, categories, onBack, orderCount }: { category: 
     setLoading(false);
   };
 
-  const parentOptions = categories.filter(c => c.id !== category?.id && !c.parentId);
+  const parentOptions = categories
+    .filter(c => c.id !== category?.id && !c.parentId)
+    .sort((a, b) => a.name.localeCompare(b.name, 'es', { sensitivity: 'base' }));
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">
@@ -1292,11 +1340,113 @@ function CategoryForm({ category, categories, onBack, orderCount }: { category: 
   );
 }
 
+// Función para extraer el prefijo, número y longitud de dígitos de un identificador como "#045" o "FIG-010"
+export function parseNumericId(idString: string | undefined | null): { prefix: string; num: number; digits: number } | null {
+  if (!idString || typeof idString !== 'string') return null;
+  const trimmed = idString.trim();
+  const match = trimmed.match(/^([^0-9]*)(\d+)$/);
+  if (!match) return null;
+  const prefix = match[1];
+  const digits = match[2].length;
+  const num = parseInt(match[2], 10);
+  return isNaN(num) ? null : { prefix, num, digits };
+}
+
+// Función para calcular automáticamente el siguiente identificador numérico sumando 1 al último creado
+export async function getNextFigureNumericId(): Promise<string> {
+  try {
+    const snap = await getDocs(collection(db, 'figures'));
+    if (snap.empty) {
+      return '#001';
+    }
+
+    const docs = snap.docs.map(d => ({ id: d.id, ...d.data() } as Product));
+
+    let detectedPrefix = '#';
+    let detectedDigits = 3;
+    let maxNumber = 0;
+
+    docs.forEach(fig => {
+      if (fig.numericId) {
+        const parsed = parseNumericId(fig.numericId);
+        if (parsed) {
+          if (parsed.num > maxNumber) {
+            maxNumber = parsed.num;
+          }
+          if (parsed.prefix) {
+            detectedPrefix = parsed.prefix;
+          }
+          if (parsed.digits > detectedDigits) {
+            detectedDigits = parsed.digits;
+          }
+        }
+      }
+    });
+
+    // Ordenar figuras por fecha de creación (más reciente primero)
+    const sortedByCreation = [...docs].sort((a, b) => {
+      const timeA = (a.createdAt as any)?.toMillis ? (a.createdAt as any).toMillis() : ((a.createdAt as any)?.seconds ? (a.createdAt as any).seconds * 1000 : 0);
+      const timeB = (b.createdAt as any)?.toMillis ? (b.createdAt as any).toMillis() : ((b.createdAt as any)?.seconds ? (b.createdAt as any).seconds * 1000 : 0);
+      if (timeA !== timeB) return timeB - timeA;
+      return (b.order ?? 0) - (a.order ?? 0);
+    });
+
+    // Encontrar la última figura creada con identificador
+    const lastCreatedFig = sortedByCreation.find(f => {
+      if (!f.numericId) return false;
+      return parseNumericId(f.numericId) !== null;
+    });
+
+    let nextNum = 1;
+    if (lastCreatedFig && lastCreatedFig.numericId) {
+      const parsedLast = parseNumericId(lastCreatedFig.numericId);
+      if (parsedLast) {
+        detectedPrefix = parsedLast.prefix || detectedPrefix;
+        detectedDigits = Math.max(detectedDigits, parsedLast.digits);
+        // Sumar 1 al último identificador creado asegurando que sea mayor que el máximo existente
+        nextNum = Math.max(parsedLast.num + 1, maxNumber + 1);
+      } else {
+        nextNum = maxNumber + 1;
+      }
+    } else if (maxNumber > 0) {
+      nextNum = maxNumber + 1;
+    }
+
+    const padded = String(nextNum).padStart(Math.max(3, detectedDigits), '0');
+    return `${detectedPrefix}${padded}`;
+  } catch (err) {
+    console.error("Error calculando el identificador sugerido:", err);
+    return '#001';
+  }
+}
+
 function FigureForm({ figure, categories, designers, onBack, orderCount }: { figure: Product | null, categories: Category[], designers: Designer[], onBack: () => void, orderCount: number }) {
+  // Categorías y subcategorías ordenadas alfabéticamente A-Z
+  // Las subcategorías indican su franquicia de pertenencia, ej: "Ironan (Marvel)"
+  const sortedFigureCategories = useMemo(() => {
+    return categories
+      .map(cat => {
+        const parent = cat.parentId ? categories.find(c => c.id === cat.parentId) : null;
+        const label = parent ? `${cat.name} (${parent.name})` : cat.name;
+        return {
+          id: cat.id,
+          name: cat.name,
+          parentName: parent?.name || '',
+          isSubcategory: !!parent,
+          label,
+        };
+      })
+      .sort((a, b) => {
+        const cmp = a.name.localeCompare(b.name, 'es', { sensitivity: 'base' });
+        if (cmp !== 0) return cmp;
+        return a.label.localeCompare(b.label, 'es', { sensitivity: 'base' });
+      });
+  }, [categories]);
+
   const [formData, setFormData] = useState<Partial<Product>>(figure || {
     numericId: '',
     title: '',
-    franchiseId: categories[0]?.id || 'marvel',
+    franchiseId: figure?.franchiseId || sortedFigureCategories[0]?.id || categories[0]?.id || 'marvel',
     designerId: '',
     status: 'consultar',
     imageUrls: [],
@@ -1308,6 +1458,106 @@ function FigureForm({ figure, categories, designers, onBack, orderCount }: { fig
     whatsappMessage: ''
   });
   const [loading, setLoading] = useState(false);
+  const [loadingNextId, setLoadingNextId] = useState(!figure);
+
+  // Calcular automáticamente el identificador por defecto sumando 1 al último creado
+  useEffect(() => {
+    if (!figure) {
+      setLoadingNextId(true);
+      getNextFigureNumericId()
+        .then(nextId => {
+          setFormData(prev => {
+            // Asignar por defecto si está vacío
+            if (!prev.numericId || prev.numericId.trim() === '') {
+              return { ...prev, numericId: nextId };
+            }
+            return prev;
+          });
+        })
+        .finally(() => {
+          setLoadingNextId(false);
+        });
+    }
+  }, [figure]);
+
+  // Buffer y temporizador para búsqueda y selección instantánea por teclado
+  const typeaheadBufferRef = useRef('');
+  const typeaheadTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  const handleCategoryKeyDown = (e: React.KeyboardEvent<HTMLSelectElement>) => {
+    // Teclas alfanuméricas individuales (sin combinación con teclas de control)
+    if (e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {
+      if (typeaheadTimerRef.current) {
+        clearTimeout(typeaheadTimerRef.current);
+      }
+
+      const char = e.key.toLowerCase();
+      const normalize = (str: string) => str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+      const normChar = normalize(char);
+      const prevBuffer = typeaheadBufferRef.current;
+
+      // Si se presiona la misma tecla repetidamente, ciclar entre las categorías que empiezan con esa letra
+      const isRepeatedChar = prevBuffer.length > 0 && prevBuffer.split('').every(c => c === char);
+      if (isRepeatedChar) {
+        typeaheadBufferRef.current = char;
+        const matchingItems = sortedFigureCategories.filter(item => 
+          normalize(item.name).startsWith(normChar) ||
+          normalize(item.label).startsWith(normChar)
+        );
+        if (matchingItems.length > 0) {
+          const currentIndex = matchingItems.findIndex(item => item.id === formData.franchiseId);
+          const nextIndex = currentIndex !== -1 ? (currentIndex + 1) % matchingItems.length : 0;
+          setFormData(prev => ({ ...prev, franchiseId: matchingItems[nextIndex].id }));
+        }
+        typeaheadTimerRef.current = setTimeout(() => {
+          typeaheadBufferRef.current = '';
+        }, 700);
+        return;
+      }
+
+      const newBuffer = prevBuffer + char;
+      typeaheadBufferRef.current = newBuffer;
+      typeaheadTimerRef.current = setTimeout(() => {
+        typeaheadBufferRef.current = '';
+      }, 700);
+
+      const normBuffer = normalize(newBuffer);
+
+      // 1. Búsqueda por buffer acumulado (ej: si escribe "iro" rápidamente)
+      if (newBuffer.length > 1) {
+        const fullMatch = sortedFigureCategories.find(item => 
+          normalize(item.name).startsWith(normBuffer) ||
+          normalize(item.label).startsWith(normBuffer)
+        );
+        if (fullMatch) {
+          setFormData(prev => ({ ...prev, franchiseId: fullMatch.id }));
+          return;
+        }
+      }
+
+      // 2. Búsqueda por primera letra (ej: si presiona "I", busca "Ironan (Marvel)" o cualquier categoría que empiece con I)
+      const matchingItems = sortedFigureCategories.filter(item => 
+        normalize(item.name).startsWith(normChar) ||
+        normalize(item.label).startsWith(normChar)
+      );
+
+      if (matchingItems.length > 0) {
+        const currentIndex = matchingItems.findIndex(item => item.id === formData.franchiseId);
+        if (currentIndex !== -1 && prevBuffer === '') {
+          const nextIndex = (currentIndex + 1) % matchingItems.length;
+          setFormData(prev => ({ ...prev, franchiseId: matchingItems[nextIndex].id }));
+        } else {
+          setFormData(prev => ({ ...prev, franchiseId: matchingItems[0].id }));
+        }
+      }
+    }
+  };
+
+  useEffect(() => {
+    if (!formData.franchiseId && sortedFigureCategories.length > 0) {
+      setFormData(prev => ({ ...prev, franchiseId: sortedFigureCategories[0].id }));
+    }
+  }, [sortedFigureCategories, formData.franchiseId]);
 
   const processImage = (file: File): Promise<string> => {
     return new Promise((resolve) => {
@@ -1394,8 +1644,14 @@ function FigureForm({ figure, categories, designers, onBack, orderCount }: { fig
     e.preventDefault();
     setLoading(true);
     try {
+      // Si se está creando una nueva figura y el identificador está vacío, calcular automáticamente el siguiente
+      let finalNumericId = formData.numericId?.trim() || '';
+      if (!figure?.id && !finalNumericId) {
+        finalNumericId = await getNextFigureNumericId();
+      }
+
       const payload = {
-        numericId: formData.numericId || '',
+        numericId: finalNumericId,
         title: formData.title || '',
         franchiseId: formData.franchiseId || categories[0]?.id || 'marvel',
         designerId: formData.designerId || '',
@@ -1444,23 +1700,54 @@ function FigureForm({ figure, categories, designers, onBack, orderCount }: { fig
       <form onSubmit={handleSubmit} className="space-y-6 bg-surface-container-low p-6 rounded-xl border border-outline-variant/30 gold-border-glow">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="space-y-1">
-            <label className="text-xs font-bold text-on-surface-variant uppercase">Identificador (Ej: #001)</label>
-            <input name="numericId" value={formData.numericId || ''} onChange={handleChange} placeholder="Opcional" className="w-full bg-surface-container border border-outline-variant/40 rounded p-2 text-sm focus:border-primary outline-none" />
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold text-on-surface-variant uppercase">Identificador</label>
+              {!figure && (
+                <span className="text-[10px] text-primary font-medium flex items-center gap-1.5">
+                  {loadingNextId ? (
+                    <>
+                      <span className="w-2.5 h-2.5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                      Calculando siguiente...
+                    </>
+                  ) : (
+                    "✓ Asignado por defecto (+1 al último)"
+                  )}
+                </span>
+              )}
+            </div>
+            <input 
+              name="numericId" 
+              value={formData.numericId || ''} 
+              onChange={handleChange} 
+              placeholder={loadingNextId ? "Calculando identificador..." : "Ej: #001"} 
+              className="w-full bg-surface-container border border-outline-variant/40 rounded p-2 text-sm focus:border-primary outline-none font-mono" 
+            />
+            {!figure && !loadingNextId && formData.numericId && (
+              <p className="text-[11px] text-on-surface-variant">
+                Se calculó automáticamente sumando 1 al último identificador creado. Puedes modificarlo libremente si lo requieres.
+              </p>
+            )}
           </div>
           <div className="space-y-1">
             <label className="text-xs font-bold text-on-surface-variant uppercase">Título</label>
             <input required name="title" value={formData.title} onChange={handleChange} className="w-full bg-surface-container border border-outline-variant/40 rounded p-2 text-sm focus:border-primary outline-none" />
           </div>
           <div className="space-y-1">
-            <label className="text-xs font-bold text-on-surface-variant uppercase">Categoría</label>
-            <select name="franchiseId" value={formData.franchiseId} onChange={handleChange} className="w-full bg-surface-container border border-outline-variant/40 rounded p-2 text-sm focus:border-primary outline-none">
-              {categories.filter(c => !c.parentId).map(c => (
-                <optgroup key={c.id} label={c.name}>
-                  <option value={c.id}>{c.name}</option>
-                  {categories.filter(sub => sub.parentId === c.id).map(sub => (
-                    <option key={sub.id} value={sub.id}>↳ {sub.name}</option>
-                  ))}
-                </optgroup>
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold text-on-surface-variant uppercase">Categoría</label>
+              <span className="text-[10px] text-primary/80 font-medium">Orden alfabético A-Z • Búsqueda por tecla activa</span>
+            </div>
+            <select 
+              name="franchiseId" 
+              value={formData.franchiseId} 
+              onChange={handleChange}
+              onKeyDown={handleCategoryKeyDown}
+              className="w-full bg-surface-container border border-outline-variant/40 rounded p-2 text-sm focus:border-primary outline-none"
+            >
+              {sortedFigureCategories.map(item => (
+                <option key={item.id} value={item.id}>
+                  {item.label}
+                </option>
               ))}
             </select>
           </div>
