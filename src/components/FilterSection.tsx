@@ -116,7 +116,7 @@ export function FilterSection({
   const currentSortOption = sortOptions.find(o => o.id === sortBy) || sortOptions[0];
   
   return (
-    <section className="px-5 md:px-12 py-8 border-b border-outline-variant/20 bg-surface-container-lowest/60 relative">
+    <section id="filter-section" className="px-5 md:px-12 py-8 border-b border-outline-variant/20 bg-surface-container-lowest/60 relative">
       <div className="max-w-4xl mx-auto space-y-4">
         <div className="relative flex items-center">
           <Search className="absolute left-4 text-on-surface-variant pointer-events-none w-5 h-5" />

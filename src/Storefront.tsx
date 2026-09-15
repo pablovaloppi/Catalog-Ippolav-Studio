@@ -61,7 +61,8 @@ function buildFiguresQuery(
   statusFilter: string,
   categories: Category[],
   afterDoc?: QueryDocumentSnapshot<DocumentData> | null,
-  limitCount: number = BATCH_SIZE
+  limitCount: number = BATCH_SIZE,
+  sortBy: SortOption = 'default'
 ) {
   const figuresRef = collection(db, 'figures');
 
@@ -90,11 +91,40 @@ function buildFiguresQuery(
     return query(figuresRef, where('status', '==', statusFilter), limit(limitCount));
   }
 
-  // Consulta por defecto ordenada por orden
-  if (afterDoc) {
-    return query(figuresRef, orderBy('order', 'asc'), startAfter(afterDoc), limit(limitCount));
+  // Ordenación directa en Firestore para el catálogo general
+  let firestoreOrderField = 'order';
+  let firestoreOrderDirection: 'asc' | 'desc' = 'asc';
+
+  if (sortBy === 'recent') {
+    firestoreOrderField = 'order';
+    firestoreOrderDirection = 'desc';
+  } else if (sortBy === 'oldest' || sortBy === 'default') {
+    firestoreOrderField = 'order';
+    firestoreOrderDirection = 'asc';
+  } else if (sortBy === 'name-asc') {
+    firestoreOrderField = 'title';
+    firestoreOrderDirection = 'asc';
+  } else if (sortBy === 'name-desc') {
+    firestoreOrderField = 'title';
+    firestoreOrderDirection = 'desc';
+  } else if (sortBy === 'finish') {
+    firestoreOrderField = 'finish';
+    firestoreOrderDirection = 'asc';
   }
-  return query(figuresRef, orderBy('order', 'asc'), limit(limitCount));
+
+  if (afterDoc) {
+    return query(
+      figuresRef,
+      orderBy(firestoreOrderField, firestoreOrderDirection),
+      startAfter(afterDoc),
+      limit(limitCount)
+    );
+  }
+  return query(
+    figuresRef,
+    orderBy(firestoreOrderField, firestoreOrderDirection),
+    limit(limitCount)
+  );
 }
 
 export function Storefront() {
@@ -137,14 +167,30 @@ export function Storefront() {
     };
   }, []);
 
-  // Carga inicial ultra-rápida: sólo las primeras 3 figuras para renderizado inmediato
+  // Carga inicial y recarga al cambiar filtros o criterio de ordenación
   useEffect(() => {
     let isCancelled = false;
 
+    // Llevar el scroll al inicio del catálogo suavemente
+    const catalogEl = document.getElementById('catalogo') || document.getElementById('filter-section');
+    if (catalogEl && window.scrollY > 250) {
+      const headerOffset = 65;
+      const elementPosition = catalogEl.getBoundingClientRect().top;
+      const offsetPosition = elementPosition + window.pageYOffset - headerOffset;
+      window.scrollTo({
+        top: Math.max(0, offsetPosition),
+        behavior: 'smooth',
+      });
+    }
+
     async function loadInitialBatch() {
+      // Borrar todas las figuras cargadas previamente para empezar de cero
+      setProducts([]);
+      setLastDoc(null);
       setLoading(true);
+
       try {
-        const q = buildFiguresQuery(franchiseFilter, statusFilter, categories, null, INITIAL_STEP);
+        const q = buildFiguresQuery(franchiseFilter, statusFilter, categories, null, INITIAL_STEP, sortBy);
         const snapshot = await getDocs(q);
         if (isCancelled) return;
 
@@ -159,10 +205,17 @@ export function Storefront() {
           setLastDoc(lastVisible);
           setHasMore(snapshot.docs.length === INITIAL_STEP);
         } else if (franchiseFilter === 'all' && statusFilter === 'all') {
-          // Si la base de datos de Firestore está vacía, usar las figuras locales de prueba
-          setProducts(initialProducts.slice(0, INITIAL_STEP));
+          // Si la base de datos de Firestore está vacía, usar las figuras locales de prueba ordenadas
+          const localSorted = [...initialProducts].sort((a, b) => {
+            if (sortBy === 'recent') return (b.order ?? 0) - (a.order ?? 0);
+            if (sortBy === 'oldest') return (a.order ?? 0) - (b.order ?? 0);
+            if (sortBy === 'name-asc') return a.title.localeCompare(b.title);
+            if (sortBy === 'name-desc') return b.title.localeCompare(a.title);
+            return (a.order ?? 0) - (b.order ?? 0);
+          });
+          setProducts(localSorted.slice(0, INITIAL_STEP));
           setLastDoc(null);
-          setHasMore(initialProducts.length > INITIAL_STEP);
+          setHasMore(localSorted.length > INITIAL_STEP);
         } else {
           setProducts([]);
           setLastDoc(null);
@@ -185,7 +238,7 @@ export function Storefront() {
     return () => {
       isCancelled = true;
     };
-  }, [franchiseFilter, statusFilter]);
+  }, [franchiseFilter, statusFilter, sortBy]);
 
   // Carga de categorías, diseñadores y configuración en tiempo real
   useEffect(() => {
@@ -232,7 +285,7 @@ export function Storefront() {
     setLoadingMore(true);
 
     try {
-      const qNext = buildFiguresQuery(franchiseFilter, statusFilter, categories, lastDoc, BATCH_SIZE);
+      const qNext = buildFiguresQuery(franchiseFilter, statusFilter, categories, lastDoc, BATCH_SIZE, sortBy);
       const snapshot = await getDocs(qNext);
       const data: Product[] = [];
       snapshot.forEach((docSnap) => {
@@ -253,7 +306,7 @@ export function Storefront() {
     } finally {
       setLoadingMore(false);
     }
-  }, [loadingMore, hasMore, lastDoc, franchiseFilter, statusFilter, categories]);
+  }, [loadingMore, hasMore, lastDoc, franchiseFilter, statusFilter, categories, sortBy]);
 
   const availableFinishes = useMemo(() => {
     const finishes = new Set(products.map(p => p.finish).filter(Boolean));
@@ -343,17 +396,6 @@ export function Storefront() {
       return 0;
     });
   }, [filteredProducts, sortBy]);
-
-  // Si el usuario activa una ordenación personalizada (reciente, más antigua, alfabético, acabado),
-  // cargar el resto del catálogo progresivamente para que el ordenamiento sea completo
-  useEffect(() => {
-    if (sortBy !== 'default' && hasMore && !loadingMore && !loading) {
-      const timer = setTimeout(() => {
-        loadMore();
-      }, 250);
-      return () => clearTimeout(timer);
-    }
-  }, [sortBy, hasMore, loadingMore, loading, loadMore]);
 
   // Si el usuario busca o filtra y hay pocas coincidencias cargadas, buscar en el siguiente lote
   useEffect(() => {
