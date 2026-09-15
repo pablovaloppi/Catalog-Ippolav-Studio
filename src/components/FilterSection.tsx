@@ -10,7 +10,8 @@ import {
   ArrowDownAZ, 
   ArrowUpZA, 
   Palette, 
-  Check 
+  Check,
+  Heart
 } from 'lucide-react';
 import { useState } from 'react';
 import { Category, SortOption } from '../types';
@@ -46,6 +47,13 @@ const sortOptions: {
     shortLabel: 'Destacados',
     description: 'Orden predeterminado de la tienda',
     icon: Sparkles,
+  },
+  {
+    id: 'likes-desc',
+    label: 'Más corazones (Popularidad)',
+    shortLabel: 'Más corazones',
+    description: 'De mayor a menor cantidad de me gusta',
+    icon: Heart,
   },
   {
     id: 'recent',

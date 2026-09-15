@@ -42,6 +42,7 @@
         "badge": { "type": "string", "maxLength": 200 },
         "whatsappMessage": { "type": "string", "maxLength": 5000 },
         "order": { "type": "number" },
+        "likesCount": { "type": "number", "description": "Number of likes/hearts from visitors" },
         "createdAt": { "type": "timestamp" },
         "updatedAt": { "type": "timestamp" }
       },

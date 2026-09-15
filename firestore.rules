@@ -28,6 +28,7 @@ service cloud.firestore {
         && data.franchiseId is string && data.franchiseId.size() <= 100
         && data.get('designerId', '') is string && data.get('designerId', '').size() <= 100
         && data.get('numericId', '') is string && data.get('numericId', '').size() <= 100
+        && data.get('likesCount', 0) is int && data.get('likesCount', 0) >= 0
         && data.status is string && data.status.matches('^(disponible|consultar|proximamente)$');
     }
 
@@ -50,9 +51,15 @@ service cloud.firestore {
       allow create: if isAdmin() 
         && isValidId(figureId) 
         && isValidFigure(incoming());
-      allow update: if isAdmin() 
-        && isValidId(figureId)
-        && isValidFigure(incoming());
+      allow update: if (
+        (isAdmin() && isValidId(figureId) && isValidFigure(incoming())) ||
+        (
+          isValidId(figureId) &&
+          incoming().diff(existing()).affectedKeys().hasOnly(['likesCount']) &&
+          incoming().likesCount is int &&
+          incoming().likesCount >= 0
+        )
+      );
       allow delete: if isAdmin() && isValidId(figureId);
     }
 

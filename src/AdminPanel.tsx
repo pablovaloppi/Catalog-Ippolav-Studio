@@ -4,7 +4,7 @@ import { loginWithGoogle, logout, db } from './firebase';
 import { collection, addDoc, setDoc, onSnapshot, query, orderBy, deleteDoc, doc, updateDoc, serverTimestamp, writeBatch } from 'firebase/firestore';
 import { Product, Category, Designer, SiteConfig } from './types';
 import { products as initialProducts } from './data';
-import { Plus, ChevronUp, ChevronDown, Trash2, Edit2, LogOut, ImagePlus, UserCircle, Settings, Hash, Sparkles, Eye, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
+import { Plus, ChevronUp, ChevronDown, Trash2, Edit2, LogOut, ImagePlus, UserCircle, Settings, Hash, Sparkles, Eye, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Heart } from 'lucide-react';
 import { ProductModal } from './components/ProductModal';
 
 // Removed inline Category interface
@@ -604,7 +604,15 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                             {fig.numericId && <span className="text-primary font-mono text-xs border border-primary/30 bg-primary/10 px-1.5 py-0.5 rounded flex-shrink-0">{fig.numericId}</span>}
                             <span className="truncate">{fig.title}</span>
                           </h3>
-                          <p className="text-xs text-on-surface-variant truncate mt-0.5">Categoría: {categories.find(c => c.id === fig.franchiseId)?.name || fig.franchiseId} • {fig.status}</p>
+                          <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                            <p className="text-xs text-on-surface-variant truncate">
+                              Categoría: {categories.find(c => c.id === fig.franchiseId)?.name || fig.franchiseId} • {fig.status}
+                            </p>
+                            <span className="inline-flex items-center gap-1 text-xs text-rose-400 bg-rose-950/40 px-1.5 py-0.5 rounded border border-rose-500/20 font-mono">
+                              <Heart className="w-3 h-3 fill-rose-500 text-rose-500" />
+                              {fig.likesCount || 0}
+                            </span>
+                          </div>
                         </div>
                         <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
                           <button 
@@ -1098,11 +1106,13 @@ function FigureForm({ figure, categories, designers, onBack, orderCount }: { fig
       if (figure?.id) {
         await updateDoc(doc(db, 'figures', figure.id), {
           ...payload,
+          likesCount: figure.likesCount ?? 0,
           updatedAt: serverTimestamp()
         });
       } else {
         await addDoc(collection(db, 'figures'), {
           ...payload,
+          likesCount: 0,
           order: orderCount,
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp()

@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect, memo } from 'react';
-import { ArrowRight, PlusCircle } from 'lucide-react';
+import { ArrowRight, PlusCircle, Heart } from 'lucide-react';
 import { Product, Category } from '../types';
 
 // Memoria global de URLs de imágenes ya cargadas durante la sesión del usuario
@@ -59,6 +59,8 @@ interface CatalogCardProps {
   categoryName?: string;
   onSelect: (product: Product) => void;
   articleRef?: React.Ref<HTMLElement>;
+  isLiked?: boolean;
+  onToggleLike?: (productId: string) => void;
 }
 
 const CatalogCard = memo(function CatalogCard({
@@ -67,6 +69,8 @@ const CatalogCard = memo(function CatalogCard({
   categoryName,
   onSelect,
   articleRef,
+  isLiked = false,
+  onToggleLike,
 }: CatalogCardProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const imageUrl = product.imageUrls?.[0] || '';
@@ -102,11 +106,13 @@ const CatalogCard = memo(function CatalogCard({
     setIsImageReady(true);
   };
 
+  const likesCount = product.likesCount || 0;
+
   return (
     <article
       ref={articleRef}
       onClick={() => onSelect(product)}
-      className="group bg-surface-container-low rounded-xl border border-outline-variant/30 overflow-hidden flex flex-col justify-between gold-border-glow transition-all duration-300 cursor-pointer"
+      className="group bg-surface-container-low rounded-xl border border-outline-variant/30 overflow-hidden flex flex-col justify-between gold-border-glow transition-all duration-300 cursor-pointer relative"
     >
       <div ref={containerRef} className="relative aspect-[3/4] bg-surface-container-lowest overflow-hidden">
         {shouldLoad && imageUrl ? (
@@ -124,7 +130,7 @@ const CatalogCard = memo(function CatalogCard({
         ) : (
           <div className="w-full h-full bg-surface-container-lowest" />
         )}
-        <div className="absolute top-3 left-3 flex flex-col gap-1.5">
+        <div className="absolute top-3 left-3 flex flex-col gap-1.5 z-10 pointer-events-none">
           {product.status === 'disponible' && (
             <span className="px-2 py-0.5 rounded bg-emerald-950/80 border border-emerald-500/50 text-emerald-300 text-[10px] uppercase font-bold tracking-wider">
               Disponible
@@ -141,6 +147,33 @@ const CatalogCard = memo(function CatalogCard({
             </span>
           )}
         </div>
+
+        {/* Botón de corazón con contador de me gusta */}
+        {onToggleLike && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleLike(product.id);
+            }}
+            className={`absolute top-3 right-3 z-20 flex items-center gap-1.5 px-2.5 py-1.5 rounded-full backdrop-blur-md transition-all duration-200 active:scale-90 shadow-md ${
+              isLiked
+                ? 'bg-rose-950/85 border border-rose-500/70 text-rose-300 shadow-rose-950/50'
+                : 'bg-black/60 hover:bg-black/80 border border-white/20 text-white/90 hover:text-rose-400'
+            }`}
+            title={isLiked ? 'Ya te gusta esta figura (clic para quitar)' : 'Me gusta esta figura'}
+            aria-label={`${likesCount} me gusta`}
+          >
+            <Heart
+              className={`w-3.5 h-3.5 transition-transform duration-200 ${
+                isLiked ? 'fill-rose-500 text-rose-500 scale-110' : 'hover:scale-110'
+              }`}
+            />
+            <span className="text-xs font-bold font-mono tracking-tight select-none">
+              {likesCount}
+            </span>
+          </button>
+        )}
       </div>
       <div className="p-4 space-y-3 flex-1 flex flex-col justify-between">
         <div>
@@ -174,6 +207,8 @@ interface CatalogProps {
   loadingMore?: boolean;
   onLoadMore?: () => void;
   totalFiguresInDb?: number | null;
+  likedFigureIds?: Set<string>;
+  onToggleLike?: (productId: string) => void;
 }
 
 export function Catalog({
@@ -184,6 +219,8 @@ export function Catalog({
   loadingMore = false,
   onLoadMore,
   totalFiguresInDb,
+  likedFigureIds,
+  onToggleLike,
 }: CatalogProps) {
   // Punto de anticipación de carga de figuras:
   // Se activa en la 6ª figura cargada (índice 5), y luego 3 figuras antes de finalizar cada lote
@@ -258,6 +295,8 @@ export function Catalog({
               categoryName={categories.find((c) => c.id === product.franchiseId)?.name}
               onSelect={onSelectProduct}
               articleRef={isTrigger ? (el) => { triggerTargetRef.current = el; } : undefined}
+              isLiked={likedFigureIds ? likedFigureIds.has(product.id) : false}
+              onToggleLike={onToggleLike}
             />
           );
         })}

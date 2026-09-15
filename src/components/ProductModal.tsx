@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, MessageCircle, HelpCircle, View, ChevronLeft, ChevronRight } from 'lucide-react';
+import { X, MessageCircle, HelpCircle, View, ChevronLeft, ChevronRight, Heart } from 'lucide-react';
 import { Product, SiteConfig } from '../types';
 
 interface ProductModalProps {
@@ -8,9 +8,11 @@ interface ProductModalProps {
   designerName?: string;
   onClose: () => void;
   config?: SiteConfig | null;
+  isLiked?: boolean;
+  onToggleLike?: (productId: string) => void;
 }
 
-export function ProductModal({ product, categoryName, designerName, onClose, config }: ProductModalProps) {
+export function ProductModal({ product, categoryName, designerName, onClose, config, isLiked, onToggleLike }: ProductModalProps) {
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [isFullScreen, setIsFullScreen] = useState(false);
   const [touchStart, setTouchStart] = useState<number | null>(null);
@@ -204,12 +206,29 @@ export function ProductModal({ product, categoryName, designerName, onClose, con
           <X className="w-5 h-5" />
         </button>
 
-        <div>
+        <div className="pr-10">
           <span className="text-[10px] font-bold text-primary tracking-widest uppercase">{categoryName || product.franchiseId}</span>
           <h2 className="font-serif text-2xl font-semibold text-on-surface mt-1">{product.title}</h2>
-          <div className="flex items-center gap-2 mt-1">
-            <span className="w-2 h-2 rounded-full bg-primary"></span>
-            <span className="text-xs font-semibold text-primary">{getStatusText(product.status)}</span>
+          <div className="flex items-center gap-3 mt-1.5 flex-wrap">
+            <div className="flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-primary"></span>
+              <span className="text-xs font-semibold text-primary">{getStatusText(product.status)}</span>
+            </div>
+            {onToggleLike && (
+              <button
+                type="button"
+                onClick={() => onToggleLike(product.id)}
+                className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold transition-all active:scale-95 border ${
+                  isLiked
+                    ? 'bg-rose-950/80 border-rose-500/60 text-rose-300'
+                    : 'bg-surface-container border-outline-variant/40 text-on-surface hover:text-rose-400'
+                }`}
+                title={isLiked ? 'Ya te gusta esta figura (clic para quitar)' : 'Me gusta esta figura'}
+              >
+                <Heart className={`w-3.5 h-3.5 ${isLiked ? 'fill-rose-500 text-rose-500' : ''}`} />
+                <span>{product.likesCount || 0} {product.likesCount === 1 ? 'corazón' : 'corazones'}</span>
+              </button>
+            )}
           </div>
         </div>
 

@@ -23,6 +23,8 @@ import {
   getDocs,
   where,
   getCountFromServer,
+  updateDoc,
+  increment,
   QueryDocumentSnapshot,
   DocumentData,
 } from 'firebase/firestore';
@@ -98,7 +100,7 @@ function buildFiguresQuery(
   if (sortBy === 'recent') {
     firestoreOrderField = 'order';
     firestoreOrderDirection = 'desc';
-  } else if (sortBy === 'oldest' || sortBy === 'default') {
+  } else if (sortBy === 'oldest' || sortBy === 'default' || sortBy === 'likes-desc') {
     firestoreOrderField = 'order';
     firestoreOrderDirection = 'asc';
   } else if (sortBy === 'name-asc') {
@@ -148,6 +150,92 @@ export function Storefront() {
   const [siteConfig, setSiteConfig] = useState<SiteConfig | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // Registro local de figuras que a este usuario le gustan
+  const [likedFigureIds, setLikedFigureIds] = useState<Set<string>>(() => {
+    try {
+      const saved = localStorage.getItem('ippolav_liked_figures');
+      return saved ? new Set<string>(JSON.parse(saved)) : new Set<string>();
+    } catch {
+      return new Set<string>();
+    }
+  });
+
+  // Manejador para dar/quitar me gusta con actualización optimista y persistencia en Firestore
+  const handleToggleLike = useCallback(async (figureId: string) => {
+    const wasLiked = likedFigureIds.has(figureId);
+    const delta = wasLiked ? -1 : 1;
+
+    // 1. Actualizar set local y localStorage
+    const nextSet = new Set(likedFigureIds);
+    if (wasLiked) {
+      nextSet.delete(figureId);
+    } else {
+      nextSet.add(figureId);
+    }
+    setLikedFigureIds(nextSet);
+    try {
+      localStorage.setItem('ippolav_liked_figures', JSON.stringify(Array.from(nextSet)));
+    } catch (e) {
+      console.warn("No se pudo guardar me gusta en localStorage:", e);
+    }
+
+    // 2. Actualización optimista en el estado de productos
+    setProducts((prev) =>
+      prev.map((p) => {
+        if (p.id === figureId) {
+          const currentLikes = p.likesCount || 0;
+          return { ...p, likesCount: Math.max(0, currentLikes + delta) };
+        }
+        return p;
+      })
+    );
+
+    // 3. Actualización optimista en el modal si está abierto
+    setSelectedProduct((prev) => {
+      if (prev && prev.id === figureId) {
+        const currentLikes = prev.likesCount || 0;
+        return { ...prev, likesCount: Math.max(0, currentLikes + delta) };
+      }
+      return prev;
+    });
+
+    // 4. Persistir en Firestore de manera segura y concurrente con increment
+    try {
+      const figRef = doc(db, 'figures', figureId);
+      await updateDoc(figRef, {
+        likesCount: increment(delta),
+      });
+    } catch (err) {
+      console.error("Error al guardar me gusta en Firestore:", err);
+      // Revertir en caso de error
+      setLikedFigureIds((prev) => {
+        const revert = new Set(prev);
+        if (wasLiked) revert.add(figureId);
+        else revert.delete(figureId);
+        try {
+          localStorage.setItem('ippolav_liked_figures', JSON.stringify(Array.from(revert)));
+        } catch { /* noop */ }
+        return revert;
+      });
+      setProducts((prev) =>
+        prev.map((p) => {
+          if (p.id === figureId) {
+            const currentLikes = p.likesCount || 0;
+            return { ...p, likesCount: Math.max(0, currentLikes - delta) };
+          }
+          return p;
+        })
+      );
+      setSelectedProduct((prev) => {
+        if (prev && prev.id === figureId) {
+          const currentLikes = prev.likesCount || 0;
+          return { ...prev, likesCount: Math.max(0, currentLikes - delta) };
+        }
+        return prev;
+      });
+    }
+  }, [likedFigureIds]);
+
   // Obtener el total de figuras añadidas en la base de datos de Firestore
   useEffect(() => {
     let isMounted = true;
@@ -190,7 +278,8 @@ export function Storefront() {
       setLoading(true);
 
       try {
-        const q = buildFiguresQuery(franchiseFilter, statusFilter, categories, null, INITIAL_STEP, sortBy);
+        const initialLimit = sortBy === 'likes-desc' ? 12 : INITIAL_STEP;
+        const q = buildFiguresQuery(franchiseFilter, statusFilter, categories, null, initialLimit, sortBy);
         const snapshot = await getDocs(q);
         if (isCancelled) return;
 
@@ -203,19 +292,20 @@ export function Storefront() {
           setProducts(data);
           const lastVisible = snapshot.docs[snapshot.docs.length - 1] || null;
           setLastDoc(lastVisible);
-          setHasMore(snapshot.docs.length === INITIAL_STEP);
+          setHasMore(snapshot.docs.length === initialLimit);
         } else if (franchiseFilter === 'all' && statusFilter === 'all') {
           // Si la base de datos de Firestore está vacía, usar las figuras locales de prueba ordenadas
           const localSorted = [...initialProducts].sort((a, b) => {
+            if (sortBy === 'likes-desc') return (b.likesCount ?? 0) - (a.likesCount ?? 0);
             if (sortBy === 'recent') return (b.order ?? 0) - (a.order ?? 0);
             if (sortBy === 'oldest') return (a.order ?? 0) - (b.order ?? 0);
             if (sortBy === 'name-asc') return a.title.localeCompare(b.title);
             if (sortBy === 'name-desc') return b.title.localeCompare(a.title);
             return (a.order ?? 0) - (b.order ?? 0);
           });
-          setProducts(localSorted.slice(0, INITIAL_STEP));
+          setProducts(localSorted.slice(0, initialLimit));
           setLastDoc(null);
-          setHasMore(localSorted.length > INITIAL_STEP);
+          setHasMore(localSorted.length > initialLimit);
         } else {
           setProducts([]);
           setLastDoc(null);
@@ -368,6 +458,12 @@ export function Storefront() {
     }
 
     return list.sort((a, b) => {
+      if (sortBy === 'likes-desc') {
+        const likesA = a.likesCount ?? 0;
+        const likesB = b.likesCount ?? 0;
+        if (likesB !== likesA) return likesB - likesA;
+        return (a.order ?? 0) - (b.order ?? 0);
+      }
       if (sortBy === 'recent') {
         const timeA = getFigureTimestamp(a);
         const timeB = getFigureTimestamp(b);
@@ -458,6 +554,8 @@ export function Storefront() {
             loadingMore={loadingMore}
             onLoadMore={loadMore}
             totalFiguresInDb={totalFiguresInDb}
+            likedFigureIds={likedFigureIds}
+            onToggleLike={handleToggleLike}
           />
         )}
         <Franchises onSelectFranchise={setFranchiseFilter} categories={categories} />
@@ -472,6 +570,8 @@ export function Storefront() {
         designerName={selectedProduct && selectedProduct.designerId ? designers.find(d => d.id === selectedProduct.designerId)?.name : undefined}
         onClose={() => setSelectedProduct(null)} 
         config={siteConfig}
+        isLiked={selectedProduct ? likedFigureIds.has(selectedProduct.id) : false}
+        onToggleLike={handleToggleLike}
       />
 
       <ScrollToCatalogButton />

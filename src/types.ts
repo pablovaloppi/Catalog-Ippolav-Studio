@@ -13,11 +13,12 @@ export interface Product {
   badge?: string;
   whatsappMessage?: string;
   order?: number;
+  likesCount?: number;
   createdAt?: any;
   updatedAt?: any;
 }
 
-export type SortOption = 'default' | 'recent' | 'oldest' | 'name-asc' | 'name-desc' | 'finish';
+export type SortOption = 'default' | 'likes-desc' | 'recent' | 'oldest' | 'name-asc' | 'name-desc' | 'finish';
 
 export interface Category {
   id: string;
