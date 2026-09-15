@@ -1,6 +1,19 @@
-import { Search, X, SlidersHorizontal, ChevronDown } from 'lucide-react';
+import { 
+  Search, 
+  X, 
+  SlidersHorizontal, 
+  ChevronDown, 
+  ArrowUpDown, 
+  Sparkles, 
+  Clock, 
+  History, 
+  ArrowDownAZ, 
+  ArrowUpZA, 
+  Palette, 
+  Check 
+} from 'lucide-react';
 import { useState } from 'react';
-import { Category } from '../types';
+import { Category, SortOption } from '../types';
 
 interface FilterSectionProps {
   searchQuery: string;
@@ -13,10 +26,63 @@ interface FilterSectionProps {
   setFinishFilter: (finish: string) => void;
   scaleFilter: string;
   setScaleFilter: (scale: string) => void;
+  sortBy: SortOption;
+  setSortBy: (sort: SortOption) => void;
   categories: Category[];
   availableFinishes: string[];
   availableScales: string[];
 }
+
+const sortOptions: {
+  id: SortOption;
+  label: string;
+  shortLabel: string;
+  description: string;
+  icon: typeof Sparkles;
+}[] = [
+  {
+    id: 'default',
+    label: 'Destacados / Catálogo',
+    shortLabel: 'Destacados',
+    description: 'Orden predeterminado de la tienda',
+    icon: Sparkles,
+  },
+  {
+    id: 'recent',
+    label: 'Cargada más reciente',
+    shortLabel: 'Más recientes',
+    description: 'Últimas figuras añadidas',
+    icon: Clock,
+  },
+  {
+    id: 'oldest',
+    label: 'Cargada más antigua',
+    shortLabel: 'Más antiguas',
+    description: 'Primeras figuras del catálogo',
+    icon: History,
+  },
+  {
+    id: 'name-asc',
+    label: 'Alfabético (A → Z)',
+    shortLabel: 'Nombre (A-Z)',
+    description: 'De la letra A a la Z',
+    icon: ArrowDownAZ,
+  },
+  {
+    id: 'name-desc',
+    label: 'Alfabético (Z → A)',
+    shortLabel: 'Nombre (Z-A)',
+    description: 'De la letra Z a la A',
+    icon: ArrowUpZA,
+  },
+  {
+    id: 'finish',
+    label: 'Por acabado',
+    shortLabel: 'Por acabado',
+    description: 'Agrupadas por estilo de pintura',
+    icon: Palette,
+  },
+];
 
 export function FilterSection({
   searchQuery,
@@ -29,11 +95,14 @@ export function FilterSection({
   setFinishFilter,
   scaleFilter,
   setScaleFilter,
+  sortBy,
+  setSortBy,
   categories,
   availableFinishes,
   availableScales,
 }: FilterSectionProps) {
   const [isFilterMenuOpen, setIsFilterMenuOpen] = useState(false);
+  const [isSortMenuOpen, setIsSortMenuOpen] = useState(false);
   
   // Only display top-level categories in the quick filter for simplicity
   const topLevelCategories = categories.filter(c => !c.parentId);
@@ -43,6 +112,8 @@ export function FilterSection({
     (franchiseFilter !== 'all' ? 1 : 0) + 
     (finishFilter !== 'all' ? 1 : 0) + 
     (scaleFilter !== 'all' ? 1 : 0);
+
+  const currentSortOption = sortOptions.find(o => o.id === sortBy) || sortOptions[0];
   
   return (
     <section className="px-5 md:px-12 py-8 border-b border-outline-variant/20 bg-surface-container-lowest/60 relative">
@@ -66,10 +137,15 @@ export function FilterSection({
           )}
         </div>
 
-        <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
+        <div className="flex items-center justify-between gap-3 pt-1">
+          {/* Lado Izquierdo: Botón Filtrar Catálogo */}
           <div className="flex items-center gap-2 relative">
             <button 
-              onClick={() => setIsFilterMenuOpen(!isFilterMenuOpen)}
+              id="filter-catalog-button"
+              onClick={() => {
+                setIsFilterMenuOpen(!isFilterMenuOpen);
+                if (isSortMenuOpen) setIsSortMenuOpen(false);
+              }}
               className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
                 isFilterMenuOpen 
                   ? 'bg-primary border border-primary text-on-primary-fixed' 
@@ -89,7 +165,7 @@ export function FilterSection({
             
             {/* Filter Menu Dropdown */}
             {isFilterMenuOpen && (
-              <div className="absolute top-full left-0 mt-2 w-72 bg-surface-container-low border border-primary/30 rounded-xl shadow-xl z-30 p-4 space-y-4 animate-in fade-in slide-in-from-top-2">
+              <div className="absolute top-full left-0 mt-2 w-72 max-w-[90vw] bg-surface-container-low border border-primary/30 rounded-xl shadow-xl z-30 p-4 space-y-4 animate-in fade-in slide-in-from-top-2">
                 
                 {/* Category Filter */}
                 <div className="space-y-2">
@@ -169,38 +245,159 @@ export function FilterSection({
               </div>
             )}
           </div>
-          <div className="flex items-center gap-1.5">
-            <button
-              onClick={() => setStatusFilter('all')}
-              className={`px-2.5 py-1 text-xs rounded border font-bold ${
-                statusFilter === 'all'
-                  ? 'border-outline-variant/40 bg-surface-container-high text-primary'
-                  : 'border-outline-variant/30 text-on-surface-variant hover:text-primary'
-              }`}
-            >
-              Todos
-            </button>
-            <button
-              onClick={() => setStatusFilter('disponible')}
-              className={`px-2.5 py-1 text-xs rounded border font-bold ${
-                statusFilter === 'disponible'
-                  ? 'border-outline-variant/40 bg-surface-container-high text-primary'
-                  : 'border-outline-variant/30 text-on-surface-variant hover:text-primary'
-              }`}
-            >
-              Disponible
-            </button>
-            <button
-              onClick={() => setStatusFilter('consultar')}
-              className={`px-2.5 py-1 text-xs rounded border font-bold ${
-                statusFilter === 'consultar'
-                  ? 'border-outline-variant/40 bg-surface-container-high text-primary'
-                  : 'border-outline-variant/30 text-on-surface-variant hover:text-primary'
-              }`}
-            >
-              Consultar
-            </button>
+
+          {/* Lado Derecho: Filtro rápido de estado y Botón Ordenar */}
+          <div className="flex items-center gap-2">
+            <div className="hidden sm:flex items-center gap-1.5">
+              <button
+                onClick={() => setStatusFilter('all')}
+                className={`px-2.5 py-1 text-xs rounded border font-bold transition-all ${
+                  statusFilter === 'all'
+                    ? 'border-outline-variant/40 bg-surface-container-high text-primary'
+                    : 'border-outline-variant/30 text-on-surface-variant hover:text-primary'
+                }`}
+              >
+                Todos
+              </button>
+              <button
+                onClick={() => setStatusFilter('disponible')}
+                className={`px-2.5 py-1 text-xs rounded border font-bold transition-all ${
+                  statusFilter === 'disponible'
+                    ? 'border-outline-variant/40 bg-surface-container-high text-primary'
+                    : 'border-outline-variant/30 text-on-surface-variant hover:text-primary'
+                }`}
+              >
+                Disponible
+              </button>
+              <button
+                onClick={() => setStatusFilter('consultar')}
+                className={`px-2.5 py-1 text-xs rounded border font-bold transition-all ${
+                  statusFilter === 'consultar'
+                    ? 'border-outline-variant/40 bg-surface-container-high text-primary'
+                    : 'border-outline-variant/30 text-on-surface-variant hover:text-primary'
+                }`}
+              >
+                Consultar
+              </button>
+            </div>
+
+            {/* Botón Ordenar (A la altura de Filtrar Catálogo del lado derecho) */}
+            <div className="relative">
+              <button
+                id="sort-catalog-button"
+                onClick={() => {
+                  setIsSortMenuOpen(!isSortMenuOpen);
+                  if (isFilterMenuOpen) setIsFilterMenuOpen(false);
+                }}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                  isSortMenuOpen || sortBy !== 'default'
+                    ? 'bg-primary border border-primary text-on-primary-fixed'
+                    : 'bg-surface-container border border-primary/40 text-primary hover:bg-surface-container-high'
+                }`}
+                title="Ordenar catálogo"
+              >
+                <ArrowUpDown className="w-4 h-4 shrink-0" />
+                <span className="hidden md:inline font-normal opacity-80">Ordenar:</span>
+                <span className="font-bold">{currentSortOption.shortLabel}</span>
+                <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${isSortMenuOpen ? 'rotate-180' : ''}`} />
+              </button>
+
+              {/* Sort Menu Dropdown */}
+              {isSortMenuOpen && (
+                <div className="absolute top-full right-0 mt-2 w-72 max-w-[90vw] bg-surface-container-low border border-primary/30 rounded-xl shadow-2xl z-30 p-2 space-y-1 animate-in fade-in slide-in-from-top-2">
+                  <div className="px-3 py-2 border-b border-outline-variant/20 flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-primary uppercase tracking-wider">
+                      Ordenar catálogo
+                    </span>
+                    {sortBy !== 'default' && (
+                      <button
+                        onClick={() => {
+                          setSortBy('default');
+                          setIsSortMenuOpen(false);
+                        }}
+                        className="text-[11px] font-semibold text-on-surface-variant hover:text-primary transition-colors"
+                      >
+                        Restablecer
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="py-1 space-y-0.5">
+                    {sortOptions.map((opt) => {
+                      const Icon = opt.icon;
+                      const isSelected = sortBy === opt.id;
+
+                      return (
+                        <button
+                          key={opt.id}
+                          onClick={() => {
+                            setSortBy(opt.id);
+                            setIsSortMenuOpen(false);
+                          }}
+                          className={`w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-left transition-all ${
+                            isSelected
+                              ? 'bg-primary/15 text-primary border border-primary/30 font-semibold'
+                              : 'hover:bg-surface-container text-on-surface hover:text-primary border border-transparent'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <div className={`w-7 h-7 rounded-md flex items-center justify-center shrink-0 ${
+                              isSelected ? 'bg-primary text-on-primary-fixed' : 'bg-surface-container text-on-surface-variant'
+                            }`}>
+                              <Icon className="w-3.5 h-3.5" />
+                            </div>
+                            <div className="truncate">
+                              <div className="text-xs font-semibold leading-tight truncate">{opt.label}</div>
+                              <div className="text-[10px] text-on-surface-variant leading-tight truncate">{opt.description}</div>
+                            </div>
+                          </div>
+
+                          {isSelected && (
+                            <Check className="w-4 h-4 text-primary shrink-0 ml-2" />
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
+        </div>
+
+        {/* Mobile quick status pills */}
+        <div className="flex sm:hidden items-center gap-1.5 overflow-x-auto no-scrollbar pt-0.5">
+          <span className="text-[11px] font-semibold text-on-surface-variant/80 shrink-0">Estado:</span>
+          <button
+            onClick={() => setStatusFilter('all')}
+            className={`px-2.5 py-0.5 text-xs rounded border font-bold transition-all shrink-0 ${
+              statusFilter === 'all'
+                ? 'border-outline-variant/40 bg-surface-container-high text-primary'
+                : 'border-outline-variant/30 text-on-surface-variant hover:text-primary'
+            }`}
+          >
+            Todos
+          </button>
+          <button
+            onClick={() => setStatusFilter('disponible')}
+            className={`px-2.5 py-0.5 text-xs rounded border font-bold transition-all shrink-0 ${
+              statusFilter === 'disponible'
+                ? 'border-outline-variant/40 bg-surface-container-high text-primary'
+                : 'border-outline-variant/30 text-on-surface-variant hover:text-primary'
+            }`}
+          >
+            Disponible
+          </button>
+          <button
+            onClick={() => setStatusFilter('consultar')}
+            className={`px-2.5 py-0.5 text-xs rounded border font-bold transition-all shrink-0 ${
+              statusFilter === 'consultar'
+                ? 'border-outline-variant/40 bg-surface-container-high text-primary'
+                : 'border-outline-variant/30 text-on-surface-variant hover:text-primary'
+            }`}
+          >
+            Consultar
+          </button>
         </div>
 
         <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-2 snap-x">
@@ -230,11 +427,14 @@ export function FilterSection({
         </div>
       </div>
       
-      {/* Click away overlay for filter menu */}
-      {isFilterMenuOpen && (
+      {/* Click away overlay for filter or sort menu */}
+      {(isFilterMenuOpen || isSortMenuOpen) && (
         <div 
           className="fixed inset-0 z-20"
-          onClick={() => setIsFilterMenuOpen(false)}
+          onClick={() => {
+            setIsFilterMenuOpen(false);
+            setIsSortMenuOpen(false);
+          }}
         />
       )}
     </section>

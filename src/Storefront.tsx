@@ -10,7 +10,7 @@ import { Contact } from './components/Contact';
 import { Footer } from './components/Footer';
 import { ProductModal } from './components/ProductModal';
 import { ScrollToCatalogButton } from './components/ScrollToCatalogButton';
-import { Product, Category, Designer, SiteConfig } from './types';
+import { Product, Category, Designer, SiteConfig, SortOption } from './types';
 import { products as initialProducts } from './data';
 import {
   collection,
@@ -30,6 +30,31 @@ import { db } from './firebase';
 
 const INITIAL_STEP = 6;
 const BATCH_SIZE = 3;
+
+function getFigureTimestamp(p: Product): number {
+  if (p.createdAt) {
+    if (typeof p.createdAt.toMillis === 'function') {
+      return p.createdAt.toMillis();
+    }
+    if (typeof p.createdAt.toDate === 'function') {
+      return p.createdAt.toDate().getTime();
+    }
+    if (typeof p.createdAt.seconds === 'number') {
+      return p.createdAt.seconds * 1000;
+    }
+    if (typeof p.createdAt === 'number') {
+      return p.createdAt;
+    }
+    if (typeof p.createdAt === 'string') {
+      const parsed = Date.parse(p.createdAt);
+      if (!isNaN(parsed)) return parsed;
+    }
+  }
+  if (typeof p.order === 'number') {
+    return p.order * 1000;
+  }
+  return 0;
+}
 
 function buildFiguresQuery(
   franchiseFilter: string,
@@ -79,6 +104,7 @@ export function Storefront() {
   const [franchiseFilter, setFranchiseFilter] = useState('all');
   const [finishFilter, setFinishFilter] = useState('all');
   const [scaleFilter, setScaleFilter] = useState('all');
+  const [sortBy, setSortBy] = useState<SortOption>('default');
   
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   
@@ -282,6 +308,53 @@ export function Storefront() {
     });
   }, [searchQuery, statusFilter, franchiseFilter, finishFilter, scaleFilter, products, categories]);
 
+  const sortedAndFilteredProducts = useMemo(() => {
+    const list = [...filteredProducts];
+    if (sortBy === 'default') {
+      return list;
+    }
+
+    return list.sort((a, b) => {
+      if (sortBy === 'recent') {
+        const timeA = getFigureTimestamp(a);
+        const timeB = getFigureTimestamp(b);
+        if (timeB !== timeA) return timeB - timeA;
+        return (b.order ?? 0) - (a.order ?? 0);
+      }
+      if (sortBy === 'oldest') {
+        const timeA = getFigureTimestamp(a);
+        const timeB = getFigureTimestamp(b);
+        if (timeA !== timeB) return timeA - timeB;
+        return (a.order ?? 0) - (b.order ?? 0);
+      }
+      if (sortBy === 'name-asc') {
+        return a.title.localeCompare(b.title, 'es', { sensitivity: 'base' });
+      }
+      if (sortBy === 'name-desc') {
+        return b.title.localeCompare(a.title, 'es', { sensitivity: 'base' });
+      }
+      if (sortBy === 'finish') {
+        const finishA = (a.finish || '').trim();
+        const finishB = (b.finish || '').trim();
+        const cmp = finishA.localeCompare(finishB, 'es', { sensitivity: 'base' });
+        if (cmp !== 0) return cmp;
+        return a.title.localeCompare(b.title, 'es', { sensitivity: 'base' });
+      }
+      return 0;
+    });
+  }, [filteredProducts, sortBy]);
+
+  // Si el usuario activa una ordenación personalizada (reciente, más antigua, alfabético, acabado),
+  // cargar el resto del catálogo progresivamente para que el ordenamiento sea completo
+  useEffect(() => {
+    if (sortBy !== 'default' && hasMore && !loadingMore && !loading) {
+      const timer = setTimeout(() => {
+        loadMore();
+      }, 250);
+      return () => clearTimeout(timer);
+    }
+  }, [sortBy, hasMore, loadingMore, loading, loadMore]);
+
   // Si el usuario busca o filtra y hay pocas coincidencias cargadas, buscar en el siguiente lote
   useEffect(() => {
     const isSearchingOrFiltering =
@@ -324,6 +397,8 @@ export function Storefront() {
           setFinishFilter={setFinishFilter}
           scaleFilter={scaleFilter}
           setScaleFilter={setScaleFilter}
+          sortBy={sortBy}
+          setSortBy={setSortBy}
           categories={categories}
           availableFinishes={availableFinishes}
           availableScales={availableScales}
@@ -334,7 +409,7 @@ export function Storefront() {
           </div>
         ) : (
           <Catalog
-            products={filteredProducts}
+            products={sortedAndFilteredProducts}
             categories={categories}
             onSelectProduct={setSelectedProduct}
             hasMore={hasMore}
