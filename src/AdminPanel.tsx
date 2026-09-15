@@ -22,8 +22,16 @@ import {
 } from 'firebase/firestore';
 import { Product, Category, Designer, SiteConfig } from './types';
 import { products as initialProducts } from './data';
-import { Plus, ChevronUp, ChevronDown, Trash2, Edit2, LogOut, ImagePlus, UserCircle, Settings, Hash, Sparkles, Eye, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Heart } from 'lucide-react';
+import { Plus, ChevronUp, ChevronDown, Trash2, Edit2, LogOut, ImagePlus, UserCircle, Settings, Hash, Sparkles, Eye, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Heart, CornerDownRight, FolderTree } from 'lucide-react';
 import { ProductModal } from './components/ProductModal';
+import { 
+  getCategoryAncestors, 
+  getCategoryBreadcrumb, 
+  getCategoryHierarchyLabel, 
+  getCategoryDepth, 
+  getAllDescendantCategoryIds, 
+  getHierarchicalCategories 
+} from './categoryUtils';
 
 // Removed inline Category interface
 
@@ -172,28 +180,27 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   const [editingFigure, setEditingFigure] = useState<Product | null>(null);
   const [previewingFigure, setPreviewingFigure] = useState<Product | null>(null);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
+  const [initialCategoryParentId, setInitialCategoryParentId] = useState<string>('');
+  const [categoryViewMode, setCategoryViewMode] = useState<'hierarchy' | 'flat'>('hierarchy');
   const [editingDesigner, setEditingDesigner] = useState<Designer | null>(null);
 
   const [figureSearch, setFigureSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [figureFilterCategory, setFigureFilterCategory] = useState('all');
+  const [figureSortBy, setFigureSortBy] = useState<'default' | 'name-asc' | 'name-desc' | 'id-asc' | 'id-desc' | 'recent' | 'oldest'>('default');
   const [figuresPerPage, setFiguresPerPage] = useState<number>(10);
   const [currentPage, setCurrentPage] = useState<number>(1);
 
   // Categorías ordenadas alfabéticamente A-Z para filtros rápidos y visualización
   const sortedCategories = useMemo(() => {
     return categories
-      .map(cat => {
-        const parent = cat.parentId ? categories.find(c => c.id === cat.parentId) : null;
-        const label = parent ? `${cat.name} (${parent.name})` : cat.name;
-        return {
-          id: cat.id,
-          name: cat.name,
-          parentName: parent?.name || '',
-          isSubcategory: !!parent,
-          label,
-        };
-      })
+      .map(cat => ({
+        id: cat.id,
+        name: cat.name,
+        depth: getCategoryDepth(cat.id, categories),
+        isSubcategory: !!cat.parentId,
+        label: getCategoryHierarchyLabel(cat, categories),
+      }))
       .sort((a, b) => {
         const cmp = a.name.localeCompare(b.name, 'es', { sensitivity: 'base' });
         if (cmp !== 0) return cmp;
@@ -248,26 +255,80 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
     pageCursorsRef.current.clear();
   }, []);
 
-  // Carga paginada optimizada de figuras
-  const loadFigures = useCallback(async (page: number, pageSize: number, catFilter: string, search: string) => {
+  // Carga paginada optimizada de figuras con soporte de ordenamiento y jerarquía de categorías
+  const loadFigures = useCallback(async (page: number, pageSize: number, catFilter: string, search: string, sortBy: 'default' | 'name-asc' | 'name-desc' | 'id-asc' | 'id-desc' | 'recent' | 'oldest' = 'default') => {
     setFiguresLoading(true);
     try {
       const trimmedSearch = search.trim().toLowerCase();
+      const matchingCatIds = catFilter === 'all'
+        ? []
+        : [catFilter, ...getAllDescendantCategoryIds(catFilter, categories)];
 
-      // Búsqueda activa
-      if (trimmedSearch) {
-        const searchQ = catFilter === 'all'
-          ? query(collection(db, 'figures'), orderBy('order', 'asc'), limit(200))
-          : query(collection(db, 'figures'), where('franchiseId', '==', catFilter), orderBy('order', 'asc'), limit(200));
+      // Si hay búsqueda activa o se seleccionó un ordenamiento personalizado (diferente de 'default')
+      if (trimmedSearch || sortBy !== 'default') {
+        const baseQ = catFilter === 'all'
+          ? collection(db, 'figures')
+          : (matchingCatIds.length === 1
+              ? query(collection(db, 'figures'), where('franchiseId', '==', catFilter))
+              : query(collection(db, 'figures'), where('franchiseId', 'in', matchingCatIds.slice(0, 30))));
 
-        const snap = await getDocs(searchQ);
+        const snap = await getDocs(baseQ);
         const allFetched: Product[] = [];
         snap.forEach(d => allFetched.push({ id: d.id, ...d.data() } as Product));
 
-        const matched = allFetched.filter(fig => 
-          fig.title.toLowerCase().includes(trimmedSearch) ||
-          (fig.numericId && fig.numericId.toLowerCase().includes(trimmedSearch))
-        );
+        // Filtrar por categorías descendientes si hubiese más de 30
+        let matched = allFetched;
+        if (catFilter !== 'all' && matchingCatIds.length > 30) {
+          matched = matched.filter(fig => matchingCatIds.includes(fig.franchiseId));
+        }
+
+        // Filtrar por búsqueda si corresponde
+        if (trimmedSearch) {
+          matched = matched.filter(fig => 
+            fig.title.toLowerCase().includes(trimmedSearch) ||
+            (fig.numericId && fig.numericId.toLowerCase().includes(trimmedSearch))
+          );
+        }
+
+        // Ordenar según la opción seleccionada
+        matched.sort((a, b) => {
+          if (sortBy === 'name-asc') {
+            return a.title.localeCompare(b.title, 'es', { sensitivity: 'base' });
+          }
+          if (sortBy === 'name-desc') {
+            return b.title.localeCompare(a.title, 'es', { sensitivity: 'base' });
+          }
+          if (sortBy === 'id-asc') {
+            const parsedA = parseNumericId(a.numericId);
+            const parsedB = parseNumericId(b.numericId);
+            if (parsedA && parsedB) return parsedA.num - parsedB.num;
+            if (parsedA) return -1;
+            if (parsedB) return 1;
+            return (a.numericId || '').localeCompare(b.numericId || '');
+          }
+          if (sortBy === 'id-desc') {
+            const parsedA = parseNumericId(a.numericId);
+            const parsedB = parseNumericId(b.numericId);
+            if (parsedA && parsedB) return parsedB.num - parsedA.num;
+            if (parsedA) return 1;
+            if (parsedB) return -1;
+            return (b.numericId || '').localeCompare(a.numericId || '');
+          }
+          if (sortBy === 'recent') {
+            const timeA = (a.createdAt as any)?.toMillis ? (a.createdAt as any).toMillis() : ((a.createdAt as any)?.seconds ? (a.createdAt as any).seconds * 1000 : (a.order ?? 0));
+            const timeB = (b.createdAt as any)?.toMillis ? (b.createdAt as any).toMillis() : ((b.createdAt as any)?.seconds ? (b.createdAt as any).seconds * 1000 : (b.order ?? 0));
+            if (timeB !== timeA) return timeB - timeA;
+            return (b.order ?? 0) - (a.order ?? 0);
+          }
+          if (sortBy === 'oldest') {
+            const timeA = (a.createdAt as any)?.toMillis ? (a.createdAt as any).toMillis() : ((a.createdAt as any)?.seconds ? (a.createdAt as any).seconds * 1000 : (a.order ?? 0));
+            const timeB = (b.createdAt as any)?.toMillis ? (b.createdAt as any).toMillis() : ((b.createdAt as any)?.seconds ? (b.createdAt as any).seconds * 1000 : (b.order ?? 0));
+            if (timeA !== timeB) return timeA - timeB;
+            return (a.order ?? 0) - (b.order ?? 0);
+          }
+          // Default: orden de la página principal
+          return (a.order ?? 0) - (b.order ?? 0);
+        });
 
         setTotalAdminFigures(matched.length);
         const startIndex = (page - 1) * pageSize;
@@ -276,10 +337,12 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
         return;
       }
 
-      // Conteo total rápido vía getCountFromServer sin descargar figuras
+      // Conteo total rápido vía getCountFromServer sin descargar figuras cuando es 'default' y sin búsqueda
       const countQ = catFilter === 'all'
         ? collection(db, 'figures')
-        : query(collection(db, 'figures'), where('franchiseId', '==', catFilter));
+        : (matchingCatIds.length === 1
+            ? query(collection(db, 'figures'), where('franchiseId', '==', catFilter))
+            : query(collection(db, 'figures'), where('franchiseId', 'in', matchingCatIds.slice(0, 30))));
 
       const countSnap = await getCountFromServer(countQ);
       const totalCount = countSnap.data().count;
@@ -304,7 +367,9 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
         const fetchLimit = cursor ? pageSize : Math.max(pageSize, page * pageSize);
         const baseQ = catFilter === 'all'
           ? query(collection(db, 'figures'), orderBy('order', 'asc'), limit(fetchLimit))
-          : query(collection(db, 'figures'), where('franchiseId', '==', catFilter), orderBy('order', 'asc'), limit(fetchLimit));
+          : (matchingCatIds.length === 1
+              ? query(collection(db, 'figures'), where('franchiseId', '==', catFilter), orderBy('order', 'asc'), limit(fetchLimit))
+              : query(collection(db, 'figures'), where('franchiseId', 'in', matchingCatIds.slice(0, 30)), orderBy('order', 'asc'), limit(fetchLimit)));
 
         const snap = await getDocs(baseQ);
         const allDocs = snap.docs;
@@ -326,7 +391,9 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
       } else {
         const baseQ = catFilter === 'all'
           ? query(collection(db, 'figures'), orderBy('order', 'asc'), startAfter(cursor), limit(pageSize))
-          : query(collection(db, 'figures'), where('franchiseId', '==', catFilter), orderBy('order', 'asc'), startAfter(cursor), limit(pageSize));
+          : (matchingCatIds.length === 1
+              ? query(collection(db, 'figures'), where('franchiseId', '==', catFilter), orderBy('order', 'asc'), startAfter(cursor), limit(pageSize))
+              : query(collection(db, 'figures'), where('franchiseId', 'in', matchingCatIds.slice(0, 30)), orderBy('order', 'asc'), startAfter(cursor), limit(pageSize)));
 
         const snap = await getDocs(baseQ);
         const docs = snap.docs;
@@ -342,12 +409,12 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
     } finally {
       setFiguresLoading(false);
     }
-  }, []);
+  }, [categories]);
 
-  // Efecto para recargar cuando cambian los parámetros de paginación o filtro
+  // Efecto para recargar cuando cambian los parámetros de paginación, filtro o selector de orden
   useEffect(() => {
-    loadFigures(currentPage, figuresPerPage, figureFilterCategory, debouncedSearch);
-  }, [currentPage, figuresPerPage, figureFilterCategory, debouncedSearch, loadFigures]);
+    loadFigures(currentPage, figuresPerPage, figureFilterCategory, debouncedSearch, figureSortBy);
+  }, [currentPage, figuresPerPage, figureFilterCategory, debouncedSearch, figureSortBy, loadFigures]);
 
   // Carga inicial no bloqueante de colecciones ligeras (categorías, diseñadores, configuración)
   useEffect(() => {
@@ -434,7 +501,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
       alert(`¡Éxito! Se actualizaron ${targets.length} figuras directamente en la base de datos.`);
       setShowAutoIdModal(false);
       invalidateCache();
-      loadFigures(currentPage, figuresPerPage, figureFilterCategory, debouncedSearch);
+      loadFigures(currentPage, figuresPerPage, figureFilterCategory, debouncedSearch, figureSortBy);
     } catch (batchError: any) {
       console.warn('Error en lote, intentando actualización secuencial individual...', batchError);
       try {
@@ -463,7 +530,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
         alert(`¡Éxito! Se actualizaron ${successCount} figuras en la base de datos.`);
         setShowAutoIdModal(false);
         invalidateCache();
-        loadFigures(currentPage, figuresPerPage, figureFilterCategory, debouncedSearch);
+        loadFigures(currentPage, figuresPerPage, figureFilterCategory, debouncedSearch, figureSortBy);
       } catch (singleError: any) {
         console.error('Error al actualizar identificadores en Firestore:', singleError);
         const msg = singleError?.message || batchError?.message || 'Error desconocido';
@@ -522,7 +589,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
     setView('figures-list');
     setEditingFigure(null);
     invalidateCache();
-    loadFigures(currentPage, figuresPerPage, figureFilterCategory, debouncedSearch);
+    loadFigures(currentPage, figuresPerPage, figureFilterCategory, debouncedSearch, figureSortBy);
   };
 
   const totalFigurePages = Math.max(1, Math.ceil(totalAdminFigures / figuresPerPage));
@@ -575,7 +642,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
         await batch.commit();
         alert('Datos iniciales cargados correctamente.');
         invalidateCache();
-        loadFigures(1, figuresPerPage, figureFilterCategory, debouncedSearch);
+        loadFigures(1, figuresPerPage, figureFilterCategory, debouncedSearch, figureSortBy);
       } catch (e) {
         console.error(e);
         alert('Error al cargar datos iniciales.');
@@ -596,6 +663,30 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
     const batch = writeBatch(db);
     newItems.forEach((item, i) => batch.update(doc(db, 'categories', item.id), { order: i }));
     await batch.commit();
+  };
+
+  const handleDeleteCategory = async (cat: Category) => {
+    const descendants = getAllDescendantCategoryIds(cat.id, categories);
+    let confirmMsg = `¿Eliminar la categoría "${cat.name}"?`;
+    if (descendants.length > 0) {
+      confirmMsg = `La categoría "${cat.name}" tiene ${descendants.length} subcategoría(s) hija(s) subordinadas.\n\nAl eliminarla, sus subcategorías directas pasarán a pertenecer a "${cat.parentId ? (categories.find(c => c.id === cat.parentId)?.name || 'su categoría superior') : 'la raíz principal (Nivel 1)'}".\n\n¿Deseas continuar?`;
+    }
+    if (!confirm(confirmMsg)) return;
+
+    try {
+      const batch = writeBatch(db);
+      batch.delete(doc(db, 'categories', cat.id));
+      const directChildren = categories.filter(c => c.parentId === cat.id);
+      directChildren.forEach(child => {
+        batch.update(doc(db, 'categories', child.id), {
+          parentId: cat.parentId || ''
+        });
+      });
+      await batch.commit();
+    } catch (err) {
+      console.error("Error al eliminar categoría:", err);
+      alert("Error al eliminar la categoría");
+    }
   };
 
   const moveDesigner = async (index: number, direction: -1 | 1) => {
@@ -844,8 +935,8 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
               </div>
             )}
 
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 mb-4">
-              <div className="flex flex-1 flex-col sm:flex-row gap-3">
+            <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3 mb-4">
+              <div className="flex flex-1 flex-col sm:flex-row gap-3 flex-wrap">
                 <input 
                   type="text" 
                   placeholder="Buscar por título o identificador..." 
@@ -854,7 +945,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                     setFigureSearch(e.target.value);
                     setCurrentPage(1);
                   }}
-                  className="flex-1 bg-surface-container border border-outline-variant/40 rounded p-2 text-sm focus:border-primary outline-none"
+                  className="flex-1 min-w-[200px] bg-surface-container border border-outline-variant/40 rounded p-2 text-sm focus:border-primary outline-none"
                 />
                 <select 
                   value={figureFilterCategory} 
@@ -871,6 +962,24 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                       {c.label}
                     </option>
                   ))}
+                </select>
+                <select 
+                  value={figureSortBy} 
+                  onChange={(e) => {
+                    setFigureSortBy(e.target.value as any);
+                    invalidateCache();
+                    setCurrentPage(1);
+                  }}
+                  className="bg-surface-container border border-outline-variant/40 rounded p-2 text-sm focus:border-primary outline-none font-medium text-on-surface"
+                  title="Ordenar figuras"
+                >
+                  <option value="default">Orden de la página principal</option>
+                  <option value="name-asc">Alfabético: A → Z</option>
+                  <option value="name-desc">Alfabético: Z → A</option>
+                  <option value="id-asc">Identificador: Ascendente (#001 → #999)</option>
+                  <option value="id-desc">Identificador: Descendente (#999 → #001)</option>
+                  <option value="recent">Más recientes primero</option>
+                  <option value="oldest">Más antiguas primero</option>
                 </select>
               </div>
 
@@ -935,15 +1044,17 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                         <div className="flex flex-col gap-1 pr-4" onClick={(e) => e.stopPropagation()}>
                           <button 
                             onClick={() => moveFigure(index, -1)} 
-                            disabled={index === 0 && safeCurrentPage === 1} 
-                            className="text-outline hover:text-primary disabled:opacity-30"
+                            disabled={figureSortBy !== 'default' || (index === 0 && safeCurrentPage === 1)} 
+                            title={figureSortBy !== 'default' ? "Para reordenar posición manualmente, selecciona 'Orden de la página principal'" : "Mover posición arriba"}
+                            className="text-outline hover:text-primary disabled:opacity-30 disabled:hover:text-outline"
                           >
                             <ChevronUp className="w-5 h-5" />
                           </button>
                           <button 
                             onClick={() => moveFigure(index, 1)} 
-                            disabled={index === figures.length - 1 && safeCurrentPage === totalFigurePages} 
-                            className="text-outline hover:text-primary disabled:opacity-30"
+                            disabled={figureSortBy !== 'default' || (index === figures.length - 1 && safeCurrentPage === totalFigurePages)} 
+                            title={figureSortBy !== 'default' ? "Para reordenar posición manualmente, selecciona 'Orden de la página principal'" : "Mover posición abajo"}
+                            className="text-outline hover:text-primary disabled:opacity-30 disabled:hover:text-outline"
                           >
                             <ChevronDown className="w-5 h-5" />
                           </button>
@@ -958,7 +1069,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                           </h3>
                           <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                             <p className="text-xs text-on-surface-variant truncate">
-                              Categoría: {categories.find(c => c.id === fig.franchiseId)?.name || fig.franchiseId} • {fig.status}
+                              Categoría: {getCategoryBreadcrumb(fig.franchiseId, categories) || fig.franchiseId} • {fig.status}
                             </p>
                             <span className="inline-flex items-center gap-1 text-xs text-rose-400 bg-rose-950/40 px-1.5 py-0.5 rounded border border-rose-500/20 font-mono">
                               <Heart className="w-3 h-3 fill-rose-500 text-rose-500" />
@@ -1089,16 +1200,112 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
           </div>
         ) : view === 'categories-list' ? (
           <div className="space-y-6">
-            <div className="flex items-center justify-between">
-              <h2 className="text-2xl font-serif font-bold">Categorías (Franquicias)</h2>
-              <button onClick={() => { setEditingCategory(null); setView('category-form'); }} className="flex items-center gap-2 px-4 py-2 bg-primary text-on-primary font-bold rounded-lg hover:brightness-110 active:scale-95 transition-all">
-                <Plus className="w-4 h-4" /> Nueva Categoría
-              </button>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <h2 className="text-2xl font-serif font-bold flex items-center gap-2">
+                  <FolderTree className="w-6 h-6 text-primary" />
+                  Categorías y Subcategorías
+                </h2>
+                <p className="text-xs text-on-surface-variant mt-0.5">
+                  {categories.length} categorías registradas • Permite crear categorías hijas de categorías hijas a cualquier nivel de profundidad.
+                </p>
+              </div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <div className="flex bg-surface-container border border-outline-variant/30 rounded-lg p-0.5 text-xs">
+                  <button
+                    onClick={() => setCategoryViewMode('hierarchy')}
+                    className={`px-3 py-1.5 rounded-md font-medium transition-all ${categoryViewMode === 'hierarchy' ? 'bg-primary text-on-primary shadow' : 'text-on-surface-variant hover:text-on-surface'}`}
+                  >
+                    Árbol Jerárquico
+                  </button>
+                  <button
+                    onClick={() => setCategoryViewMode('flat')}
+                    className={`px-3 py-1.5 rounded-md font-medium transition-all ${categoryViewMode === 'flat' ? 'bg-primary text-on-primary shadow' : 'text-on-surface-variant hover:text-on-surface'}`}
+                  >
+                    Reordenar
+                  </button>
+                </div>
+                <button 
+                  onClick={() => { setEditingCategory(null); setInitialCategoryParentId(''); setView('category-form'); }} 
+                  className="flex items-center gap-1.5 px-4 py-2 bg-primary text-on-primary font-bold rounded-lg hover:brightness-110 active:scale-95 transition-all text-sm"
+                >
+                  <Plus className="w-4 h-4" /> Nueva Categoría Principal
+                </button>
+              </div>
             </div>
 
             <div className="bg-surface-container-low border border-outline-variant/30 rounded-xl overflow-hidden">
               {categories.length === 0 ? (
                 <div className="p-8 text-center text-on-surface-variant">No hay categorías.</div>
+              ) : categoryViewMode === 'hierarchy' ? (
+                <div className="divide-y divide-outline-variant/20">
+                  {getHierarchicalCategories(categories).map(({ category: cat, depth }) => (
+                    <div 
+                      key={cat.id} 
+                      className="flex items-center p-4 hover:bg-surface-container/70 transition-colors group gap-3"
+                      style={{ paddingLeft: `${Math.max(16, 16 + depth * 28)}px` }}
+                    >
+                      <div className="flex items-center gap-2 flex-1 min-w-0">
+                        {depth > 0 && (
+                          <CornerDownRight className="w-4 h-4 text-primary shrink-0 opacity-80" />
+                        )}
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <h3 className="font-semibold text-on-surface truncate">
+                              {cat.name}
+                            </h3>
+                            {depth === 0 ? (
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-surface-container-highest text-on-surface-variant border border-outline-variant/30">
+                                Nivel 1 • Principal
+                              </span>
+                            ) : depth === 1 ? (
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-primary/15 text-primary border border-primary/30">
+                                Nivel 2 • Subcategoría
+                              </span>
+                            ) : (
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30">
+                                Nivel {depth + 1} • Hija de subcategoría
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2 text-xs text-on-surface-variant mt-0.5 flex-wrap">
+                            {cat.parentId && (
+                              <span className="text-outline">
+                                Pertenece a: <strong className="text-on-surface">{getCategoryBreadcrumb(cat.parentId, categories)}</strong>
+                              </span>
+                            )}
+                            <span className="font-mono text-outline">ID: {cat.id}</span>
+                            <span>• Ícono: {cat.icon}</span>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button 
+                          onClick={() => { setEditingCategory(null); setInitialCategoryParentId(cat.id); setView('category-form'); }} 
+                          title={`Crear subcategoría hija dentro de ${cat.name}`}
+                          className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold rounded-lg bg-primary/10 hover:bg-primary/20 text-primary border border-primary/30 transition-all hover:scale-105 active:scale-95"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          <span className="hidden sm:inline">+ Subcategoría</span>
+                        </button>
+                        <button 
+                          onClick={() => { setEditingCategory(cat); setInitialCategoryParentId(cat.parentId || ''); setView('category-form'); }} 
+                          title="Editar categoría"
+                          className="p-2 text-on-surface hover:text-primary rounded-lg bg-surface-container-highest transition-colors"
+                        >
+                          <Edit2 className="w-4 h-4" />
+                        </button>
+                        <button 
+                          onClick={() => handleDeleteCategory(cat)} 
+                          title="Eliminar categoría"
+                          className="p-2 text-on-surface hover:text-error rounded-lg bg-surface-container-highest transition-colors"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               ) : (
                 <div className="divide-y divide-outline-variant/20">
                   {categories.map((cat, index) => (
@@ -1114,9 +1321,17 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                         </h3>
                         <p className="text-xs text-on-surface-variant">Ícono: {cat.icon} <span className="font-mono text-outline ml-2">ID: {cat.id}</span></p>
                       </div>
-                      <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button onClick={() => { setEditingCategory(cat); setView('category-form'); }} className="p-2 text-on-surface hover:text-primary rounded-lg bg-surface-container-highest"><Edit2 className="w-4 h-4" /></button>
-                        <button onClick={() => confirm('¿Eliminar categoría?') && deleteDoc(doc(db, 'categories', cat.id))} className="p-2 text-on-surface hover:text-error rounded-lg bg-surface-container-highest"><Trash2 className="w-4 h-4" /></button>
+                      <div className="flex items-center gap-2">
+                        <button 
+                          onClick={() => { setEditingCategory(null); setInitialCategoryParentId(cat.id); setView('category-form'); }} 
+                          title={`Crear subcategoría hija dentro de ${cat.name}`}
+                          className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold rounded-lg bg-primary/10 hover:bg-primary/20 text-primary border border-primary/30 transition-all"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          <span className="hidden sm:inline">+ Subcategoría</span>
+                        </button>
+                        <button onClick={() => { setEditingCategory(cat); setInitialCategoryParentId(cat.parentId || ''); setView('category-form'); }} className="p-2 text-on-surface hover:text-primary rounded-lg bg-surface-container-highest"><Edit2 className="w-4 h-4" /></button>
+                        <button onClick={() => handleDeleteCategory(cat)} className="p-2 text-on-surface hover:text-error rounded-lg bg-surface-container-highest"><Trash2 className="w-4 h-4" /></button>
                       </div>
                     </div>
                   ))}
@@ -1128,7 +1343,8 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
           <CategoryForm 
             category={editingCategory} 
             categories={categories}
-            onBack={() => { setView('categories-list'); setEditingCategory(null); }} 
+            initialParentId={initialCategoryParentId}
+            onBack={() => { setView('categories-list'); setEditingCategory(null); setInitialCategoryParentId(''); }} 
             orderCount={categories.length} 
           />
         ) : view === 'designers-list' ? (
@@ -1191,7 +1407,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
       {previewingFigure && (
         <ProductModal 
           product={previewingFigure} 
-          categoryName={categories.find(c => c.id === previewingFigure.franchiseId)?.name}
+          categoryName={previewingFigure ? getCategoryBreadcrumb(previewingFigure.franchiseId, categories) : undefined}
           designerName={designers.find(d => d.id === previewingFigure.designerId)?.name}
           onClose={() => setPreviewingFigure(null)}
           config={siteConfig}
@@ -1257,9 +1473,24 @@ function DesignerForm({ designer, onBack, orderCount }: { designer: Designer | n
   );
 }
 
-function CategoryForm({ category, categories, onBack, orderCount }: { category: Category | null, categories: Category[], onBack: () => void, orderCount: number }) {
+function CategoryForm({ 
+  category, 
+  categories, 
+  onBack, 
+  orderCount,
+  initialParentId = ''
+}: { 
+  category: Category | null, 
+  categories: Category[], 
+  onBack: () => void, 
+  orderCount: number,
+  initialParentId?: string
+}) {
   const [formData, setFormData] = useState<Partial<Category>>(category || {
-    id: '', name: '', icon: 'shield', parentId: ''
+    id: '', 
+    name: '', 
+    icon: 'star', 
+    parentId: initialParentId || ''
   });
   const [loading, setLoading] = useState(false);
 
@@ -1267,13 +1498,37 @@ function CategoryForm({ category, categories, onBack, orderCount }: { category: 
     setFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
   };
 
+  // Excluir la propia categoría y cualquiera de sus descendientes para prevenir ciclos
+  const forbiddenIds = useMemo(() => {
+    if (!category) return new Set<string>();
+    const descendants = getAllDescendantCategoryIds(category.id, categories);
+    return new Set<string>([category.id, ...descendants]);
+  }, [category, categories]);
+
+  // Lista de todas las categorías disponibles como padre con jerarquía visual y nivel
+  const parentOptions = useMemo(() => {
+    return categories
+      .filter(c => !forbiddenIds.has(c.id))
+      .map(c => {
+        const depth = getCategoryDepth(c.id, categories);
+        const breadcrumb = getCategoryBreadcrumb(c.id, categories);
+        return {
+          id: c.id,
+          name: c.name,
+          depth,
+          breadcrumb
+        };
+      })
+      .sort((a, b) => a.breadcrumb.localeCompare(b.breadcrumb, 'es', { sensitivity: 'base' }));
+  }, [categories, forbiddenIds]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.name) return alert("Nombre es requerido");
+    if (!formData.name?.trim()) return alert("Nombre es requerido");
     setLoading(true);
     try {
       const payload = {
-        name: formData.name,
+        name: formData.name.trim(),
         icon: formData.icon || 'star',
         parentId: formData.parentId || '',
       };
@@ -1281,7 +1536,14 @@ function CategoryForm({ category, categories, onBack, orderCount }: { category: 
       if (category) {
         await updateDoc(doc(db, 'categories', category.id), payload);
       } else {
-        const newId = formData.name.toLowerCase().replace(/\s+/g, '-');
+        const baseSlug = formData.name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'cat';
+        let newId = baseSlug;
+        if (categories.some(c => c.id === newId)) {
+          newId = `${formData.parentId ? formData.parentId + '-' : ''}${baseSlug}`;
+          if (categories.some(c => c.id === newId)) {
+            newId = `${newId}-${Date.now().toString().slice(-4)}`;
+          }
+        }
         await setDoc(doc(db, 'categories', newId), {
           ...payload,
           id: newId,
@@ -1296,10 +1558,6 @@ function CategoryForm({ category, categories, onBack, orderCount }: { category: 
     setLoading(false);
   };
 
-  const parentOptions = categories
-    .filter(c => c.id !== category?.id && !c.parentId)
-    .sort((a, b) => a.name.localeCompare(b.name, 'es', { sensitivity: 'base' }));
-
   return (
     <div className="max-w-2xl mx-auto space-y-6">
       <div className="flex items-center justify-between">
@@ -1309,16 +1567,43 @@ function CategoryForm({ category, categories, onBack, orderCount }: { category: 
       <form onSubmit={handleSubmit} className="space-y-4 bg-surface-container-low p-6 rounded-xl border border-outline-variant/30 gold-border-glow">
         <div className="space-y-1">
           <label className="text-xs font-bold text-on-surface-variant uppercase">Nombre</label>
-          <input required name="name" value={formData.name} onChange={handleChange} className="w-full bg-surface-container border border-outline-variant/40 rounded p-2 text-sm focus:border-primary outline-none" />
+          <input 
+            required 
+            name="name" 
+            value={formData.name} 
+            onChange={handleChange} 
+            placeholder="Ej: Super Saiyan, Armaduras, Spider-Man..." 
+            className="w-full bg-surface-container border border-outline-variant/40 rounded p-2 text-sm focus:border-primary outline-none" 
+          />
         </div>
         <div className="space-y-1">
-          <label className="text-xs font-bold text-on-surface-variant uppercase">Subcategoría de (Opcional)</label>
-          <select name="parentId" value={formData.parentId} onChange={handleChange} className="w-full bg-surface-container border border-outline-variant/40 rounded p-2 text-sm focus:border-primary outline-none">
-            <option value="">Ninguna (Categoría Principal)</option>
+          <div className="flex items-center justify-between">
+            <label className="text-xs font-bold text-on-surface-variant uppercase">Subcategoría de (Opcional)</label>
+            <span className="text-[10px] text-primary/80 font-medium">Permite crear subcategorías hijas de cualquier nivel</span>
+          </div>
+          <select 
+            name="parentId" 
+            value={formData.parentId || ''} 
+            onChange={handleChange} 
+            className="w-full bg-surface-container border border-outline-variant/40 rounded p-2 text-sm focus:border-primary outline-none"
+          >
+            <option value="">Ninguna (Categoría Principal - Nivel 1)</option>
             {parentOptions.map(p => (
-              <option key={p.id} value={p.id}>{p.name}</option>
+              <option key={p.id} value={p.id}>
+                {'↳ '.repeat(p.depth)}{p.breadcrumb} (Nivel {p.depth + 1})
+              </option>
             ))}
           </select>
+          {formData.parentId ? (
+            <div className="flex items-center gap-1.5 text-xs text-primary/90 mt-1 bg-primary/10 px-2.5 py-1.5 rounded-lg border border-primary/20">
+              <CornerDownRight className="w-3.5 h-3.5 shrink-0" />
+              <span>Se creará como categoría hija de: <strong className="text-primary">{getCategoryBreadcrumb(formData.parentId, categories)}</strong></span>
+            </div>
+          ) : (
+            <p className="text-[11px] text-on-surface-variant/80 mt-1">
+              Se creará como categoría raíz principal (Nivel 1).
+            </p>
+          )}
         </div>
         <div className="space-y-1">
           <label className="text-xs font-bold text-on-surface-variant uppercase">Ícono (Lucide)</label>
@@ -1422,20 +1707,16 @@ export async function getNextFigureNumericId(): Promise<string> {
 
 function FigureForm({ figure, categories, designers, onBack, orderCount }: { figure: Product | null, categories: Category[], designers: Designer[], onBack: () => void, orderCount: number }) {
   // Categorías y subcategorías ordenadas alfabéticamente A-Z
-  // Las subcategorías indican su franquicia de pertenencia, ej: "Ironan (Marvel)"
+  // Las subcategorías indican su jerarquía completa, ej: "Saiyajin (Anime & Manga > Dragon Ball)"
   const sortedFigureCategories = useMemo(() => {
     return categories
-      .map(cat => {
-        const parent = cat.parentId ? categories.find(c => c.id === cat.parentId) : null;
-        const label = parent ? `${cat.name} (${parent.name})` : cat.name;
-        return {
-          id: cat.id,
-          name: cat.name,
-          parentName: parent?.name || '',
-          isSubcategory: !!parent,
-          label,
-        };
-      })
+      .map(cat => ({
+        id: cat.id,
+        name: cat.name,
+        depth: getCategoryDepth(cat.id, categories),
+        isSubcategory: !!cat.parentId,
+        label: getCategoryHierarchyLabel(cat, categories),
+      }))
       .sort((a, b) => {
         const cmp = a.name.localeCompare(b.name, 'es', { sensitivity: 'base' });
         if (cmp !== 0) return cmp;
@@ -1458,27 +1739,6 @@ function FigureForm({ figure, categories, designers, onBack, orderCount }: { fig
     whatsappMessage: ''
   });
   const [loading, setLoading] = useState(false);
-  const [loadingNextId, setLoadingNextId] = useState(!figure);
-
-  // Calcular automáticamente el identificador por defecto sumando 1 al último creado
-  useEffect(() => {
-    if (!figure) {
-      setLoadingNextId(true);
-      getNextFigureNumericId()
-        .then(nextId => {
-          setFormData(prev => {
-            // Asignar por defecto si está vacío
-            if (!prev.numericId || prev.numericId.trim() === '') {
-              return { ...prev, numericId: nextId };
-            }
-            return prev;
-          });
-        })
-        .finally(() => {
-          setLoadingNextId(false);
-        });
-    }
-  }, [figure]);
 
   // Buffer y temporizador para búsqueda y selección instantánea por teclado
   const typeaheadBufferRef = useRef('');
@@ -1644,10 +1904,12 @@ function FigureForm({ figure, categories, designers, onBack, orderCount }: { fig
     e.preventDefault();
     setLoading(true);
     try {
-      // Si se está creando una nueva figura y el identificador está vacío, calcular automáticamente el siguiente
-      let finalNumericId = formData.numericId?.trim() || '';
-      if (!figure?.id && !finalNumericId) {
+      // Si se está creando una nueva figura, la base de datos calcula automáticamente el correlativo sumando 1 al último creado (ej: 525 -> 526)
+      let finalNumericId = '';
+      if (!figure?.id) {
         finalNumericId = await getNextFigureNumericId();
+      } else {
+        finalNumericId = formData.numericId?.trim() || '';
       }
 
       const payload = {
@@ -1699,35 +1961,18 @@ function FigureForm({ figure, categories, designers, onBack, orderCount }: { fig
 
       <form onSubmit={handleSubmit} className="space-y-6 bg-surface-container-low p-6 rounded-xl border border-outline-variant/30 gold-border-glow">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="space-y-1">
-            <div className="flex items-center justify-between">
+          {figure && (
+            <div className="space-y-1">
               <label className="text-xs font-bold text-on-surface-variant uppercase">Identificador</label>
-              {!figure && (
-                <span className="text-[10px] text-primary font-medium flex items-center gap-1.5">
-                  {loadingNextId ? (
-                    <>
-                      <span className="w-2.5 h-2.5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-                      Calculando siguiente...
-                    </>
-                  ) : (
-                    "✓ Asignado por defecto (+1 al último)"
-                  )}
-                </span>
-              )}
+              <input 
+                name="numericId" 
+                value={formData.numericId || ''} 
+                onChange={handleChange} 
+                placeholder="Ej: #001" 
+                className="w-full bg-surface-container border border-outline-variant/40 rounded p-2 text-sm focus:border-primary outline-none font-mono" 
+              />
             </div>
-            <input 
-              name="numericId" 
-              value={formData.numericId || ''} 
-              onChange={handleChange} 
-              placeholder={loadingNextId ? "Calculando identificador..." : "Ej: #001"} 
-              className="w-full bg-surface-container border border-outline-variant/40 rounded p-2 text-sm focus:border-primary outline-none font-mono" 
-            />
-            {!figure && !loadingNextId && formData.numericId && (
-              <p className="text-[11px] text-on-surface-variant">
-                Se calculó automáticamente sumando 1 al último identificador creado. Puedes modificarlo libremente si lo requieres.
-              </p>
-            )}
-          </div>
+          )}
           <div className="space-y-1">
             <label className="text-xs font-bold text-on-surface-variant uppercase">Título</label>
             <input required name="title" value={formData.title} onChange={handleChange} className="w-full bg-surface-container border border-outline-variant/40 rounded p-2 text-sm focus:border-primary outline-none" />

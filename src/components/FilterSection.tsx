@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { useState, useMemo } from 'react';
 import { Category, SortOption } from '../types';
+import { getCategoryHierarchyLabel } from '../categoryUtils';
 
 interface FilterSectionProps {
   searchQuery: string;
@@ -115,16 +116,11 @@ export function FilterSection({
   // Categorías ordenadas alfabéticamente A-Z para selección precisa por teclado
   const sortedCategories = useMemo(() => {
     return categories
-      .map(cat => {
-        const parent = cat.parentId ? categories.find(c => c.id === cat.parentId) : null;
-        const label = parent ? `${cat.name} (${parent.name})` : cat.name;
-        return {
-          id: cat.id,
-          name: cat.name,
-          parentName: parent?.name || '',
-          label,
-        };
-      })
+      .map(cat => ({
+        id: cat.id,
+        name: cat.name,
+        label: getCategoryHierarchyLabel(cat, categories),
+      }))
       .sort((a, b) => {
         const cmp = a.name.localeCompare(b.name, 'es', { sensitivity: 'base' });
         if (cmp !== 0) return cmp;

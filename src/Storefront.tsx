@@ -11,6 +11,7 @@ import { Footer } from './components/Footer';
 import { ProductModal } from './components/ProductModal';
 import { ScrollToCatalogButton } from './components/ScrollToCatalogButton';
 import { Product, Category, Designer, SiteConfig, SortOption } from './types';
+import { getAllDescendantCategoryIds, getCategoryAncestors, getCategoryBreadcrumb } from './categoryUtils';
 import { products as initialProducts } from './data';
 import {
   collection,
@@ -69,8 +70,8 @@ function buildFiguresQuery(
   const figuresRef = collection(db, 'figures');
 
   if (franchiseFilter !== 'all') {
-    const childCatIds = categories.filter((c) => c.parentId === franchiseFilter).map((c) => c.id);
-    const catIds = [franchiseFilter, ...childCatIds];
+    const descendantIds = getAllDescendantCategoryIds(franchiseFilter, categories);
+    const catIds = [franchiseFilter, ...descendantIds];
 
     if (catIds.length === 1) {
       if (afterDoc) {
@@ -78,7 +79,7 @@ function buildFiguresQuery(
       }
       return query(figuresRef, where('franchiseId', '==', catIds[0]), limit(limitCount));
     } else {
-      const sliceIds = catIds.slice(0, 10);
+      const sliceIds = catIds.slice(0, 30);
       if (afterDoc) {
         return query(figuresRef, where('franchiseId', 'in', sliceIds), startAfter(afterDoc), limit(limitCount));
       }
@@ -415,19 +416,18 @@ export function Storefront() {
     return Array.from(scales);
   }, [products]);
 
+  const allowedFranchiseIds = useMemo(() => {
+    if (franchiseFilter === 'all') return null;
+    return new Set([franchiseFilter, ...getAllDescendantCategoryIds(franchiseFilter, categories)]);
+  }, [franchiseFilter, categories]);
+
   const filteredProducts = useMemo(() => {
     return products.filter((product) => {
       const getCategoryNames = (categoryId: string) => {
         const cat = categories.find(c => c.id === categoryId);
         if (!cat) return '';
-        let names = cat.name.toLowerCase();
-        if (cat.parentId) {
-          const parent = categories.find(c => c.id === cat.parentId);
-          if (parent) {
-            names += ' ' + parent.name.toLowerCase();
-          }
-        }
-        return names;
+        const ancestors = getCategoryAncestors(categoryId, categories);
+        return [cat.name, ...ancestors.map(a => a.name)].join(' ').toLowerCase();
       };
 
       const matchesSearch =
@@ -438,18 +438,14 @@ export function Storefront() {
         
       const matchesStatus = statusFilter === 'all' || product.status === statusFilter;
       
-      const productCategory = categories.find(c => c.id === product.franchiseId);
-      const matchesFranchise = 
-        franchiseFilter === 'all' || 
-        product.franchiseId === franchiseFilter || 
-        productCategory?.parentId === franchiseFilter;
+      const matchesFranchise = !allowedFranchiseIds || allowedFranchiseIds.has(product.franchiseId);
 
       const matchesFinish = finishFilter === 'all' || product.finish === finishFilter;
       const matchesScale = scaleFilter === 'all' || (Array.isArray(product.scale) && product.scale.includes(scaleFilter));
 
       return matchesSearch && matchesStatus && matchesFranchise && matchesFinish && matchesScale;
     });
-  }, [searchQuery, statusFilter, franchiseFilter, finishFilter, scaleFilter, products, categories]);
+  }, [searchQuery, statusFilter, allowedFranchiseIds, finishFilter, scaleFilter, products, categories]);
 
   const sortedAndFilteredProducts = useMemo(() => {
     const list = [...filteredProducts];
@@ -566,7 +562,7 @@ export function Storefront() {
       
       <ProductModal 
         product={selectedProduct} 
-        categoryName={selectedProduct ? categories.find(c => c.id === selectedProduct.franchiseId)?.name : undefined}
+        categoryName={selectedProduct ? getCategoryBreadcrumb(selectedProduct.franchiseId, categories) : undefined}
         designerName={selectedProduct && selectedProduct.designerId ? designers.find(d => d.id === selectedProduct.designerId)?.name : undefined}
         onClose={() => setSelectedProduct(null)} 
         config={siteConfig}
