@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { X, MessageCircle, HelpCircle, View, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Product, SiteConfig } from '../types';
 
