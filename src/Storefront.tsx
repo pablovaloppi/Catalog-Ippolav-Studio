@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { Header } from './components/Header';
 import { NavigationDrawer } from './components/NavigationDrawer';
 import { Hero } from './components/Hero';
@@ -18,8 +18,60 @@ import {
   onSnapshot,
   query,
   orderBy,
+  limit,
+  startAfter,
+  getDocs,
+  where,
+  getCountFromServer,
+  QueryDocumentSnapshot,
+  DocumentData,
 } from 'firebase/firestore';
 import { db } from './firebase';
+
+const INITIAL_STEP = 3;
+const INITIAL_TARGET = 12;
+const BATCH_SIZE = 12;
+
+function buildFiguresQuery(
+  franchiseFilter: string,
+  statusFilter: string,
+  categories: Category[],
+  afterDoc?: QueryDocumentSnapshot<DocumentData> | null,
+  limitCount: number = BATCH_SIZE
+) {
+  const figuresRef = collection(db, 'figures');
+
+  if (franchiseFilter !== 'all') {
+    const childCatIds = categories.filter((c) => c.parentId === franchiseFilter).map((c) => c.id);
+    const catIds = [franchiseFilter, ...childCatIds];
+
+    if (catIds.length === 1) {
+      if (afterDoc) {
+        return query(figuresRef, where('franchiseId', '==', catIds[0]), startAfter(afterDoc), limit(limitCount));
+      }
+      return query(figuresRef, where('franchiseId', '==', catIds[0]), limit(limitCount));
+    } else {
+      const sliceIds = catIds.slice(0, 10);
+      if (afterDoc) {
+        return query(figuresRef, where('franchiseId', 'in', sliceIds), startAfter(afterDoc), limit(limitCount));
+      }
+      return query(figuresRef, where('franchiseId', 'in', sliceIds), limit(limitCount));
+    }
+  }
+
+  if (statusFilter !== 'all') {
+    if (afterDoc) {
+      return query(figuresRef, where('status', '==', statusFilter), startAfter(afterDoc), limit(limitCount));
+    }
+    return query(figuresRef, where('status', '==', statusFilter), limit(limitCount));
+  }
+
+  // Consulta por defecto ordenada por orden
+  if (afterDoc) {
+    return query(figuresRef, orderBy('order', 'asc'), startAfter(afterDoc), limit(limitCount));
+  }
+  return query(figuresRef, orderBy('order', 'asc'), limit(limitCount));
+}
 
 export function Storefront() {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
@@ -32,39 +84,87 @@ export function Storefront() {
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   
   const [products, setProducts] = useState<Product[]>([]);
+  const [lastDoc, setLastDoc] = useState<QueryDocumentSnapshot<DocumentData> | null>(null);
+  const [hasMore, setHasMore] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [totalFiguresInDb, setTotalFiguresInDb] = useState<number | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
   const [designers, setDesigners] = useState<Designer[]>([]);
   const [siteConfig, setSiteConfig] = useState<SiteConfig | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Carga todas las figuras en memoria para permitir búsqueda y filtrado instantáneos
+  // Obtener el total de figuras añadidas en la base de datos de Firestore
   useEffect(() => {
     let isMounted = true;
+    async function fetchTotalFiguresCount() {
+      try {
+        const countSnap = await getCountFromServer(collection(db, 'figures'));
+        if (isMounted) {
+          setTotalFiguresInDb(countSnap.data().count);
+        }
+      } catch (err) {
+        console.warn("No se pudo obtener el conteo de figuras de Firestore:", err);
+      }
+    }
+    fetchTotalFiguresCount();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
-    const qProducts = query(collection(db, 'figures'), orderBy('order', 'asc'));
-    const unsubProducts = onSnapshot(
-      qProducts,
-      (snapshot) => {
-        if (!isMounted) return;
+  // Carga inicial ultra-rápida: sólo las primeras 3 figuras para renderizado inmediato
+  useEffect(() => {
+    let isCancelled = false;
+
+    async function loadInitialBatch() {
+      setLoading(true);
+      try {
+        const q = buildFiguresQuery(franchiseFilter, statusFilter, categories, null, INITIAL_STEP);
+        const snapshot = await getDocs(q);
+        if (isCancelled) return;
+
         const data: Product[] = [];
         snapshot.forEach((docSnap) => {
           data.push({ id: docSnap.id, ...docSnap.data() } as Product);
         });
+
         if (data.length > 0) {
           setProducts(data);
+          const lastVisible = snapshot.docs[snapshot.docs.length - 1] || null;
+          setLastDoc(lastVisible);
+          setHasMore(snapshot.docs.length === INITIAL_STEP);
+        } else if (franchiseFilter === 'all' && statusFilter === 'all') {
+          // Si la base de datos de Firestore está vacía, usar las figuras locales de prueba
+          setProducts(initialProducts.slice(0, INITIAL_STEP));
+          setLastDoc(null);
+          setHasMore(initialProducts.length > INITIAL_STEP);
         } else {
-          setProducts(initialProducts);
+          setProducts([]);
+          setLastDoc(null);
+          setHasMore(false);
         }
-        setLoading(false);
-      },
-      (error) => {
-        console.error("Error fetching figures from Firestore: ", error);
-        if (isMounted) {
-          setProducts(initialProducts);
+      } catch (error) {
+        console.error("Error cargando lote inicial de figuras: ", error);
+        if (!isCancelled && franchiseFilter === 'all' && statusFilter === 'all') {
+          setProducts(initialProducts.slice(0, INITIAL_STEP));
+        }
+      } finally {
+        if (!isCancelled) {
           setLoading(false);
         }
       }
-    );
+    }
+
+    loadInitialBatch();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [franchiseFilter, statusFilter]);
+
+  // Carga de categorías, diseñadores y configuración en tiempo real
+  useEffect(() => {
+    let isMounted = true;
 
     const qCats = query(collection(db, 'categories'), orderBy('order', 'asc'));
     const unsubCats = onSnapshot(qCats, (snapshot) => {
@@ -95,12 +195,52 @@ export function Storefront() {
 
     return () => {
       isMounted = false;
-      unsubProducts();
       unsubCats();
       unsubDesigners();
       unsubConfig();
     };
   }, []);
+
+  // Carga de siguientes lotes: de 3 en 3 hasta las primeras 12, luego en lotes de 12
+  const loadMore = useCallback(async (customStep?: number) => {
+    if (loadingMore || !hasMore || !lastDoc) return;
+    setLoadingMore(true);
+
+    const step = customStep ?? (products.length < INITIAL_TARGET ? INITIAL_STEP : BATCH_SIZE);
+
+    try {
+      const qNext = buildFiguresQuery(franchiseFilter, statusFilter, categories, lastDoc, step);
+      const snapshot = await getDocs(qNext);
+      const data: Product[] = [];
+      snapshot.forEach((docSnap) => {
+        data.push({ id: docSnap.id, ...docSnap.data() } as Product);
+      });
+
+      setProducts((prev) => {
+        const existingIds = new Set(prev.map((p) => p.id));
+        const newItems = data.filter((p) => !existingIds.has(p.id));
+        return [...prev, ...newItems];
+      });
+
+      const nextLastDoc = snapshot.docs[snapshot.docs.length - 1] || null;
+      setLastDoc(nextLastDoc);
+      setHasMore(snapshot.docs.length === step);
+    } catch (error) {
+      console.error("Error cargando siguiente lote de figuras: ", error);
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [loadingMore, hasMore, lastDoc, franchiseFilter, statusFilter, categories, products.length]);
+
+  // Cascada progresiva automática de las primeras 12 figuras: 3, luego 3, luego 3, luego 3
+  useEffect(() => {
+    if (!loading && !loadingMore && hasMore && products.length > 0 && products.length < INITIAL_TARGET) {
+      const timer = setTimeout(() => {
+        loadMore(INITIAL_STEP);
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [loading, loadingMore, hasMore, products.length, loadMore]);
 
   const availableFinishes = useMemo(() => {
     const finishes = new Set(products.map(p => p.finish).filter(Boolean));
@@ -135,7 +275,9 @@ export function Storefront() {
       };
 
       const matchesSearch =
+        searchQuery.trim() === '' ||
         product.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (product.numericId && product.numericId.toLowerCase().includes(searchQuery.toLowerCase())) ||
         getCategoryNames(product.franchiseId).includes(searchQuery.toLowerCase());
         
       const matchesStatus = statusFilter === 'all' || product.status === statusFilter;
@@ -152,6 +294,30 @@ export function Storefront() {
       return matchesSearch && matchesStatus && matchesFranchise && matchesFinish && matchesScale;
     });
   }, [searchQuery, statusFilter, franchiseFilter, finishFilter, scaleFilter, products, categories]);
+
+  // Si el usuario busca o filtra y hay pocas coincidencias cargadas, buscar en el siguiente lote
+  useEffect(() => {
+    const isSearchingOrFiltering =
+      searchQuery.trim() !== '' ||
+      finishFilter !== 'all' ||
+      scaleFilter !== 'all';
+
+    if (isSearchingOrFiltering && hasMore && !loadingMore && !loading && filteredProducts.length < 4) {
+      const timeoutId = setTimeout(() => {
+        loadMore();
+      }, 400);
+      return () => clearTimeout(timeoutId);
+    }
+  }, [
+    searchQuery,
+    finishFilter,
+    scaleFilter,
+    filteredProducts.length,
+    hasMore,
+    loadingMore,
+    loading,
+    loadMore,
+  ]);
 
   return (
     <>
@@ -184,6 +350,10 @@ export function Storefront() {
             products={filteredProducts}
             categories={categories}
             onSelectProduct={setSelectedProduct}
+            hasMore={hasMore}
+            loadingMore={loadingMore}
+            onLoadMore={loadMore}
+            totalFiguresInDb={totalFiguresInDb}
           />
         )}
         <Franchises onSelectFranchise={setFranchiseFilter} categories={categories} />

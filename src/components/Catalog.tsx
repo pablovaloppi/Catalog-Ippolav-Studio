@@ -170,6 +170,7 @@ interface CatalogProps {
   hasMore?: boolean;
   loadingMore?: boolean;
   onLoadMore?: () => void;
+  totalFiguresInDb?: number | null;
 }
 
 export function Catalog({
@@ -179,18 +180,47 @@ export function Catalog({
   hasMore = false,
   loadingMore = false,
   onLoadMore,
+  totalFiguresInDb,
 }: CatalogProps) {
+  const observerTarget = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!hasMore || loadingMore || !onLoadMore) return;
+    const target = observerTarget.current;
+    if (!target) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) {
+          onLoadMore();
+        }
+      },
+      {
+        root: null,
+        rootMargin: '450px',
+        threshold: 0,
+      }
+    );
+
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [hasMore, loadingMore, onLoadMore]);
+
+  const displayTotal = totalFiguresInDb !== null && totalFiguresInDb !== undefined
+    ? totalFiguresInDb
+    : products.length;
+
   return (
     <section id="catalogo" className="px-5 md:px-12 py-12">
-      <div className="flex flex-col sm:flex-row sm:items-end justify-between mb-8 pb-4 border-b border-outline-variant/20 gap-2">
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between mb-8 pb-4 border-b border-outline-variant/20 gap-3">
         <div>
           <span className="text-[10px] font-bold text-primary tracking-widest uppercase">Galería Oficial</span>
           <h2 className="font-serif text-3xl font-medium text-on-surface mt-1">Catálogo de Colección</h2>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 bg-surface-container-low px-3.5 py-1.5 rounded-full border border-outline-variant/30 w-fit shadow-sm">
           <span className="inline-block w-2 h-2 rounded-full bg-emerald-400"></span>
           <span className="text-xs font-semibold text-on-surface-variant">
-            {products.length} {products.length === 1 ? 'figura' : 'figuras'}{hasMore ? ' (deslizá para ver más)' : ''}
+            <span className="text-on-surface font-bold">{displayTotal}</span> {displayTotal === 1 ? 'figura en catálogo' : 'figuras en catálogo'}
           </span>
         </div>
       </div>
@@ -221,9 +251,9 @@ export function Catalog({
         </div>
       )}
 
-      {/* Loader opcional si se utilizara paginación remota */}
+      {/* Control de carga progresiva infinita y botón manual */}
       {hasMore && (
-        <div className="mt-8 py-6 flex flex-col items-center justify-center gap-3">
+        <div ref={observerTarget} className="mt-8 py-6 flex flex-col items-center justify-center gap-3">
           {loadingMore ? (
             <div className="flex items-center gap-2 text-primary text-sm font-semibold">
               <Loader2 className="w-5 h-5 animate-spin" />
@@ -232,11 +262,19 @@ export function Catalog({
           ) : (
             <button
               onClick={onLoadMore}
-              className="px-5 py-2 rounded-lg border border-outline-variant/40 bg-surface-container-low hover:border-primary text-xs font-semibold text-on-surface-variant hover:text-primary transition-all active:scale-95"
+              className="px-6 py-2.5 rounded-lg border border-primary/40 bg-surface-container-low hover:border-primary text-xs font-semibold text-primary transition-all active:scale-95 shadow-sm"
             >
-              Cargar más figuras
+              Cargar más figuras ({products.length} visibles)
             </button>
           )}
+        </div>
+      )}
+
+      {!hasMore && products.length > 0 && (
+        <div className="mt-8 py-4 text-center">
+          <span className="text-xs text-on-surface-variant/80 font-medium tracking-wide">
+            ✓ Has explorado todas las figuras disponibles ({products.length})
+          </span>
         </div>
       )}
 
