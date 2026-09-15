@@ -223,6 +223,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
         const currIndex = matching.findIndex(item => item.id === figureFilterCategory);
         const nextMatch = currIndex !== -1 ? matching[(currIndex + 1) % matching.length] : matching[0];
         setFigureFilterCategory(nextMatch.id);
+        invalidateCache();
         setCurrentPage(1);
       }
     }
@@ -231,6 +232,10 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   // Firestore pagination cursors and in-memory cache
   const pageCursorsRef = useRef<Map<number, QueryDocumentSnapshot>>(new Map());
   const pageCacheRef = useRef<Map<number, Product[]>>(new Map());
+  const searchCacheRef = useRef<{
+    key: string;
+    items: Product[];
+  } | null>(null);
 
   // Auto assign identifiers modal
   const [showAutoIdModal, setShowAutoIdModal] = useState(false);
@@ -253,10 +258,38 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   const invalidateCache = useCallback(() => {
     pageCacheRef.current.clear();
     pageCursorsRef.current.clear();
+    searchCacheRef.current = null;
   }, []);
 
-  // Carga paginada optimizada de figuras con soporte de ordenamiento y jerarquía de categorías
-  const loadFigures = useCallback(async (page: number, pageSize: number, catFilter: string, search: string, sortBy: 'default' | 'name-asc' | 'name-desc' | 'id-asc' | 'id-desc' | 'recent' | 'oldest' = 'default') => {
+  // Determinar parámetros de ordenamiento para Firestore según la selección del usuario
+  const getFirestoreSortParams = (sortBy: 'default' | 'name-asc' | 'name-desc' | 'id-asc' | 'id-desc' | 'recent' | 'oldest') => {
+    switch (sortBy) {
+      case 'recent':
+        return { field: 'order', direction: 'desc' as const };
+      case 'oldest':
+        return { field: 'order', direction: 'asc' as const };
+      case 'name-asc':
+        return { field: 'title', direction: 'asc' as const };
+      case 'name-desc':
+        return { field: 'title', direction: 'desc' as const };
+      case 'id-asc':
+        return { field: 'numericId', direction: 'asc' as const };
+      case 'id-desc':
+        return { field: 'numericId', direction: 'desc' as const };
+      case 'default':
+      default:
+        return { field: 'order', direction: 'asc' as const };
+    }
+  };
+
+  // Carga paginada optimizada de figuras: solo carga las figuras de la página actual y las va cargando al cambiar de página
+  const loadFigures = useCallback(async (
+    page: number, 
+    pageSize: number, 
+    catFilter: string, 
+    search: string, 
+    sortBy: 'default' | 'name-asc' | 'name-desc' | 'id-asc' | 'id-desc' | 'recent' | 'oldest' = 'default'
+  ) => {
     setFiguresLoading(true);
     try {
       const trimmedSearch = search.trim().toLowerCase();
@@ -264,71 +297,60 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
         ? []
         : [catFilter, ...getAllDescendantCategoryIds(catFilter, categories)];
 
-      // Si hay búsqueda activa o se seleccionó un ordenamiento personalizado (diferente de 'default')
-      if (trimmedSearch || sortBy !== 'default') {
-        const baseQ = catFilter === 'all'
-          ? collection(db, 'figures')
-          : (matchingCatIds.length === 1
-              ? query(collection(db, 'figures'), where('franchiseId', '==', catFilter))
-              : query(collection(db, 'figures'), where('franchiseId', 'in', matchingCatIds.slice(0, 30))));
+      // CASO 1: Búsqueda activa por texto (subcadena en título o identificador)
+      if (trimmedSearch) {
+        const cacheKey = `${catFilter}_${trimmedSearch}_${sortBy}`;
+        let matched: Product[] = [];
 
-        const snap = await getDocs(baseQ);
-        const allFetched: Product[] = [];
-        snap.forEach(d => allFetched.push({ id: d.id, ...d.data() } as Product));
+        if (searchCacheRef.current && searchCacheRef.current.key === cacheKey) {
+          matched = searchCacheRef.current.items;
+        } else {
+          const baseQ = catFilter === 'all'
+            ? collection(db, 'figures')
+            : (matchingCatIds.length === 1
+                ? query(collection(db, 'figures'), where('franchiseId', '==', catFilter))
+                : query(collection(db, 'figures'), where('franchiseId', 'in', matchingCatIds.slice(0, 30))));
 
-        // Filtrar por categorías descendientes si hubiese más de 30
-        let matched = allFetched;
-        if (catFilter !== 'all' && matchingCatIds.length > 30) {
-          matched = matched.filter(fig => matchingCatIds.includes(fig.franchiseId));
-        }
+          const snap = await getDocs(baseQ);
+          const allFetched: Product[] = [];
+          snap.forEach(d => allFetched.push({ id: d.id, ...d.data() } as Product));
 
-        // Filtrar por búsqueda si corresponde
-        if (trimmedSearch) {
+          matched = allFetched;
+          if (catFilter !== 'all' && matchingCatIds.length > 30) {
+            matched = matched.filter(fig => matchingCatIds.includes(fig.franchiseId));
+          }
+
           matched = matched.filter(fig => 
             fig.title.toLowerCase().includes(trimmedSearch) ||
             (fig.numericId && fig.numericId.toLowerCase().includes(trimmedSearch))
           );
-        }
 
-        // Ordenar según la opción seleccionada
-        matched.sort((a, b) => {
-          if (sortBy === 'name-asc') {
-            return a.title.localeCompare(b.title, 'es', { sensitivity: 'base' });
-          }
-          if (sortBy === 'name-desc') {
-            return b.title.localeCompare(a.title, 'es', { sensitivity: 'base' });
-          }
-          if (sortBy === 'id-asc') {
-            const parsedA = parseNumericId(a.numericId);
-            const parsedB = parseNumericId(b.numericId);
-            if (parsedA && parsedB) return parsedA.num - parsedB.num;
-            if (parsedA) return -1;
-            if (parsedB) return 1;
-            return (a.numericId || '').localeCompare(b.numericId || '');
-          }
-          if (sortBy === 'id-desc') {
-            const parsedA = parseNumericId(a.numericId);
-            const parsedB = parseNumericId(b.numericId);
-            if (parsedA && parsedB) return parsedB.num - parsedA.num;
-            if (parsedA) return 1;
-            if (parsedB) return -1;
-            return (b.numericId || '').localeCompare(a.numericId || '');
-          }
-          if (sortBy === 'recent') {
-            const timeA = (a.createdAt as any)?.toMillis ? (a.createdAt as any).toMillis() : ((a.createdAt as any)?.seconds ? (a.createdAt as any).seconds * 1000 : (a.order ?? 0));
-            const timeB = (b.createdAt as any)?.toMillis ? (b.createdAt as any).toMillis() : ((b.createdAt as any)?.seconds ? (b.createdAt as any).seconds * 1000 : (b.order ?? 0));
-            if (timeB !== timeA) return timeB - timeA;
-            return (b.order ?? 0) - (a.order ?? 0);
-          }
-          if (sortBy === 'oldest') {
-            const timeA = (a.createdAt as any)?.toMillis ? (a.createdAt as any).toMillis() : ((a.createdAt as any)?.seconds ? (a.createdAt as any).seconds * 1000 : (a.order ?? 0));
-            const timeB = (b.createdAt as any)?.toMillis ? (b.createdAt as any).toMillis() : ((b.createdAt as any)?.seconds ? (b.createdAt as any).seconds * 1000 : (b.order ?? 0));
-            if (timeA !== timeB) return timeA - timeB;
+          matched.sort((a, b) => {
+            if (sortBy === 'name-asc') return a.title.localeCompare(b.title, 'es', { sensitivity: 'base' });
+            if (sortBy === 'name-desc') return b.title.localeCompare(a.title, 'es', { sensitivity: 'base' });
+            if (sortBy === 'id-asc') {
+              const parsedA = parseNumericId(a.numericId);
+              const parsedB = parseNumericId(b.numericId);
+              if (parsedA && parsedB) return parsedA.num - parsedB.num;
+              if (parsedA) return -1;
+              if (parsedB) return 1;
+              return (a.numericId || '').localeCompare(b.numericId || '');
+            }
+            if (sortBy === 'id-desc') {
+              const parsedA = parseNumericId(a.numericId);
+              const parsedB = parseNumericId(b.numericId);
+              if (parsedA && parsedB) return parsedB.num - parsedA.num;
+              if (parsedA) return 1;
+              if (parsedB) return -1;
+              return (b.numericId || '').localeCompare(a.numericId || '');
+            }
+            if (sortBy === 'recent') return (b.order ?? 0) - (a.order ?? 0);
+            if (sortBy === 'oldest') return (a.order ?? 0) - (b.order ?? 0);
             return (a.order ?? 0) - (b.order ?? 0);
-          }
-          // Default: orden de la página principal
-          return (a.order ?? 0) - (b.order ?? 0);
-        });
+          });
+
+          searchCacheRef.current = { key: cacheKey, items: matched };
+        }
 
         setTotalAdminFigures(matched.length);
         const startIndex = (page - 1) * pageSize;
@@ -337,7 +359,15 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
         return;
       }
 
-      // Conteo total rápido vía getCountFromServer sin descargar figuras cuando es 'default' y sin búsqueda
+      // CASO 2: Sin búsqueda activa -> Paginación pura por página (solo descarga el lote de la página)
+      // Si la página ya se descargó previamente en esta sesión, servirla de inmediato desde memoria (0ms)
+      if (pageCacheRef.current.has(page)) {
+        setFigures(pageCacheRef.current.get(page)!);
+        setFiguresLoading(false);
+        return;
+      }
+
+      // Conteo total rápido vía getCountFromServer sin descargar figuras ni imágenes
       const countQ = catFilter === 'all'
         ? collection(db, 'figures')
         : (matchingCatIds.length === 1
@@ -354,55 +384,106 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
         return;
       }
 
-      // Si la página está en caché en memoria
-      if (pageCacheRef.current.has(page)) {
-        setFigures(pageCacheRef.current.get(page)!);
-        setFiguresLoading(false);
-        return;
-      }
-
+      const { field: sortField, direction: sortDirection } = getFirestoreSortParams(sortBy);
       const cursor = pageCursorsRef.current.get(page);
 
-      if (page === 1 || !cursor) {
-        const fetchLimit = cursor ? pageSize : Math.max(pageSize, page * pageSize);
-        const baseQ = catFilter === 'all'
-          ? query(collection(db, 'figures'), orderBy('order', 'asc'), limit(fetchLimit))
-          : (matchingCatIds.length === 1
-              ? query(collection(db, 'figures'), where('franchiseId', '==', catFilter), orderBy('order', 'asc'), limit(fetchLimit))
-              : query(collection(db, 'figures'), where('franchiseId', 'in', matchingCatIds.slice(0, 30)), orderBy('order', 'asc'), limit(fetchLimit)));
+      try {
+        if (page === 1 || !cursor) {
+          // Carga de la primera página (o salto no secuencial): limitando estrictamente la cantidad
+          const fetchLimit = cursor ? pageSize : Math.max(pageSize, page * pageSize);
+          const baseQ = catFilter === 'all'
+            ? query(collection(db, 'figures'), orderBy(sortField, sortDirection), limit(fetchLimit))
+            : (matchingCatIds.length === 1
+                ? query(collection(db, 'figures'), where('franchiseId', '==', catFilter), orderBy(sortField, sortDirection), limit(fetchLimit))
+                : query(collection(db, 'figures'), where('franchiseId', 'in', matchingCatIds.slice(0, 30)), orderBy(sortField, sortDirection), limit(fetchLimit)));
 
-        const snap = await getDocs(baseQ);
-        const allDocs = snap.docs;
+          const snap = await getDocs(baseQ);
+          const allDocs = snap.docs;
 
-        for (let p = 1; p <= Math.ceil(allDocs.length / pageSize); p++) {
-          const lastDocOfPage = allDocs[Math.min(p * pageSize - 1, allDocs.length - 1)];
-          if (lastDocOfPage) {
-            pageCursorsRef.current.set(p + 1, lastDocOfPage);
+          for (let p = 1; p <= Math.ceil(allDocs.length / pageSize); p++) {
+            const lastDocOfPage = allDocs[Math.min(p * pageSize - 1, allDocs.length - 1)];
+            if (lastDocOfPage) {
+              pageCursorsRef.current.set(p + 1, lastDocOfPage);
+            }
+            const sliceStart = (p - 1) * pageSize;
+            const sliceEnd = Math.min(p * pageSize, allDocs.length);
+            const pageData = allDocs.slice(sliceStart, sliceEnd).map(d => ({ id: d.id, ...d.data() } as Product));
+            pageCacheRef.current.set(p, pageData);
           }
-          const sliceStart = (p - 1) * pageSize;
-          const sliceEnd = Math.min(p * pageSize, allDocs.length);
-          const pageData = allDocs.slice(sliceStart, sliceEnd).map(d => ({ id: d.id, ...d.data() } as Product));
-          pageCacheRef.current.set(p, pageData);
-        }
 
-        const startIndex = (page - 1) * pageSize;
-        const pageDocs = allDocs.slice(startIndex, startIndex + pageSize);
-        setFigures(pageDocs.map(d => ({ id: d.id, ...d.data() } as Product)));
-      } else {
-        const baseQ = catFilter === 'all'
-          ? query(collection(db, 'figures'), orderBy('order', 'asc'), startAfter(cursor), limit(pageSize))
+          const startIndex = (page - 1) * pageSize;
+          const pageDocs = allDocs.slice(startIndex, startIndex + pageSize);
+          setFigures(pageDocs.map(d => ({ id: d.id, ...d.data() } as Product)));
+        } else {
+          // Navegación secuencial por cursor: solo descarga exactamente las figuras de la página solicitada
+          const baseQ = catFilter === 'all'
+            ? query(collection(db, 'figures'), orderBy(sortField, sortDirection), startAfter(cursor), limit(pageSize))
+            : (matchingCatIds.length === 1
+                ? query(collection(db, 'figures'), where('franchiseId', '==', catFilter), orderBy(sortField, sortDirection), startAfter(cursor), limit(pageSize))
+                : query(collection(db, 'figures'), where('franchiseId', 'in', matchingCatIds.slice(0, 30)), orderBy(sortField, sortDirection), startAfter(cursor), limit(pageSize)));
+
+          const snap = await getDocs(baseQ);
+          const docs = snap.docs;
+          if (docs.length > 0) {
+            pageCursorsRef.current.set(page + 1, docs[docs.length - 1]);
+          }
+          const pageData = docs.map(d => ({ id: d.id, ...d.data() } as Product));
+          pageCacheRef.current.set(page, pageData);
+          setFigures(pageData);
+        }
+      } catch (directQueryError: any) {
+        // En caso de que se filtre por categoría y Firestore requiera un índice compuesto no creado aún
+        console.warn("Consulta paginada directa con Firestore falló, usando estrategia de reserva con caché:", directQueryError);
+
+        const fallbackQ = catFilter === 'all'
+          ? collection(db, 'figures')
           : (matchingCatIds.length === 1
-              ? query(collection(db, 'figures'), where('franchiseId', '==', catFilter), orderBy('order', 'asc'), startAfter(cursor), limit(pageSize))
-              : query(collection(db, 'figures'), where('franchiseId', 'in', matchingCatIds.slice(0, 30)), orderBy('order', 'asc'), startAfter(cursor), limit(pageSize)));
+              ? query(collection(db, 'figures'), where('franchiseId', '==', catFilter))
+              : query(collection(db, 'figures'), where('franchiseId', 'in', matchingCatIds.slice(0, 30))));
 
-        const snap = await getDocs(baseQ);
-        const docs = snap.docs;
-        if (docs.length > 0) {
-          pageCursorsRef.current.set(page + 1, docs[docs.length - 1]);
+        const snap = await getDocs(fallbackQ);
+        const allFetched: Product[] = [];
+        snap.forEach(d => allFetched.push({ id: d.id, ...d.data() } as Product));
+
+        let matched = allFetched;
+        if (catFilter !== 'all' && matchingCatIds.length > 30) {
+          matched = matched.filter(fig => matchingCatIds.includes(fig.franchiseId));
         }
-        const pageData = docs.map(d => ({ id: d.id, ...d.data() } as Product));
-        pageCacheRef.current.set(page, pageData);
-        setFigures(pageData);
+
+        matched.sort((a, b) => {
+          if (sortBy === 'name-asc') return a.title.localeCompare(b.title, 'es', { sensitivity: 'base' });
+          if (sortBy === 'name-desc') return b.title.localeCompare(a.title, 'es', { sensitivity: 'base' });
+          if (sortBy === 'id-asc') {
+            const parsedA = parseNumericId(a.numericId);
+            const parsedB = parseNumericId(b.numericId);
+            if (parsedA && parsedB) return parsedA.num - parsedB.num;
+            if (parsedA) return -1;
+            if (parsedB) return 1;
+            return (a.numericId || '').localeCompare(b.numericId || '');
+          }
+          if (sortBy === 'id-desc') {
+            const parsedA = parseNumericId(a.numericId);
+            const parsedB = parseNumericId(b.numericId);
+            if (parsedA && parsedB) return parsedB.num - parsedA.num;
+            if (parsedA) return 1;
+            if (parsedB) return -1;
+            return (b.numericId || '').localeCompare(a.numericId || '');
+          }
+          if (sortBy === 'recent') return (b.order ?? 0) - (a.order ?? 0);
+          if (sortBy === 'oldest') return (a.order ?? 0) - (b.order ?? 0);
+          return (a.order ?? 0) - (b.order ?? 0);
+        });
+
+        // Guardar todas las páginas en caché para que las siguientes páginas no vuelvan a descargar nada
+        for (let p = 1; p <= Math.ceil(matched.length / pageSize); p++) {
+          const sliceStart = (p - 1) * pageSize;
+          const sliceEnd = Math.min(p * pageSize, matched.length);
+          pageCacheRef.current.set(p, matched.slice(sliceStart, sliceEnd));
+        }
+
+        setTotalAdminFigures(matched.length);
+        const startIndex = (page - 1) * pageSize;
+        setFigures(matched.slice(startIndex, startIndex + pageSize));
       }
     } catch (error) {
       console.error("Error al cargar figuras en el panel de administración:", error);
@@ -943,6 +1024,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                   value={figureSearch} 
                   onChange={(e) => {
                     setFigureSearch(e.target.value);
+                    invalidateCache();
                     setCurrentPage(1);
                   }}
                   className="flex-1 min-w-[200px] bg-surface-container border border-outline-variant/40 rounded p-2 text-sm focus:border-primary outline-none"
@@ -951,6 +1033,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                   value={figureFilterCategory} 
                   onChange={(e) => {
                     setFigureFilterCategory(e.target.value);
+                    invalidateCache();
                     setCurrentPage(1);
                   }}
                   onKeyDown={handleFilterCategoryKeyDown}
@@ -992,6 +1075,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                       type="button"
                       onClick={() => {
                         setFiguresPerPage(size);
+                        invalidateCache();
                         setCurrentPage(1);
                       }}
                       className={`px-2.5 py-1 text-xs font-semibold rounded transition-all ${
@@ -1107,7 +1191,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                   {/* Barra de paginación */}
                   <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-4 py-3 border-t border-outline-variant/20 bg-surface-container-low/60 text-xs text-on-surface-variant">
                     <div>
-                      Mostrando <span className="font-semibold text-on-surface">{startFigureIndex + 1}</span> a{' '}
+                      Mostrando <span className="font-semibold text-on-surface">{totalAdminFigures === 0 ? 0 : startFigureIndex + 1}</span> a{' '}
                       <span className="font-semibold text-on-surface">{endFigureIndex}</span> de{' '}
                       <span className="font-semibold text-on-surface">{totalAdminFigures}</span> figuras
                       {totalFigurePages > 1 && (
