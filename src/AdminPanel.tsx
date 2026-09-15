@@ -4,7 +4,7 @@ import { loginWithGoogle, logout, db } from './firebase';
 import { collection, addDoc, setDoc, onSnapshot, query, orderBy, deleteDoc, doc, updateDoc, serverTimestamp, writeBatch } from 'firebase/firestore';
 import { Product, Category, Designer, SiteConfig } from './types';
 import { products as initialProducts } from './data';
-import { Plus, ChevronUp, ChevronDown, Trash2, Edit2, LogOut, ImagePlus, UserCircle, Settings, Hash, Sparkles, Eye } from 'lucide-react';
+import { Plus, ChevronUp, ChevronDown, Trash2, Edit2, LogOut, ImagePlus, UserCircle, Settings, Hash, Sparkles, Eye, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
 import { ProductModal } from './components/ProductModal';
 
 // Removed inline Category interface
@@ -81,6 +81,8 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
 
   const [figureSearch, setFigureSearch] = useState('');
   const [figureFilterCategory, setFigureFilterCategory] = useState('all');
+  const [figuresPerPage, setFiguresPerPage] = useState<number>(10);
+  const [currentPage, setCurrentPage] = useState<number>(1);
 
   // Auto assign identifiers modal
   const [showAutoIdModal, setShowAutoIdModal] = useState(false);
@@ -173,6 +175,13 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
     const matchesCategory = figureFilterCategory === 'all' || fig.franchiseId === figureFilterCategory;
     return matchesSearch && matchesCategory;
   });
+
+  const totalAdminFigures = filteredAdminFigures.length;
+  const totalFigurePages = Math.max(1, Math.ceil(totalAdminFigures / figuresPerPage));
+  const safeCurrentPage = Math.min(Math.max(1, currentPage), totalFigurePages);
+  const startFigureIndex = (safeCurrentPage - 1) * figuresPerPage;
+  const endFigureIndex = Math.min(startFigureIndex + figuresPerPage, totalAdminFigures);
+  const paginatedAdminFigures = filteredAdminFigures.slice(startFigureIndex, endFigureIndex);
 
   useEffect(() => {
     const qFig = query(collection(db, 'figures'), orderBy('order', 'asc'));
@@ -521,76 +530,200 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
               </div>
             )}
 
-            <div className="flex flex-col sm:flex-row gap-4 mb-4">
-              <input 
-                type="text" 
-                placeholder="Buscar por título o identificador..." 
-                value={figureSearch} 
-                onChange={(e) => setFigureSearch(e.target.value)}
-                className="flex-1 bg-surface-container border border-outline-variant/40 rounded p-2 text-sm focus:border-primary outline-none"
-              />
-              <select 
-                value={figureFilterCategory} 
-                onChange={(e) => setFigureFilterCategory(e.target.value)}
-                className="bg-surface-container border border-outline-variant/40 rounded p-2 text-sm focus:border-primary outline-none"
-              >
-                <option value="all">Todas las categorías</option>
-                {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 mb-4">
+              <div className="flex flex-1 flex-col sm:flex-row gap-3">
+                <input 
+                  type="text" 
+                  placeholder="Buscar por título o identificador..." 
+                  value={figureSearch} 
+                  onChange={(e) => {
+                    setFigureSearch(e.target.value);
+                    setCurrentPage(1);
+                  }}
+                  className="flex-1 bg-surface-container border border-outline-variant/40 rounded p-2 text-sm focus:border-primary outline-none"
+                />
+                <select 
+                  value={figureFilterCategory} 
+                  onChange={(e) => {
+                    setFigureFilterCategory(e.target.value);
+                    setCurrentPage(1);
+                  }}
+                  className="bg-surface-container border border-outline-variant/40 rounded p-2 text-sm focus:border-primary outline-none"
+                >
+                  <option value="all">Todas las categorías</option>
+                  {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+              </div>
+
+              <div className="flex items-center justify-between sm:justify-end gap-2 bg-surface-container-low px-3 py-1.5 rounded-lg border border-outline-variant/30 text-xs text-on-surface-variant">
+                <span className="font-medium whitespace-nowrap">Por página:</span>
+                <div className="inline-flex rounded-md border border-outline-variant/40 bg-surface-container p-0.5">
+                  {[10, 50, 100].map((size) => (
+                    <button
+                      key={size}
+                      type="button"
+                      onClick={() => {
+                        setFiguresPerPage(size);
+                        setCurrentPage(1);
+                      }}
+                      className={`px-2.5 py-1 text-xs font-semibold rounded transition-all ${
+                        figuresPerPage === size
+                          ? 'bg-primary text-on-primary shadow-sm'
+                          : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high'
+                      }`}
+                    >
+                      {size}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
 
             <div className="bg-surface-container-low border border-outline-variant/30 rounded-xl overflow-hidden">
               {filteredAdminFigures.length === 0 ? (
                 <div className="p-8 text-center text-on-surface-variant">No se encontraron figuras.</div>
               ) : (
-                <div className="divide-y divide-outline-variant/20">
-                  {filteredAdminFigures.map((fig, index) => (
-                    <div 
-                      key={fig.id} 
-                      onClick={() => setPreviewingFigure(fig)}
-                      className="flex items-center p-4 hover:bg-surface-container transition-colors group cursor-pointer"
-                      title="Haz clic para ver la vista previa de los datos de esta figura"
-                    >
-                      <div className="flex flex-col gap-1 pr-4" onClick={(e) => e.stopPropagation()}>
-                        <button onClick={() => moveFigure(figures.indexOf(fig), -1)} disabled={figures.indexOf(fig) === 0} className="text-outline hover:text-primary disabled:opacity-30"><ChevronUp className="w-5 h-5" /></button>
-                        <button onClick={() => moveFigure(figures.indexOf(fig), 1)} disabled={figures.indexOf(fig) === figures.length - 1} className="text-outline hover:text-primary disabled:opacity-30"><ChevronDown className="w-5 h-5" /></button>
+                <>
+                  <div className="divide-y divide-outline-variant/20">
+                    {paginatedAdminFigures.map((fig) => (
+                      <div 
+                        key={fig.id} 
+                        onClick={() => setPreviewingFigure(fig)}
+                        className="flex items-center p-4 hover:bg-surface-container transition-colors group cursor-pointer"
+                        title="Haz clic para ver la vista previa de los datos de esta figura"
+                      >
+                        <div className="flex flex-col gap-1 pr-4" onClick={(e) => e.stopPropagation()}>
+                          <button onClick={() => moveFigure(figures.indexOf(fig), -1)} disabled={figures.indexOf(fig) === 0} className="text-outline hover:text-primary disabled:opacity-30"><ChevronUp className="w-5 h-5" /></button>
+                          <button onClick={() => moveFigure(figures.indexOf(fig), 1)} disabled={figures.indexOf(fig) === figures.length - 1} className="text-outline hover:text-primary disabled:opacity-30"><ChevronDown className="w-5 h-5" /></button>
+                        </div>
+                        <div className="w-16 h-16 rounded bg-surface-container-lowest border border-outline-variant/30 overflow-hidden flex-shrink-0">
+                          {fig.imageUrls?.[0] ? <img src={fig.imageUrls[0]} alt={fig.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform" /> : <div className="w-full h-full flex items-center justify-center text-outline"><ImagePlus className="w-6 h-6" /></div>}
+                        </div>
+                        <div className="ml-4 flex-1 min-w-0 pr-2">
+                          <h3 className="font-semibold text-on-surface truncate group-hover:text-primary transition-colors flex items-center gap-2">
+                            {fig.numericId && <span className="text-primary font-mono text-xs border border-primary/30 bg-primary/10 px-1.5 py-0.5 rounded flex-shrink-0">{fig.numericId}</span>}
+                            <span className="truncate">{fig.title}</span>
+                          </h3>
+                          <p className="text-xs text-on-surface-variant truncate mt-0.5">Categoría: {categories.find(c => c.id === fig.franchiseId)?.name || fig.franchiseId} • {fig.status}</p>
+                        </div>
+                        <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                          <button 
+                            onClick={() => setPreviewingFigure(fig)} 
+                            title="Ver vista previa"
+                            className="p-2 text-on-surface hover:text-primary rounded-lg bg-surface-container-highest transition-colors opacity-80 hover:opacity-100"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </button>
+                          <button 
+                            onClick={() => { setEditingFigure(fig); setView('figure-form'); }} 
+                            title="Editar figura"
+                            className="p-2 text-on-surface hover:text-primary rounded-lg bg-surface-container-highest transition-colors opacity-80 hover:opacity-100"
+                          >
+                            <Edit2 className="w-4 h-4" />
+                          </button>
+                          <button 
+                            onClick={() => confirm('¿Eliminar figura?') && deleteDoc(doc(db, 'figures', fig.id))} 
+                            title="Eliminar figura"
+                            className="p-2 text-on-surface hover:text-error rounded-lg bg-surface-container-highest transition-colors opacity-80 hover:opacity-100"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
                       </div>
-                      <div className="w-16 h-16 rounded bg-surface-container-lowest border border-outline-variant/30 overflow-hidden flex-shrink-0">
-                        {fig.imageUrls?.[0] ? <img src={fig.imageUrls[0]} alt={fig.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform" /> : <div className="w-full h-full flex items-center justify-center text-outline"><ImagePlus className="w-6 h-6" /></div>}
-                      </div>
-                      <div className="ml-4 flex-1 min-w-0 pr-2">
-                        <h3 className="font-semibold text-on-surface truncate group-hover:text-primary transition-colors flex items-center gap-2">
-                          {fig.numericId && <span className="text-primary font-mono text-xs border border-primary/30 bg-primary/10 px-1.5 py-0.5 rounded flex-shrink-0">{fig.numericId}</span>}
-                          <span className="truncate">{fig.title}</span>
-                        </h3>
-                        <p className="text-xs text-on-surface-variant truncate mt-0.5">Categoría: {categories.find(c => c.id === fig.franchiseId)?.name || fig.franchiseId} • {fig.status}</p>
-                      </div>
-                      <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-                        <button 
-                          onClick={() => setPreviewingFigure(fig)} 
-                          title="Ver vista previa"
-                          className="p-2 text-on-surface hover:text-primary rounded-lg bg-surface-container-highest transition-colors opacity-80 hover:opacity-100"
-                        >
-                          <Eye className="w-4 h-4" />
-                        </button>
-                        <button 
-                          onClick={() => { setEditingFigure(fig); setView('figure-form'); }} 
-                          title="Editar figura"
-                          className="p-2 text-on-surface hover:text-primary rounded-lg bg-surface-container-highest transition-colors opacity-80 hover:opacity-100"
-                        >
-                          <Edit2 className="w-4 h-4" />
-                        </button>
-                        <button 
-                          onClick={() => confirm('¿Eliminar figura?') && deleteDoc(doc(db, 'figures', fig.id))} 
-                          title="Eliminar figura"
-                          className="p-2 text-on-surface hover:text-error rounded-lg bg-surface-container-highest transition-colors opacity-80 hover:opacity-100"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
+                    ))}
+                  </div>
+
+                  {/* Barra de paginación */}
+                  <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-4 py-3 border-t border-outline-variant/20 bg-surface-container-low/60 text-xs text-on-surface-variant">
+                    <div>
+                      Mostrando <span className="font-semibold text-on-surface">{startFigureIndex + 1}</span> a{' '}
+                      <span className="font-semibold text-on-surface">{endFigureIndex}</span> de{' '}
+                      <span className="font-semibold text-on-surface">{totalAdminFigures}</span> figuras
+                      {totalFigurePages > 1 && (
+                        <span className="ml-2 text-outline">(Página {safeCurrentPage} de {totalFigurePages})</span>
+                      )}
                     </div>
-                  ))}
-                </div>
+
+                    {totalFigurePages > 1 && (
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => setCurrentPage(1)}
+                          disabled={safeCurrentPage === 1}
+                          title="Primera página"
+                          className="p-1.5 rounded-md border border-outline-variant/30 text-on-surface hover:text-primary hover:bg-surface-container-highest transition-colors disabled:opacity-30 disabled:pointer-events-none"
+                        >
+                          <ChevronsLeft className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                          disabled={safeCurrentPage === 1}
+                          title="Página anterior"
+                          className="p-1.5 rounded-md border border-outline-variant/30 text-on-surface hover:text-primary hover:bg-surface-container-highest transition-colors disabled:opacity-30 disabled:pointer-events-none"
+                        >
+                          <ChevronLeft className="w-4 h-4" />
+                        </button>
+
+                        <div className="flex items-center gap-1 px-1">
+                          {(() => {
+                            const pages: (number | 'ellipsis')[] = [];
+                            if (totalFigurePages <= 7) {
+                              for (let i = 1; i <= totalFigurePages; i++) pages.push(i);
+                            } else {
+                              pages.push(1);
+                              if (safeCurrentPage > 3) pages.push('ellipsis');
+                              const start = Math.max(2, safeCurrentPage - 1);
+                              const end = Math.min(totalFigurePages - 1, safeCurrentPage + 1);
+                              for (let i = start; i <= end; i++) pages.push(i);
+                              if (safeCurrentPage < totalFigurePages - 2) pages.push('ellipsis');
+                              pages.push(totalFigurePages);
+                            }
+
+                            return pages.map((p, idx) => {
+                              if (p === 'ellipsis') {
+                                return (
+                                  <span key={`ellipsis-${idx}`} className="px-1 text-on-surface-variant select-none">
+                                    …
+                                  </span>
+                                );
+                              }
+                              const isCurrent = p === safeCurrentPage;
+                              return (
+                                <button
+                                  key={p}
+                                  onClick={() => setCurrentPage(p)}
+                                  className={`min-w-[28px] h-7 px-2 text-xs font-semibold rounded-md transition-all ${
+                                    isCurrent
+                                      ? 'bg-primary text-on-primary shadow-sm'
+                                      : 'border border-outline-variant/30 text-on-surface hover:bg-surface-container-highest hover:text-primary'
+                                  }`}
+                                >
+                                  {p}
+                                </button>
+                              );
+                            });
+                          })()}
+                        </div>
+
+                        <button
+                          onClick={() => setCurrentPage(prev => Math.min(totalFigurePages, prev + 1))}
+                          disabled={safeCurrentPage === totalFigurePages}
+                          title="Página siguiente"
+                          className="p-1.5 rounded-md border border-outline-variant/30 text-on-surface hover:text-primary hover:bg-surface-container-highest transition-colors disabled:opacity-30 disabled:pointer-events-none"
+                        >
+                          <ChevronRight className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => setCurrentPage(totalFigurePages)}
+                          disabled={safeCurrentPage === totalFigurePages}
+                          title="Última página"
+                          className="p-1.5 rounded-md border border-outline-variant/30 text-on-surface hover:text-primary hover:bg-surface-container-highest transition-colors disabled:opacity-30 disabled:pointer-events-none"
+                        >
+                          <ChevronsRight className="w-4 h-4" />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </>
               )}
             </div>
           </div>
