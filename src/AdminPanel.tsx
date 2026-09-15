@@ -1721,21 +1721,49 @@ export function parseNumericId(idString: string | undefined | null): { prefix: s
   return isNaN(num) ? null : { prefix, num, digits };
 }
 
-// Función para calcular automáticamente el siguiente identificador numérico sumando 1 al último creado
+// Función optimizada para calcular el siguiente identificador numérico sin descargar toda la base de datos
 export async function getNextFigureNumericId(): Promise<string> {
   try {
-    const snap = await getDocs(collection(db, 'figures'));
-    if (snap.empty) {
-      return '#001';
+    let candidates: Product[] = [];
+
+    // 1. Obtener las figuras más recientes por 'order' desc (solo un lote pequeño de 15 documentos)
+    try {
+      const qOrder = query(collection(db, 'figures'), orderBy('order', 'desc'), limit(15));
+      const snapOrder = await getDocs(qOrder);
+      snapOrder.forEach(d => candidates.push({ id: d.id, ...d.data() } as Product));
+    } catch (e) {
+      console.warn("Consulta por 'order' desc no disponible, intentando alternativa:", e);
     }
 
-    const docs = snap.docs.map(d => ({ id: d.id, ...d.data() } as Product));
+    // 2. Obtener los identificadores alfanuméricos más altos (solo 10 documentos)
+    try {
+      const qId = query(collection(db, 'figures'), orderBy('numericId', 'desc'), limit(10));
+      const snapId = await getDocs(qId);
+      snapId.forEach(d => {
+        if (!candidates.some(c => c.id === d.id)) {
+          candidates.push({ id: d.id, ...d.data() } as Product);
+        }
+      });
+    } catch (e) {
+      console.warn("Consulta por 'numericId' desc no disponible:", e);
+    }
+
+    // 3. Estrategia de reserva ligera en caso de que falten índices: solo 20 documentos
+    if (candidates.length === 0) {
+      const fallbackQ = query(collection(db, 'figures'), limit(20));
+      const snapFallback = await getDocs(fallbackQ);
+      snapFallback.forEach(d => candidates.push({ id: d.id, ...d.data() } as Product));
+    }
+
+    if (candidates.length === 0) {
+      return '#001';
+    }
 
     let detectedPrefix = '#';
     let detectedDigits = 3;
     let maxNumber = 0;
 
-    docs.forEach(fig => {
+    candidates.forEach(fig => {
       if (fig.numericId) {
         const parsed = parseNumericId(fig.numericId);
         if (parsed) {
@@ -1752,8 +1780,8 @@ export async function getNextFigureNumericId(): Promise<string> {
       }
     });
 
-    // Ordenar figuras por fecha de creación (más reciente primero)
-    const sortedByCreation = [...docs].sort((a, b) => {
+    // Ordenar figuras candidatas por fecha o orden de creación (más reciente primero)
+    const sortedByCreation = [...candidates].sort((a, b) => {
       const timeA = (a.createdAt as any)?.toMillis ? (a.createdAt as any).toMillis() : ((a.createdAt as any)?.seconds ? (a.createdAt as any).seconds * 1000 : 0);
       const timeB = (b.createdAt as any)?.toMillis ? (b.createdAt as any).toMillis() : ((b.createdAt as any)?.seconds ? (b.createdAt as any).seconds * 1000 : 0);
       if (timeA !== timeB) return timeB - timeA;
@@ -1772,7 +1800,6 @@ export async function getNextFigureNumericId(): Promise<string> {
       if (parsedLast) {
         detectedPrefix = parsedLast.prefix || detectedPrefix;
         detectedDigits = Math.max(detectedDigits, parsedLast.digits);
-        // Sumar 1 al último identificador creado asegurando que sea mayor que el máximo existente
         nextNum = Math.max(parsedLast.num + 1, maxNumber + 1);
       } else {
         nextNum = maxNumber + 1;
@@ -1823,6 +1850,30 @@ function FigureForm({ figure, categories, designers, onBack, orderCount }: { fig
     whatsappMessage: ''
   });
   const [loading, setLoading] = useState(false);
+  const [loadingSuggestedId, setLoadingSuggestedId] = useState(!figure);
+
+  // Pre-calcular de forma asíncrona el identificador sugerido mientras el usuario llena el formulario
+  useEffect(() => {
+    let isMounted = true;
+    if (!figure) {
+      setLoadingSuggestedId(true);
+      getNextFigureNumericId().then((suggested) => {
+        if (isMounted) {
+          setFormData(prev => {
+            if (!prev.numericId) {
+              return { ...prev, numericId: suggested };
+            }
+            return prev;
+          });
+          setLoadingSuggestedId(false);
+        }
+      }).catch(err => {
+        console.error("Error obteniendo correlativo sugerido:", err);
+        if (isMounted) setLoadingSuggestedId(false);
+      });
+    }
+    return () => { isMounted = false; };
+  }, [figure]);
 
   // Buffer y temporizador para búsqueda y selección instantánea por teclado
   const typeaheadBufferRef = useRef('');
@@ -1988,12 +2039,10 @@ function FigureForm({ figure, categories, designers, onBack, orderCount }: { fig
     e.preventDefault();
     setLoading(true);
     try {
-      // Si se está creando una nueva figura, la base de datos calcula automáticamente el correlativo sumando 1 al último creado (ej: 525 -> 526)
-      let finalNumericId = '';
-      if (!figure?.id) {
+      // Usar el identificador ya pre-calculado o calcularlo de forma instantánea y ligera
+      let finalNumericId = formData.numericId?.trim() || '';
+      if (!finalNumericId && !figure?.id) {
         finalNumericId = await getNextFigureNumericId();
-      } else {
-        finalNumericId = formData.numericId?.trim() || '';
       }
 
       const payload = {
@@ -2030,8 +2079,9 @@ function FigureForm({ figure, categories, designers, onBack, orderCount }: { fig
     } catch (error) {
       console.error(error);
       alert('Error guardando la figura.');
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   const scaleOptions = ['1:8', '1:6', '1:4', '1:2', '1:1', 'Chibi'];
@@ -2045,18 +2095,23 @@ function FigureForm({ figure, categories, designers, onBack, orderCount }: { fig
 
       <form onSubmit={handleSubmit} className="space-y-6 bg-surface-container-low p-6 rounded-xl border border-outline-variant/30 gold-border-glow">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {figure && (
-            <div className="space-y-1">
+          <div className="space-y-1">
+            <div className="flex items-center justify-between">
               <label className="text-xs font-bold text-on-surface-variant uppercase">Identificador</label>
-              <input 
-                name="numericId" 
-                value={formData.numericId || ''} 
-                onChange={handleChange} 
-                placeholder="Ej: #001" 
-                className="w-full bg-surface-container border border-outline-variant/40 rounded p-2 text-sm focus:border-primary outline-none font-mono" 
-              />
+              <span className="text-[10px] text-primary/80 font-medium">
+                {!figure 
+                  ? (loadingSuggestedId ? 'Calculando correlativo...' : 'Asignado automáticamente (editable)') 
+                  : 'Identificador único'}
+              </span>
             </div>
-          )}
+            <input 
+              name="numericId" 
+              value={formData.numericId || ''} 
+              onChange={handleChange} 
+              placeholder={loadingSuggestedId ? "Calculando correlativo..." : "Ej: #001"} 
+              className="w-full bg-surface-container border border-outline-variant/40 rounded p-2 text-sm focus:border-primary outline-none font-mono" 
+            />
+          </div>
           <div className="space-y-1">
             <label className="text-xs font-bold text-on-surface-variant uppercase">Título</label>
             <input required name="title" value={formData.title} onChange={handleChange} className="w-full bg-surface-container border border-outline-variant/40 rounded p-2 text-sm focus:border-primary outline-none" />
