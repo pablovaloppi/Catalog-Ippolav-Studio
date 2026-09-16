@@ -248,12 +248,20 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
 
   // Debounce search input
   useEffect(() => {
+    if (!figureSearch.trim()) {
+      setDebouncedSearch('');
+      setCurrentPage(1);
+      return;
+    }
     const timer = setTimeout(() => {
       setDebouncedSearch(figureSearch);
       setCurrentPage(1);
     }, 300);
     return () => clearTimeout(timer);
   }, [figureSearch]);
+
+  const isSearchingFigures = figureSearch.trim() !== '' && (figureSearch !== debouncedSearch || figuresLoading);
+  const showFiguresLoader = figuresLoading || isSearchingFigures;
 
   const invalidateCache = useCallback(() => {
     pageCacheRef.current.clear();
@@ -1091,27 +1099,13 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
               </div>
             </div>
 
-            <div className="bg-surface-container-low border border-outline-variant/30 rounded-xl overflow-hidden">
-              {figuresLoading ? (
-                <div className="divide-y divide-outline-variant/20 animate-pulse">
-                  {[...Array(Math.min(figuresPerPage, 6))].map((_, i) => (
-                    <div key={i} className="flex items-center p-4">
-                      <div className="flex flex-col gap-1 pr-4 opacity-30">
-                        <div className="w-5 h-5 bg-surface-container-high rounded" />
-                        <div className="w-5 h-5 bg-surface-container-high rounded" />
-                      </div>
-                      <div className="w-16 h-16 rounded bg-surface-container-high flex-shrink-0" />
-                      <div className="ml-4 flex-1 min-w-0 pr-2 space-y-2">
-                        <div className="h-4 bg-surface-container-high rounded w-2/5" />
-                        <div className="h-3 bg-surface-container-high rounded w-1/4" />
-                      </div>
-                      <div className="flex items-center gap-2 opacity-30">
-                        <div className="w-8 h-8 rounded-lg bg-surface-container-high" />
-                        <div className="w-8 h-8 rounded-lg bg-surface-container-high" />
-                        <div className="w-8 h-8 rounded-lg bg-surface-container-high" />
-                      </div>
-                    </div>
-                  ))}
+            <div className="bg-surface-container-low border border-outline-variant/30 rounded-xl overflow-hidden min-h-[260px] flex flex-col justify-center">
+              {showFiguresLoader ? (
+                <div className="flex flex-col justify-center items-center py-20 text-primary">
+                  <img src="/logo-ippolav.png" alt="Loading..." className="w-16 h-16 animate-scale-pulse object-contain" />
+                  <span className="mt-4 text-xs font-semibold text-on-surface-variant tracking-wider uppercase">
+                    {figureSearch.trim() ? 'Buscando figuras...' : 'Cargando figuras...'}
+                  </span>
                 </div>
               ) : figures.length === 0 ? (
                 <div className="p-8 text-center text-on-surface-variant">No se encontraron figuras.</div>

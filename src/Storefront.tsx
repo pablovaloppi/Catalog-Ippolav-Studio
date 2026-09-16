@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback } from 'react';
+import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { Header } from './components/Header';
 import { NavigationDrawer } from './components/NavigationDrawer';
 import { Hero } from './components/Hero';
@@ -133,6 +133,10 @@ function buildFiguresQuery(
 export function Storefront() {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
+  const [isSearchingStore, setIsSearchingStore] = useState(false);
+  const [searchResults, setSearchResults] = useState<Product[]>([]);
+  const allStoreFiguresCacheRef = useRef<Product[] | null>(null);
   const [statusFilter, setStatusFilter] = useState('all');
   const [franchiseFilter, setFranchiseFilter] = useState('all');
   const [finishFilter, setFinishFilter] = useState('all');
@@ -180,7 +184,7 @@ export function Storefront() {
       console.warn("No se pudo guardar me gusta en localStorage:", e);
     }
 
-    // 2. Actualización optimista en el estado de productos
+    // 2. Actualización optimista en el estado de productos y búsqueda
     setProducts((prev) =>
       prev.map((p) => {
         if (p.id === figureId) {
@@ -190,6 +194,24 @@ export function Storefront() {
         return p;
       })
     );
+    setSearchResults((prev) =>
+      prev.map((p) => {
+        if (p.id === figureId) {
+          const currentLikes = p.likesCount || 0;
+          return { ...p, likesCount: Math.max(0, currentLikes + delta) };
+        }
+        return p;
+      })
+    );
+    if (allStoreFiguresCacheRef.current) {
+      allStoreFiguresCacheRef.current = allStoreFiguresCacheRef.current.map((p) => {
+        if (p.id === figureId) {
+          const currentLikes = p.likesCount || 0;
+          return { ...p, likesCount: Math.max(0, currentLikes + delta) };
+        }
+        return p;
+      });
+    }
 
     // 3. Actualización optimista en el modal si está abierto
     setSelectedProduct((prev) => {
@@ -489,29 +511,123 @@ export function Storefront() {
     });
   }, [filteredProducts, sortBy]);
 
-  // Si el usuario busca o filtra y hay pocas coincidencias cargadas, buscar en el siguiente lote
+  // Búsqueda con debounce para evitar titileos en el catálogo
   useEffect(() => {
-    const isSearchingOrFiltering =
-      searchQuery.trim() !== '' ||
-      finishFilter !== 'all' ||
-      scaleFilter !== 'all';
-
-    if (isSearchingOrFiltering && hasMore && !loadingMore && !loading && filteredProducts.length < 4) {
-      const timeoutId = setTimeout(() => {
-        loadMore();
-      }, 400);
-      return () => clearTimeout(timeoutId);
+    if (!searchQuery.trim()) {
+      setDebouncedSearchQuery('');
+      setIsSearchingStore(false);
+      return;
     }
-  }, [
-    searchQuery,
-    finishFilter,
-    scaleFilter,
-    filteredProducts.length,
-    hasMore,
-    loadingMore,
-    loading,
-    loadMore,
-  ]);
+    setIsSearchingStore(true);
+    const timer = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  // Ejecución de la búsqueda cuando debouncedSearchQuery tiene un valor
+  useEffect(() => {
+    let isCancelled = false;
+    const trimmed = debouncedSearchQuery.trim().toLowerCase();
+
+    if (!trimmed) {
+      setSearchResults([]);
+      setIsSearchingStore(false);
+      return;
+    }
+
+    async function runSearch() {
+      setIsSearchingStore(true);
+      try {
+        let allFigures = allStoreFiguresCacheRef.current;
+        if (!allFigures) {
+          const snap = await getDocs(collection(db, 'figures'));
+          const list: Product[] = [];
+          snap.forEach((d) => list.push({ id: d.id, ...d.data() } as Product));
+          if (list.length > 0) {
+            allStoreFiguresCacheRef.current = list;
+            allFigures = list;
+          } else {
+            allFigures = initialProducts;
+          }
+        }
+
+        if (isCancelled) return;
+
+        const getCategoryNames = (categoryId: string) => {
+          const cat = categories.find((c) => c.id === categoryId);
+          if (!cat) return '';
+          const ancestors = getCategoryAncestors(categoryId, categories);
+          return [cat.name, ...ancestors.map((a) => a.name)].join(' ').toLowerCase();
+        };
+
+        const matched = (allFigures || []).filter((product) => {
+          const matchesSearch =
+            product.title.toLowerCase().includes(trimmed) ||
+            (product.numericId && product.numericId.toLowerCase().includes(trimmed)) ||
+            getCategoryNames(product.franchiseId).includes(trimmed);
+
+          const matchesStatus = statusFilter === 'all' || product.status === statusFilter;
+          const matchesFranchise = !allowedFranchiseIds || allowedFranchiseIds.has(product.franchiseId);
+          const matchesFinish = finishFilter === 'all' || product.finish === finishFilter;
+          const matchesScale = scaleFilter === 'all' || (Array.isArray(product.scale) && product.scale.includes(scaleFilter));
+
+          return matchesSearch && matchesStatus && matchesFranchise && matchesFinish && matchesScale;
+        });
+
+        matched.sort((a, b) => {
+          if (sortBy === 'likes-desc') {
+            const likesA = a.likesCount ?? 0;
+            const likesB = b.likesCount ?? 0;
+            if (likesB !== likesA) return likesB - likesA;
+            return (a.order ?? 0) - (b.order ?? 0);
+          }
+          if (sortBy === 'recent') {
+            const timeA = getFigureTimestamp(a);
+            const timeB = getFigureTimestamp(b);
+            if (timeB !== timeA) return timeB - timeA;
+            return (b.order ?? 0) - (a.order ?? 0);
+          }
+          if (sortBy === 'oldest') {
+            const timeA = getFigureTimestamp(a);
+            const timeB = getFigureTimestamp(b);
+            if (timeA !== timeB) return timeA - timeB;
+            return (a.order ?? 0) - (b.order ?? 0);
+          }
+          if (sortBy === 'name-asc') return a.title.localeCompare(b.title, 'es', { sensitivity: 'base' });
+          if (sortBy === 'name-desc') return b.title.localeCompare(a.title, 'es', { sensitivity: 'base' });
+          if (sortBy === 'finish') {
+            const finishA = (a.finish || '').trim();
+            const finishB = (b.finish || '').trim();
+            const cmp = finishA.localeCompare(finishB, 'es', { sensitivity: 'base' });
+            if (cmp !== 0) return cmp;
+            return a.title.localeCompare(b.title, 'es', { sensitivity: 'base' });
+          }
+          return (a.order ?? 0) - (b.order ?? 0);
+        });
+
+        if (!isCancelled) {
+          setSearchResults(matched);
+        }
+      } catch (err) {
+        console.error("Error buscando figuras en el catálogo:", err);
+      } finally {
+        if (!isCancelled) {
+          setIsSearchingStore(false);
+        }
+      }
+    }
+
+    runSearch();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [debouncedSearchQuery, statusFilter, allowedFranchiseIds, finishFilter, scaleFilter, sortBy, categories]);
+
+  const isSearchActive = searchQuery.trim() !== '';
+  const isSearchBusy = isSearchActive && (isSearchingStore || searchQuery !== debouncedSearchQuery);
+  const showStoreLoader = loading || isSearchBusy;
 
   return (
     <>
@@ -537,16 +653,19 @@ export function Storefront() {
           availableFinishes={availableFinishes}
           availableScales={availableScales}
         />
-        {loading ? (
-          <div className="flex justify-center items-center py-24 text-primary">
+        {showStoreLoader ? (
+          <div className="flex flex-col justify-center items-center py-24 text-primary">
             <img src="/logo-ippolav.png" alt="Loading..." className="w-16 h-16 animate-scale-pulse object-contain" />
+            <span className="mt-4 text-xs font-semibold text-on-surface-variant tracking-wider uppercase">
+              {isSearchActive ? 'Buscando figuras...' : 'Cargando figuras...'}
+            </span>
           </div>
         ) : (
           <Catalog
-            products={sortedAndFilteredProducts}
+            products={isSearchActive ? searchResults : sortedAndFilteredProducts}
             categories={categories}
             onSelectProduct={setSelectedProduct}
-            hasMore={hasMore}
+            hasMore={isSearchActive ? false : hasMore}
             loadingMore={loadingMore}
             onLoadMore={loadMore}
             totalFiguresInDb={totalFiguresInDb}
