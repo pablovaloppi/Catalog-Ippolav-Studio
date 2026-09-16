@@ -41,7 +41,7 @@ export function Header({ onOpenDrawer }: HeaderProps) {
           Cómo Comprar
         </a>
         <a href="#contacto" className="text-on-surface-variant hover:text-primary transition-colors duration-200 py-1 text-xs tracking-widest uppercase font-semibold">
-          Bespoke & Contacto
+          Contacto
         </a>
       </nav>
 

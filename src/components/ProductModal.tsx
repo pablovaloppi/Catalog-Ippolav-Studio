@@ -15,6 +15,9 @@ interface ProductModalProps {
 export function ProductModal({ product, categoryName, designerName, onClose, config, isLiked, onToggleLike }: ProductModalProps) {
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [isFullScreen, setIsFullScreen] = useState(false);
+  const [fullscreenZoomed, setFullscreenZoomed] = useState(false);
+  const [zoomOrigin, setZoomOrigin] = useState({ x: 50, y: 50 });
+  const lastFullscreenTapRef = useRef<number>(0);
   const [touchStart, setTouchStart] = useState<number | null>(null);
   const [touchEnd, setTouchEnd] = useState<number | null>(null);
 
@@ -24,6 +27,11 @@ export function ProductModal({ product, categoryName, designerName, onClose, con
   const isClosingModalManually = useRef(false);
   const closedByHistoryRef = useRef(false);
 
+  // Reset de zoom al cambiar de imagen
+  useEffect(() => {
+    setFullscreenZoomed(false);
+  }, [currentImageIndex]);
+
   // Apertura de zoom apilando un estado en el historial
   const openFullScreen = () => {
     setIsFullScreen(true);
@@ -32,6 +40,7 @@ export function ProductModal({ product, categoryName, designerName, onClose, con
 
   // Cierre de zoom manual (botón X o tap exterior en zoom)
   const closeFullScreen = () => {
+    setFullscreenZoomed(false);
     if (isFullScreenRef.current) {
       setIsFullScreen(false);
       if (window.history.state?.modal === 'image-zoom') {
@@ -238,7 +247,19 @@ export function ProductModal({ product, categoryName, designerName, onClose, con
           onTouchMove={onTouchMove}
           onTouchEnd={onTouchEndEvent}
         >
-          <button type="button" onClick={openFullScreen} className="w-full h-full cursor-zoom-in">
+          <button 
+            type="button" 
+            onClick={(e) => {
+              const now = Date.now();
+              const isDouble = now - lastFullscreenTapRef.current < 300;
+              lastFullscreenTapRef.current = now;
+              if (isDouble) {
+                setFullscreenZoomed(true);
+              }
+              openFullScreen();
+            }} 
+            className="w-full h-full cursor-zoom-in"
+          >
             <img 
               src={currentImageUrl} 
               alt={product.title} 
@@ -295,7 +316,7 @@ export function ProductModal({ product, categoryName, designerName, onClose, con
 
         <div className="grid grid-cols-2 gap-3 p-3.5 bg-surface-container rounded-lg border border-outline-variant/30">
           <div>
-            <span className="text-[10px] font-bold text-outline uppercase block">Escala & Altura</span>
+            <span className="text-[10px] font-bold text-outline uppercase block">Escala</span>
             <span className="text-xs font-semibold text-on-surface">{product.scale?.join(', ')}</span>
           </div>
           <div>
@@ -384,11 +405,53 @@ export function ProductModal({ product, categoryName, designerName, onClose, con
             </>
           )}
 
-          <img 
-            src={currentImageUrl} 
-            alt="Vista Completa" 
-            className="max-w-full max-h-[95vh] object-contain cursor-zoom-out pointer-events-none"
-          />
+          <div className="w-full h-full flex items-center justify-center overflow-hidden">
+            <img 
+              src={currentImageUrl} 
+              alt="Vista Completa" 
+              className={`max-w-full max-h-[95vh] object-contain transition-transform duration-300 ${fullscreenZoomed ? 'cursor-zoom-out' : 'cursor-zoom-in'}`}
+              style={{
+                transform: fullscreenZoomed ? 'scale(2.5)' : 'scale(1)',
+                transformOrigin: `${zoomOrigin.x}% ${zoomOrigin.y}%`,
+              }}
+              onClick={(e) => {
+                e.stopPropagation();
+                const now = Date.now();
+                const isDouble = now - lastFullscreenTapRef.current < 300;
+                lastFullscreenTapRef.current = now;
+
+                if (isDouble) {
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  const x = ((e.clientX - rect.left) / rect.width) * 100;
+                  const y = ((e.clientY - rect.top) / rect.height) * 100;
+                  setZoomOrigin({ x, y });
+                  setFullscreenZoomed(prev => !prev);
+                } else {
+                  setTimeout(() => {
+                    if (lastFullscreenTapRef.current === now) {
+                      closeFullScreen();
+                    }
+                  }, 250);
+                }
+              }}
+              onTouchStart={(e) => {
+                e.stopPropagation();
+                const now = Date.now();
+                const isDouble = now - lastFullscreenTapRef.current < 300;
+                lastFullscreenTapRef.current = now;
+
+                if (isDouble) {
+                  e.preventDefault();
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  const touch = e.touches[0];
+                  const x = ((touch.clientX - rect.left) / rect.width) * 100;
+                  const y = ((touch.clientY - rect.top) / rect.height) * 100;
+                  setZoomOrigin({ x, y });
+                  setFullscreenZoomed(prev => !prev);
+                }
+              }}
+            />
+          </div>
         </div>
       )}
     </div>

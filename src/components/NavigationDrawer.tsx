@@ -75,18 +75,9 @@ export function NavigationDrawer({ isOpen, onClose }: NavigationDrawerProps) {
               className="flex items-center gap-3 text-on-surface-variant hover:text-primary hover:bg-surface-container-high/40 px-4 py-3 rounded active:opacity-80 transition-all text-sm font-semibold"
             >
               <MessageCircle className="w-5 h-5" />
-              <span>Bespoke & Contacto</span>
+              <span>Contacto</span>
             </a>
           </nav>
-        </div>
-
-        <div className="p-4 rounded-lg bg-surface-container-lowest border border-outline-variant/30 text-center space-y-2">
-          <span className="text-[10px] font-bold text-primary uppercase tracking-widest block">
-            Atelier de Escultura
-          </span>
-          <p className="text-xs text-on-surface-variant leading-relaxed">
-            Modelado 3D de alta definición, resina polimérica y acabados dorados a mano.
-          </p>
         </div>
       </aside>
     </>

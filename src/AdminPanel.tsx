@@ -2238,7 +2238,7 @@ function FigureForm({ figure, categories, designers, onBack, orderCount }: { fig
             Cancelar
           </button>
           <button type="submit" disabled={loading} className="px-6 py-2 gold-shimmer text-on-primary-fixed font-bold rounded-lg hover:brightness-110 active:scale-95 transition-all disabled:opacity-50 flex items-center gap-2">
-            {loading ? <span className="material-symbols-outlined animate-spin text-sm">progress_activity</span> : null}
+            {loading ? <img src="/logo-ippolav.png" alt="" className="w-4 h-4 animate-spin object-contain" /> : null}
             Guardar Figura
           </button>
         </div>
