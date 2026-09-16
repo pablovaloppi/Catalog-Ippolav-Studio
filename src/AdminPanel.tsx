@@ -36,6 +36,10 @@ import {
 
 // Removed inline Category interface
 
+import { ImageMigrationTool } from './components/ImageMigrationTool';
+
+// ... other imports ...
+
 function AdminPanelContent() {
   const { user, isAdmin, loading } = useAuth();
 
@@ -176,8 +180,8 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   });
   const [initialLoading, setInitialLoading] = useState(true);
   
-  // views: figures-list, figure-form, categories-list, category-form, designers-list, designer-form, config
-  const [view, setView] = useState<'figures-list' | 'figure-form' | 'categories-list' | 'category-form' | 'designers-list' | 'designer-form' | 'config'>('figures-list');
+  // views: figures-list, figure-form, categories-list, category-form, designers-list, designer-form, config, migration
+  const [view, setView] = useState<'figures-list' | 'figure-form' | 'categories-list' | 'category-form' | 'designers-list' | 'designer-form' | 'config' | 'migration'>('figures-list');
   const [editingFigure, setEditingFigure] = useState<Product | null>(null);
   const [previewingFigure, setPreviewingFigure] = useState<Product | null>(null);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
@@ -854,6 +858,12 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
               >
                 <Settings className="w-4 h-4" /> Configuración
               </button>
+              <button 
+                onClick={() => { setView('migration'); }} 
+                className={`text-sm font-semibold whitespace-nowrap transition-colors flex items-center gap-1 ${view === 'migration' ? 'text-primary' : 'text-on-surface-variant hover:text-on-surface'}`}
+              >
+                Herramientas
+              </button>
             </nav>
           </div>
           <button onClick={onLogout} className="hidden md:flex items-center gap-2 text-sm text-on-surface-variant hover:text-error transition-colors">
@@ -1496,6 +1506,8 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
           />
         ) : view === 'config' ? (
           <ConfigForm config={siteConfig} />
+        ) : view === 'migration' ? (
+          <ImageMigrationTool />
         ) : (
           <FigureForm 
             figure={editingFigure} 
