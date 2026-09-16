@@ -232,10 +232,32 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   // Firestore pagination cursors and in-memory cache
   const pageCursorsRef = useRef<Map<number, QueryDocumentSnapshot>>(new Map());
   const pageCacheRef = useRef<Map<number, Product[]>>(new Map());
+  const allAdminFiguresCacheRef = useRef<Product[] | null>(null);
   const searchCacheRef = useRef<{
     key: string;
     items: Product[];
   } | null>(null);
+
+  // Prefetch de todas las figuras para búsquedas instantáneas en el panel de administración
+  useEffect(() => {
+    let isMounted = true;
+    async function prefetchAdminFigures() {
+      try {
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+        if (!isMounted) return;
+        const snap = await getDocs(collection(db, 'figures'));
+        const list: Product[] = [];
+        snap.forEach((d) => list.push({ id: d.id, ...d.data() } as Product));
+        if (isMounted && list.length > 0) {
+          allAdminFiguresCacheRef.current = list;
+        }
+      } catch (err) {
+        console.warn("Error pre-cargando figuras en administración:", err);
+      }
+    }
+    prefetchAdminFigures();
+    return () => { isMounted = false; };
+  }, []);
 
   // Auto assign identifiers modal
   const [showAutoIdModal, setShowAutoIdModal] = useState(false);
@@ -267,6 +289,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
     pageCacheRef.current.clear();
     pageCursorsRef.current.clear();
     searchCacheRef.current = null;
+    allAdminFiguresCacheRef.current = null;
   }, []);
 
   // Determinar parámetros de ordenamiento para Firestore según la selección del usuario
@@ -313,19 +336,21 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
         if (searchCacheRef.current && searchCacheRef.current.key === cacheKey) {
           matched = searchCacheRef.current.items;
         } else {
-          const baseQ = catFilter === 'all'
-            ? collection(db, 'figures')
-            : (matchingCatIds.length === 1
-                ? query(collection(db, 'figures'), where('franchiseId', '==', catFilter))
-                : query(collection(db, 'figures'), where('franchiseId', 'in', matchingCatIds.slice(0, 30))));
+          let allFetched: Product[] = [];
+          if (allAdminFiguresCacheRef.current) {
+            allFetched = allAdminFiguresCacheRef.current;
+          } else {
+            const baseQ = collection(db, 'figures');
+            const snap = await getDocs(baseQ);
+            allFetched = [];
+            snap.forEach(d => allFetched.push({ id: d.id, ...d.data() } as Product));
+            allAdminFiguresCacheRef.current = allFetched;
+          }
 
-          const snap = await getDocs(baseQ);
-          const allFetched: Product[] = [];
-          snap.forEach(d => allFetched.push({ id: d.id, ...d.data() } as Product));
-
-          matched = allFetched;
-          if (catFilter !== 'all' && matchingCatIds.length > 30) {
-            matched = matched.filter(fig => matchingCatIds.includes(fig.franchiseId));
+          if (catFilter === 'all') {
+            matched = allFetched;
+          } else {
+            matched = allFetched.filter(fig => matchingCatIds.includes(fig.franchiseId));
           }
 
           matched = matched.filter(fig => 

@@ -137,6 +137,27 @@ export function Storefront() {
   const [isSearchingStore, setIsSearchingStore] = useState(false);
   const [searchResults, setSearchResults] = useState<Product[]>([]);
   const allStoreFiguresCacheRef = useRef<Product[] | null>(null);
+
+  // Prefetch de todas las figuras para búsquedas e indexación instantáneas en el catálogo de la tienda
+  useEffect(() => {
+    let isMounted = true;
+    async function prefetchStoreFigures() {
+      try {
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        if (!isMounted) return;
+        const snap = await getDocs(collection(db, 'figures'));
+        const list: Product[] = [];
+        snap.forEach((d) => list.push({ id: d.id, ...d.data() } as Product));
+        if (isMounted && list.length > 0) {
+          allStoreFiguresCacheRef.current = list;
+        }
+      } catch (err) {
+        console.warn("Error pre-cargando figuras de la tienda:", err);
+      }
+    }
+    prefetchStoreFigures();
+    return () => { isMounted = false; };
+  }, []);
   const [statusFilter, setStatusFilter] = useState('all');
   const [franchiseFilter, setFranchiseFilter] = useState('all');
   const [finishFilter, setFinishFilter] = useState('all');
@@ -554,18 +575,20 @@ export function Storefront() {
 
         if (isCancelled) return;
 
-        const getCategoryNames = (categoryId: string) => {
-          const cat = categories.find((c) => c.id === categoryId);
-          if (!cat) return '';
-          const ancestors = getCategoryAncestors(categoryId, categories);
-          return [cat.name, ...ancestors.map((a) => a.name)].join(' ').toLowerCase();
-        };
+        // Precalcular nombres de categorías y ancestros en un mapa O(1) de alto rendimiento
+        const categorySearchMap = new Map<string, string>();
+        categories.forEach((cat) => {
+          const ancestors = getCategoryAncestors(cat.id, categories);
+          const nameStr = [cat.name, ...ancestors.map((a) => a.name)].join(' ').toLowerCase();
+          categorySearchMap.set(cat.id, nameStr);
+        });
 
         const matched = (allFigures || []).filter((product) => {
+          const catNames = categorySearchMap.get(product.franchiseId) || '';
           const matchesSearch =
             product.title.toLowerCase().includes(trimmed) ||
             (product.numericId && product.numericId.toLowerCase().includes(trimmed)) ||
-            getCategoryNames(product.franchiseId).includes(trimmed);
+            catNames.includes(trimmed);
 
           const matchesStatus = statusFilter === 'all' || product.status === statusFilter;
           const matchesFranchise = !allowedFranchiseIds || allowedFranchiseIds.has(product.franchiseId);
