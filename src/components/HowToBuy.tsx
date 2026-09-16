@@ -13,7 +13,7 @@ export function HowToBuy() {
             <div className="w-10 h-10 rounded-full bg-surface-container-high border border-primary/40 flex items-center justify-center font-serif text-primary font-bold text-lg">
               1
             </div>
-            <h4 className="font-serif text-xl font-semibold text-on-surface">Elegí tu figura</h4>
+            <h3 className="font-serif text-xl font-semibold text-on-surface">Elegí tu figura</h3>
             <p className="text-xs text-on-surface-variant">Explorá los modelos en nuestro catálogo online o solicitanos un personaje que no figure en lista.</p>
           </div>
 
@@ -21,7 +21,7 @@ export function HowToBuy() {
             <div className="w-10 h-10 rounded-full bg-surface-container-high border border-primary/40 flex items-center justify-center font-serif text-primary font-bold text-lg">
               2
             </div>
-            <h4 className="font-serif text-xl font-semibold text-on-surface">Consultá disponibilidad</h4>
+            <h3 className="font-serif text-xl font-semibold text-on-surface">Consultá disponibilidad</h3>
             <p className="text-xs text-on-surface-variant">Escribinos directamente por WhatsApp con la pieza de tu interés para confirmar stock o cupos de encargo.</p>
           </div>
 
@@ -29,7 +29,7 @@ export function HowToBuy() {
             <div className="w-10 h-10 rounded-full bg-surface-container-high border border-primary/40 flex items-center justify-center font-serif text-primary font-bold text-lg">
               3
             </div>
-            <h4 className="font-serif text-xl font-semibold text-on-surface">Coordinamos los detalles</h4>
+            <h3 className="font-serif text-xl font-semibold text-on-surface">Coordinamos los detalles</h3>
             <p className="text-xs text-on-surface-variant">Definimos la escala deseada, acabados personalizados, detalles de pintura y plazos de entrega del taller.</p>
           </div>
 
@@ -37,7 +37,7 @@ export function HowToBuy() {
             <div className="w-10 h-10 rounded-full bg-surface-container-high border border-primary/40 flex items-center justify-center font-serif text-primary font-bold text-lg">
               4
             </div>
-            <h4 className="font-serif text-xl font-semibold text-on-surface">Recibí tu figura</h4>
+            <h3 className="font-serif text-xl font-semibold text-on-surface">Recibí tu figura</h3>
             <p className="text-xs text-on-surface-variant">Envío ultra-protegido con embalaje de alta seguridad a todo el país o retiro acordado en showroom.</p>
           </div>
         </div>

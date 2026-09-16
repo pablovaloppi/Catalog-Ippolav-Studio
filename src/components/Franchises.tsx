@@ -42,7 +42,7 @@ export function Franchises({ onSelectFranchise, categories }: FranchisesProps) {
                 {getIcon(cat.icon)}
               </div>
               <div>
-                <h4 className="font-serif text-xl font-semibold text-on-surface group-hover:text-primary transition-colors">{cat.name}</h4>
+                <h3 className="font-serif text-xl font-semibold text-on-surface group-hover:text-primary transition-colors">{cat.name}</h3>
               </div>
             </button>
           ))}
@@ -52,7 +52,7 @@ export function Franchises({ onSelectFranchise, categories }: FranchisesProps) {
               <Wand2 className="w-5 h-5" />
             </div>
             <div>
-              <h4 className="font-serif text-xl font-semibold text-primary">Comisión Custom</h4>
+              <h3 className="font-serif text-xl font-semibold text-primary">Comisión Custom</h3>
               <p className="text-xs text-outline mt-0.5">Modelado a medida de cualquier universo</p>
             </div>
           </a>

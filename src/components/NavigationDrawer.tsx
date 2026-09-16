@@ -22,16 +22,26 @@ export function NavigationDrawer({ isOpen, onClose }: NavigationDrawerProps) {
         <div className="space-y-6">
           <div className="flex items-center justify-between pb-4 border-b border-outline-variant/30">
             <div className="flex items-center gap-2.5">
-              <img
-                src="/logo-ippolav.png"
-                alt="Emblema IPPOLAV"
-                className="w-8 h-8 object-contain"
-              />
+              <picture>
+                <source srcSet="/logo-ippolav.webp" type="image/webp" />
+                <img
+                  src="/logo-ippolav.png"
+                  alt="Emblema IPPOLAV"
+                  width="32"
+                  height="32"
+                  className="w-8 h-8 object-contain"
+                />
+              </picture>
               <span className="font-serif text-lg tracking-widest text-primary uppercase font-bold">
                 IPPOLAV STUDIO
               </span>
             </div>
-            <button onClick={onClose} className="text-on-surface-variant hover:text-primary p-1">
+            <button
+              onClick={onClose}
+              aria-label="Cerrar menú"
+              title="Cerrar menú"
+              className="text-on-surface-variant hover:text-primary p-1 rounded-lg"
+            >
               <X className="w-5 h-5" />
             </button>
           </div>

@@ -9,11 +9,18 @@ export function Contact({ config }: { config: SiteConfig | null }) {
   return (
     <section id="contacto" className="px-5 md:px-12 py-16 border-t border-outline-variant/20 bg-surface-container-lowest relative overflow-hidden">
       <div className="absolute right-0 bottom-0 opacity-5 pointer-events-none w-96 h-96">
-        <img
-          src="/logo-ippolav.png"
-          alt="Sello watermark"
-          className="w-full h-full object-contain opacity-20"
-        />
+        <picture>
+          <source srcSet="/logo-ippolav.webp" type="image/webp" />
+          <img
+            src="/logo-ippolav.png"
+            alt="Sello watermark"
+            loading="lazy"
+            decoding="async"
+            width="384"
+            height="384"
+            className="w-full h-full object-contain opacity-20"
+          />
+        </picture>
       </div>
       
       <div className="max-w-2xl mx-auto text-center space-y-6 relative z-10">

@@ -16,11 +16,16 @@ export function Header({ onOpenDrawer }: HeaderProps) {
           <Menu className="w-6 h-6" />
         </button>
         <a href="#hero" className="flex items-center gap-2.5">
-          <img
-            src="/logo-ippolav.png"
-            alt="IPPOLAV STUDIO Crest"
-            className="w-9 h-9 object-contain rounded border border-primary/30 p-0.5 bg-surface-container-lowest"
-          />
+          <picture>
+            <source srcSet="/logo-ippolav.webp" type="image/webp" />
+            <img
+              src="/logo-ippolav.png"
+              alt="IPPOLAV STUDIO Crest"
+              width="36"
+              height="36"
+              className="w-9 h-9 object-contain rounded border border-primary/30 p-0.5 bg-surface-container-lowest"
+            />
+          </picture>
           <span className="font-serif text-lg md:text-xl tracking-wider text-primary uppercase font-bold">
             IPPOLAV STUDIO
           </span>

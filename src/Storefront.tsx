@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
+import { useState, useMemo, useEffect, useCallback, useRef, lazy, Suspense } from 'react';
 import { Header } from './components/Header';
 import { NavigationDrawer } from './components/NavigationDrawer';
 import { Hero } from './components/Hero';
@@ -8,7 +8,6 @@ import { Franchises } from './components/Franchises';
 import { HowToBuy } from './components/HowToBuy';
 import { Contact } from './components/Contact';
 import { Footer } from './components/Footer';
-import { ProductModal } from './components/ProductModal';
 import { ScrollToCatalogButton } from './components/ScrollToCatalogButton';
 import { Product, Category, Designer, SiteConfig, SortOption } from './types';
 import { getAllDescendantCategoryIds, getCategoryAncestors, getCategoryBreadcrumb } from './categoryUtils';
@@ -16,12 +15,12 @@ import { products as initialProducts } from './data';
 import {
   collection,
   doc,
-  onSnapshot,
   query,
   orderBy,
   limit,
   startAfter,
   getDocs,
+  getDoc,
   where,
   getCountFromServer,
   updateDoc,
@@ -31,8 +30,10 @@ import {
 } from 'firebase/firestore';
 import { db } from './firebase';
 
-const INITIAL_STEP = 6;
-const BATCH_SIZE = 3;
+const ProductModal = lazy(() => import('./components/ProductModal').then(m => ({ default: m.ProductModal })));
+
+const INITIAL_STEP = 10;
+const BATCH_SIZE = 10;
 
 function getFigureTimestamp(p: Product): number {
   if (p.createdAt) {
@@ -137,27 +138,6 @@ export function Storefront() {
   const [isSearchingStore, setIsSearchingStore] = useState(false);
   const [searchResults, setSearchResults] = useState<Product[]>([]);
   const allStoreFiguresCacheRef = useRef<Product[] | null>(null);
-
-  // Prefetch de todas las figuras para búsquedas e indexación instantáneas en el catálogo de la tienda
-  useEffect(() => {
-    let isMounted = true;
-    async function prefetchStoreFigures() {
-      try {
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-        if (!isMounted) return;
-        const snap = await getDocs(collection(db, 'figures'));
-        const list: Product[] = [];
-        snap.forEach((d) => list.push({ id: d.id, ...d.data() } as Product));
-        if (isMounted && list.length > 0) {
-          allStoreFiguresCacheRef.current = list;
-        }
-      } catch (err) {
-        console.warn("Error pre-cargando figuras de la tienda:", err);
-      }
-    }
-    prefetchStoreFigures();
-    return () => { isMounted = false; };
-  }, []);
   const [statusFilter, setStatusFilter] = useState('all');
   const [franchiseFilter, setFranchiseFilter] = useState('all');
   const [finishFilter, setFinishFilter] = useState('all');
@@ -374,42 +354,44 @@ export function Storefront() {
     };
   }, [franchiseFilter, statusFilter, sortBy]);
 
-  // Carga de categorías, diseñadores y configuración en tiempo real
+  // Carga optimizada de categorías, diseñadores y configuración en paralelo
   useEffect(() => {
     let isMounted = true;
 
-    const qCats = query(collection(db, 'categories'), orderBy('order', 'asc'));
-    const unsubCats = onSnapshot(qCats, (snapshot) => {
-      if (!isMounted) return;
-      const data: Category[] = [];
-      snapshot.forEach((docSnap) => {
-        data.push({ id: docSnap.id, ...docSnap.data() } as Category);
-      });
-      setCategories(data);
-    });
+    async function loadMetadata() {
+      try {
+        const [catsSnap, desSnap, configSnap] = await Promise.all([
+          getDocs(query(collection(db, 'categories'), orderBy('order', 'asc'))),
+          getDocs(query(collection(db, 'designers'), orderBy('order', 'asc'))),
+          getDoc(doc(db, 'config', 'site')),
+        ]);
 
-    const qDesigners = query(collection(db, 'designers'), orderBy('order', 'asc'));
-    const unsubDesigners = onSnapshot(qDesigners, (snapshot) => {
-      if (!isMounted) return;
-      const data: Designer[] = [];
-      snapshot.forEach((docSnap) => {
-        data.push({ id: docSnap.id, ...docSnap.data() } as Designer);
-      });
-      setDesigners(data);
-    });
+        if (!isMounted) return;
 
-    const unsubConfig = onSnapshot(doc(db, 'config', 'site'), (docSnapshot) => {
-      if (!isMounted) return;
-      if (docSnapshot.exists()) {
-        setSiteConfig(docSnapshot.data() as SiteConfig);
+        const dataCats: Category[] = [];
+        catsSnap.forEach((docSnap) => {
+          dataCats.push({ id: docSnap.id, ...docSnap.data() } as Category);
+        });
+        setCategories(dataCats);
+
+        const dataDes: Designer[] = [];
+        desSnap.forEach((docSnap) => {
+          dataDes.push({ id: docSnap.id, ...docSnap.data() } as Designer);
+        });
+        setDesigners(dataDes);
+
+        if (configSnap.exists()) {
+          setSiteConfig(configSnap.data() as SiteConfig);
+        }
+      } catch (error) {
+        console.warn("Error cargando metadatos del catálogo:", error);
       }
-    });
+    }
+
+    loadMetadata();
 
     return () => {
       isMounted = false;
-      unsubCats();
-      unsubDesigners();
-      unsubConfig();
     };
   }, []);
 
@@ -702,15 +684,19 @@ export function Storefront() {
       </main>
       <Footer config={siteConfig} />
       
-      <ProductModal 
-        product={selectedProduct} 
-        categoryName={selectedProduct ? getCategoryBreadcrumb(selectedProduct.franchiseId, categories) : undefined}
-        designerName={selectedProduct && selectedProduct.designerId ? designers.find(d => d.id === selectedProduct.designerId)?.name : undefined}
-        onClose={() => setSelectedProduct(null)} 
-        config={siteConfig}
-        isLiked={selectedProduct ? likedFigureIds.has(selectedProduct.id) : false}
-        onToggleLike={handleToggleLike}
-      />
+      {selectedProduct && (
+        <Suspense fallback={null}>
+          <ProductModal 
+            product={selectedProduct} 
+            categoryName={getCategoryBreadcrumb(selectedProduct.franchiseId, categories)}
+            designerName={selectedProduct.designerId ? designers.find(d => d.id === selectedProduct.designerId)?.name : undefined}
+            onClose={() => setSelectedProduct(null)} 
+            config={siteConfig}
+            isLiked={likedFigureIds.has(selectedProduct.id)}
+            onToggleLike={handleToggleLike}
+          />
+        </Suspense>
+      )}
 
       <ScrollToCatalogButton />
     </>

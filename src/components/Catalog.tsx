@@ -74,6 +74,7 @@ const CatalogCard = memo(function CatalogCard({
 }: CatalogCardProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const imageUrl = product.imageUrls?.[0] || '';
+  const isCritical = index < 2;
   const isPriority = index < 10;
   const isAlreadyCached = imageUrl ? globalLoadedImages.has(imageUrl) : false;
 
@@ -121,7 +122,7 @@ const CatalogCard = memo(function CatalogCard({
             alt={product.title}
             loading={isPriority ? 'eager' : 'lazy'}
             decoding="async"
-            fetchPriority={isPriority ? 'high' : 'auto'}
+            fetchPriority={isCritical ? 'high' : 'auto'}
             onLoad={handleLoad}
             className={`w-full h-full object-cover group-hover:scale-105 transition-all duration-500 ${
               isImageReady ? 'opacity-100' : 'opacity-0'
