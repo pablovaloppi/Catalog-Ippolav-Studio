@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { useAuth } from './contexts/AuthContext';
-import { loginWithGoogle, logout, db } from './firebase';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { db } from './firebase';
+import { loginWithGoogle, logout } from './firebaseAuth';
 import { 
   collection, 
   addDoc, 
@@ -35,7 +36,7 @@ import {
 
 // Removed inline Category interface
 
-export function AdminPanel() {
+function AdminPanelContent() {
   const { user, isAdmin, loading } = useAuth();
 
   
@@ -2333,5 +2334,13 @@ function ConfigForm({ config }: { config: SiteConfig }) {
         </div>
       </form>
     </div>
+  );
+}
+
+export function AdminPanel() {
+  return (
+    <AuthProvider>
+      <AdminPanelContent />
+    </AuthProvider>
   );
 }

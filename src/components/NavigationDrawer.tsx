@@ -25,7 +25,7 @@ export function NavigationDrawer({ isOpen, onClose }: NavigationDrawerProps) {
               <picture>
                 <source srcSet="/logo-ippolav.webp" type="image/webp" />
                 <img
-                  src="/logo-ippolav.png"
+                  src="/logo-ippolav.webp"
                   alt="Emblema IPPOLAV"
                   width="32"
                   height="32"

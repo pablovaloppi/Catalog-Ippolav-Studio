@@ -12,7 +12,7 @@ export function Contact({ config }: { config: SiteConfig | null }) {
         <picture>
           <source srcSet="/logo-ippolav.webp" type="image/webp" />
           <img
-            src="/logo-ippolav.png"
+            src="/logo-ippolav.webp"
             alt="Sello watermark"
             loading="lazy"
             decoding="async"

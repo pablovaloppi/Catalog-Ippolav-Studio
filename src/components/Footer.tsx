@@ -9,7 +9,7 @@ export function Footer({ config }: { config: SiteConfig | null }) {
         <picture>
           <source srcSet="/logo-ippolav.webp" type="image/webp" />
           <img
-            src="/logo-ippolav.png"
+            src="/logo-ippolav.webp"
             alt="IPPOLAV STUDIO Logo"
             width="96"
             height="96"

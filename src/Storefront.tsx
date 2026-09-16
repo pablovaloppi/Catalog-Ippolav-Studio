@@ -446,20 +446,25 @@ export function Storefront() {
     return new Set([franchiseFilter, ...getAllDescendantCategoryIds(franchiseFilter, categories)]);
   }, [franchiseFilter, categories]);
 
-  const filteredProducts = useMemo(() => {
-    return products.filter((product) => {
-      const getCategoryNames = (categoryId: string) => {
-        const cat = categories.find(c => c.id === categoryId);
-        if (!cat) return '';
-        const ancestors = getCategoryAncestors(categoryId, categories);
-        return [cat.name, ...ancestors.map(a => a.name)].join(' ').toLowerCase();
-      };
+  const categorySearchMap = useMemo(() => {
+    const map = new Map<string, string>();
+    categories.forEach((cat) => {
+      const ancestors = getCategoryAncestors(cat.id, categories);
+      const nameStr = [cat.name, ...ancestors.map((a) => a.name)].join(' ').toLowerCase();
+      map.set(cat.id, nameStr);
+    });
+    return map;
+  }, [categories]);
 
+  const filteredProducts = useMemo(() => {
+    const searchQueryLower = searchQuery.toLowerCase();
+    const hasSearchQuery = searchQuery.trim() !== '';
+    return products.filter((product) => {
       const matchesSearch =
-        searchQuery.trim() === '' ||
-        product.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (product.numericId && product.numericId.toLowerCase().includes(searchQuery.toLowerCase())) ||
-        getCategoryNames(product.franchiseId).includes(searchQuery.toLowerCase());
+        !hasSearchQuery ||
+        product.title.toLowerCase().includes(searchQueryLower) ||
+        (product.numericId && product.numericId.toLowerCase().includes(searchQueryLower)) ||
+        (categorySearchMap.get(product.franchiseId) || '').includes(searchQueryLower);
         
       const matchesStatus = statusFilter === 'all' || product.status === statusFilter;
       
@@ -470,7 +475,7 @@ export function Storefront() {
 
       return matchesSearch && matchesStatus && matchesFranchise && matchesFinish && matchesScale;
     });
-  }, [searchQuery, statusFilter, allowedFranchiseIds, finishFilter, scaleFilter, products, categories]);
+  }, [searchQuery, statusFilter, allowedFranchiseIds, finishFilter, scaleFilter, products, categorySearchMap]);
 
   const sortedAndFilteredProducts = useMemo(() => {
     const list = [...filteredProducts];
@@ -556,14 +561,6 @@ export function Storefront() {
         }
 
         if (isCancelled) return;
-
-        // Precalcular nombres de categorías y ancestros en un mapa O(1) de alto rendimiento
-        const categorySearchMap = new Map<string, string>();
-        categories.forEach((cat) => {
-          const ancestors = getCategoryAncestors(cat.id, categories);
-          const nameStr = [cat.name, ...ancestors.map((a) => a.name)].join(' ').toLowerCase();
-          categorySearchMap.set(cat.id, nameStr);
-        });
 
         const matched = (allFigures || []).filter((product) => {
           const catNames = categorySearchMap.get(product.franchiseId) || '';
@@ -660,7 +657,7 @@ export function Storefront() {
         />
         {showStoreLoader ? (
           <div className="flex flex-col justify-center items-center py-24 text-primary">
-            <img src="/logo-ippolav.png" alt="Loading..." className="w-16 h-16 animate-scale-pulse object-contain" />
+            <img src="/logo-ippolav.webp" alt="Loading..." className="w-16 h-16 animate-scale-pulse object-contain" />
             <span className="mt-4 text-xs font-semibold text-on-surface-variant tracking-wider uppercase">
               {isSearchActive ? 'Buscando figuras...' : 'Cargando figuras...'}
             </span>

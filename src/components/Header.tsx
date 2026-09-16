@@ -19,7 +19,7 @@ export function Header({ onOpenDrawer }: HeaderProps) {
           <picture>
             <source srcSet="/logo-ippolav.webp" type="image/webp" />
             <img
-              src="/logo-ippolav.png"
+              src="/logo-ippolav.webp"
               alt="IPPOLAV STUDIO Crest"
               width="36"
               height="36"
