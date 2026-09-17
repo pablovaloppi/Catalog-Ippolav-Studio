@@ -116,6 +116,11 @@ const CatalogCard = memo(function CatalogCard({
       className="group bg-surface-container-low rounded-xl border border-outline-variant/30 overflow-hidden flex flex-col justify-between gold-border-glow transition-all duration-300 cursor-pointer relative"
     >
       <div ref={containerRef} className="relative aspect-[3/4] bg-surface-container-lowest overflow-hidden">
+        {(!shouldLoad || !isImageReady) && (
+          <div className="absolute inset-0 bg-surface-container-high/40 animate-pulse flex items-center justify-center">
+            <div className="w-8 h-8 rounded-full border-2 border-primary/20 border-t-primary animate-spin"></div>
+          </div>
+        )}
         {shouldLoad && imageUrl ? (
           <img
             src={imageUrl}
@@ -124,13 +129,11 @@ const CatalogCard = memo(function CatalogCard({
             decoding="async"
             fetchPriority={isCritical ? 'high' : 'auto'}
             onLoad={handleLoad}
-            className={`w-full h-full object-cover group-hover:scale-105 transition-all duration-500 ${
+            className={`absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-all duration-300 ${
               isImageReady ? 'opacity-100' : 'opacity-0'
             }`}
           />
-        ) : (
-          <div className="w-full h-full bg-surface-container-lowest" />
-        )}
+        ) : null}
         <div className="absolute top-3 left-3 flex flex-col gap-1.5 z-10 pointer-events-none">
           {product.status === 'disponible' && (
             <span className="px-2 py-0.5 rounded bg-emerald-950/80 border border-emerald-500/50 text-emerald-300 text-[10px] uppercase font-bold tracking-wider">
