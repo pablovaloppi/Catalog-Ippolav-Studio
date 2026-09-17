@@ -1,6 +1,7 @@
 import React, { useRef, useState, useEffect, memo } from 'react';
 import { ArrowRight, PlusCircle, Heart } from 'lucide-react';
 import { Product, Category } from '../types';
+import { getOptimizedCloudinaryUrl, getCloudinarySrcSet } from '../cloudinaryUtils';
 
 // Memoria global de URLs de imágenes ya cargadas durante la sesión del usuario
 const globalLoadedImages = new Set<string>();
@@ -74,8 +75,8 @@ const CatalogCard = memo(function CatalogCard({
 }: CatalogCardProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const imageUrl = product.imageUrls?.[0] || '';
-  const isCritical = index < 2;
-  const isPriority = index < 10;
+  const isCritical = index === 0;
+  const isPriority = index < 2;
   const isAlreadyCached = imageUrl ? globalLoadedImages.has(imageUrl) : false;
 
   const [shouldLoad, setShouldLoad] = useState<boolean>(() => isPriority || isAlreadyCached);
@@ -108,6 +109,8 @@ const CatalogCard = memo(function CatalogCard({
   };
 
   const likesCount = product.likesCount || 0;
+  const optimizedSrc = getOptimizedCloudinaryUrl(imageUrl, 600);
+  const srcSet = getCloudinarySrcSet(imageUrl, [380, 520, 720, 960]);
 
   return (
     <article
@@ -123,7 +126,9 @@ const CatalogCard = memo(function CatalogCard({
         )}
         {shouldLoad && imageUrl ? (
           <img
-            src={imageUrl}
+            src={optimizedSrc}
+            srcSet={srcSet}
+            sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 380px"
             alt={product.title}
             loading={isPriority ? 'eager' : 'lazy'}
             decoding="async"

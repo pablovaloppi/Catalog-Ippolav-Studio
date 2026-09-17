@@ -1,14 +1,9 @@
 import { useState, useMemo, useEffect, useCallback, useRef, lazy, Suspense } from 'react';
 import { Header } from './components/Header';
-import { NavigationDrawer } from './components/NavigationDrawer';
 import { Hero } from './components/Hero';
 import { FilterSection } from './components/FilterSection';
 import { Catalog } from './components/Catalog';
 import { Franchises } from './components/Franchises';
-import { HowToBuy } from './components/HowToBuy';
-import { Contact } from './components/Contact';
-import { Footer } from './components/Footer';
-import { ScrollToCatalogButton } from './components/ScrollToCatalogButton';
 import { Product, Category, Designer, SiteConfig, SortOption } from './types';
 import { getAllDescendantCategoryIds, getCategoryAncestors, getCategoryBreadcrumb } from './categoryUtils';
 import { products as initialProducts } from './data';
@@ -30,6 +25,11 @@ import {
 } from 'firebase/firestore';
 import { db } from './firebase';
 
+const NavigationDrawer = lazy(() => import('./components/NavigationDrawer').then(m => ({ default: m.NavigationDrawer })));
+const HowToBuy = lazy(() => import('./components/HowToBuy').then(m => ({ default: m.HowToBuy })));
+const Contact = lazy(() => import('./components/Contact').then(m => ({ default: m.Contact })));
+const Footer = lazy(() => import('./components/Footer').then(m => ({ default: m.Footer })));
+const ScrollToCatalogButton = lazy(() => import('./components/ScrollToCatalogButton').then(m => ({ default: m.ScrollToCatalogButton })));
 const ProductModal = lazy(() => import('./components/ProductModal').then(m => ({ default: m.ProductModal })));
 
 const INITIAL_STEP = 10;
@@ -634,7 +634,11 @@ export function Storefront() {
   return (
     <>
       <Header onOpenDrawer={() => setIsDrawerOpen(true)} />
-      <NavigationDrawer isOpen={isDrawerOpen} onClose={() => setIsDrawerOpen(false)} />
+      {isDrawerOpen && (
+        <Suspense fallback={null}>
+          <NavigationDrawer isOpen={isDrawerOpen} onClose={() => setIsDrawerOpen(false)} />
+        </Suspense>
+      )}
       
       <main className="pt-16 max-w-7xl mx-auto overflow-hidden">
         <Hero />
@@ -657,7 +661,14 @@ export function Storefront() {
         />
         {showStoreLoader ? (
           <div className="flex flex-col justify-center items-center py-24 text-primary">
-            <img src="/logo-ippolav.webp" alt="Loading..." className="w-16 h-16 animate-scale-pulse object-contain" />
+            <img
+              src="/logo-ippolav.webp"
+              alt="Loading..."
+              width="64"
+              height="64"
+              decoding="async"
+              className="w-16 h-16 animate-scale-pulse object-contain"
+            />
             <span className="mt-4 text-xs font-semibold text-on-surface-variant tracking-wider uppercase">
               {isSearchActive ? 'Buscando figuras...' : 'Cargando figuras...'}
             </span>
@@ -676,10 +687,15 @@ export function Storefront() {
           />
         )}
         <Franchises onSelectFranchise={setFranchiseFilter} categories={categories} />
-        <HowToBuy />
-        <Contact config={siteConfig} />
+        <Suspense fallback={null}>
+          <HowToBuy />
+          <Contact config={siteConfig} />
+        </Suspense>
       </main>
-      <Footer config={siteConfig} />
+      <Suspense fallback={null}>
+        <Footer config={siteConfig} />
+        <ScrollToCatalogButton />
+      </Suspense>
       
       {selectedProduct && (
         <Suspense fallback={null}>
@@ -694,8 +710,6 @@ export function Storefront() {
           />
         </Suspense>
       )}
-
-      <ScrollToCatalogButton />
     </>
   );
 }

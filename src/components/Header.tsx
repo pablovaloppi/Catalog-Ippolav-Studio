@@ -23,6 +23,9 @@ export function Header({ onOpenDrawer }: HeaderProps) {
               alt="IPPOLAV STUDIO Crest"
               width="36"
               height="36"
+              loading="eager"
+              decoding="async"
+              fetchPriority="high"
               className="w-9 h-9 object-contain rounded border border-primary/30 p-0.5 bg-surface-container-lowest"
             />
           </picture>
