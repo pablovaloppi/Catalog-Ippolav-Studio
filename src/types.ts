@@ -40,4 +40,6 @@ export interface SiteConfig {
   facebook: string;
   youtube: string;
   whatsappMessageTemplate: string;
+  cloudinaryCloudName?: string;
+  cloudinaryUploadPreset?: string;
 }

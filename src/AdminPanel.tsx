@@ -1507,7 +1507,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
         ) : view === 'config' ? (
           <ConfigForm config={siteConfig} />
         ) : view === 'migration' ? (
-          <ImageMigrationTool />
+          <ImageMigrationTool config={siteConfig} />
         ) : (
           <FigureForm 
             figure={editingFigure} 
@@ -1515,6 +1515,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
             designers={designers}
             onBack={handleFigureFormBack} 
             orderCount={totalAdminFigures} 
+            config={siteConfig}
           />
         )}
       </main>
@@ -1848,7 +1849,7 @@ export async function getNextFigureNumericId(): Promise<string> {
   }
 }
 
-function FigureForm({ figure, categories, designers, onBack, orderCount }: { figure: Product | null, categories: Category[], designers: Designer[], onBack: () => void, orderCount: number }) {
+function FigureForm({ figure, categories, designers, onBack, orderCount, config }: { figure: Product | null, categories: Category[], designers: Designer[], onBack: () => void, orderCount: number, config?: SiteConfig }) {
   // Categorías y subcategorías ordenadas alfabéticamente A-Z
   // Las subcategorías indican su jerarquía completa, ej: "Saiyajin (Anime & Manga > Dragon Ball)"
   const sortedFigureCategories = useMemo(() => {
@@ -2036,12 +2037,40 @@ function FigureForm({ figure, categories, designers, onBack, orderCount }: { fig
     if (!e.target.files?.length) return;
     setLoading(true);
     const files = Array.from(e.target.files);
+    
     try {
       const compressedImages = await Promise.all(files.map(processImage));
-      setFormData(prev => ({ ...prev, imageUrls: [...(prev.imageUrls || []), ...compressedImages] }));
+      
+      let finalUrls = compressedImages;
+
+      // Si Cloudinary está configurado, subir las imágenes comprimidas ahí
+      if (config?.cloudinaryCloudName && config?.cloudinaryUploadPreset) {
+        finalUrls = await Promise.all(compressedImages.map(async (base64) => {
+          const formData = new FormData();
+          formData.append('file', base64);
+          formData.append('upload_preset', config.cloudinaryUploadPreset!);
+          
+          const response = await fetch(`https://api.cloudinary.com/v1_1/${config.cloudinaryCloudName}/image/upload`, {
+            method: 'POST',
+            body: formData
+          });
+
+          if (!response.ok) {
+            throw new Error('Error al subir a Cloudinary');
+          }
+
+          const data = await response.json();
+          // Insertamos f_auto (formato automático como WebP/AVIF) y q_auto (compresión inteligente sin pérdida visual)
+          // Esto inyecta los parámetros en la URL justo después del "/upload/"
+          const optimizedUrl = data.secure_url.replace('/upload/', '/upload/f_auto,q_auto/');
+          return optimizedUrl; 
+        }));
+      }
+
+      setFormData(prev => ({ ...prev, imageUrls: [...(prev.imageUrls || []), ...finalUrls] }));
     } catch (err) {
       console.error(err);
-      alert('Error procesando imágenes');
+      alert('Error procesando o subiendo imágenes. Revisa tu configuración de Cloudinary si la activaste.');
     }
     setLoading(false);
     // Reset file input
@@ -2335,6 +2364,24 @@ function ConfigForm({ config }: { config: SiteConfig }) {
             <p className="text-xs text-outline mt-1">
               Etiquetas disponibles: <strong className="text-primary">{'{figura}'}</strong> (nombre del producto) y <strong className="text-primary">{'{codigo}'}</strong> (identificador numérico).
             </p>
+          </div>
+        </div>
+
+        <div className="w-full h-px bg-outline-variant/30 my-6"></div>
+
+        <div className="space-y-4">
+          <h3 className="text-lg font-bold text-primary">Configuración de Imágenes (Cloudinary)</h3>
+          <p className="text-xs text-on-surface-variant">Cloudinary es un servicio profesional y gratuito para alojar y optimizar imágenes. Permite que el catálogo cargue instantáneamente y ahorre datos a tus clientes.</p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-1">
+              <label className="text-sm font-bold text-on-surface">Cloud Name</label>
+              <input type="text" name="cloudinaryCloudName" value={formData.cloudinaryCloudName || ''} onChange={handleChange} placeholder="Ej: dxxabc123" className="w-full p-3 bg-surface-container border border-outline-variant/30 rounded-lg text-sm" />
+            </div>
+            <div className="space-y-1">
+              <label className="text-sm font-bold text-on-surface">Upload Preset</label>
+              <input type="text" name="cloudinaryUploadPreset" value={formData.cloudinaryUploadPreset || ''} onChange={handleChange} placeholder="Ej: ippolav_preset" className="w-full p-3 bg-surface-container border border-outline-variant/30 rounded-lg text-sm" />
+              <p className="text-xs text-outline mt-1">Debe estar configurado como "Unsigned".</p>
+            </div>
           </div>
         </div>
 
