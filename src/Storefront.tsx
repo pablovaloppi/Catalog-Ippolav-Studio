@@ -7,23 +7,7 @@ import { Franchises } from './components/Franchises';
 import { Product, Category, Designer, SiteConfig, SortOption } from './types';
 import { getAllDescendantCategoryIds, getCategoryAncestors, getCategoryBreadcrumb } from './categoryUtils';
 import { products as initialProducts } from './data';
-import {
-  collection,
-  doc,
-  query,
-  orderBy,
-  limit,
-  startAfter,
-  getDocs,
-  getDoc,
-  where,
-  getCountFromServer,
-  updateDoc,
-  increment,
-  QueryDocumentSnapshot,
-  DocumentData,
-} from 'firebase/firestore';
-import { db } from './firebase';
+import type { QueryDocumentSnapshot, DocumentData } from 'firebase/firestore';
 
 const NavigationDrawer = lazy(() => import('./components/NavigationDrawer').then(m => ({ default: m.NavigationDrawer })));
 const HowToBuy = lazy(() => import('./components/HowToBuy').then(m => ({ default: m.HowToBuy })));
@@ -58,77 +42,6 @@ function getFigureTimestamp(p: Product): number {
     return p.order * 1000;
   }
   return 0;
-}
-
-function buildFiguresQuery(
-  franchiseFilter: string,
-  statusFilter: string,
-  categories: Category[],
-  afterDoc?: QueryDocumentSnapshot<DocumentData> | null,
-  limitCount: number = BATCH_SIZE,
-  sortBy: SortOption = 'default'
-) {
-  const figuresRef = collection(db, 'figures');
-
-  if (franchiseFilter !== 'all') {
-    const descendantIds = getAllDescendantCategoryIds(franchiseFilter, categories);
-    const catIds = [franchiseFilter, ...descendantIds];
-
-    if (catIds.length === 1) {
-      if (afterDoc) {
-        return query(figuresRef, where('franchiseId', '==', catIds[0]), startAfter(afterDoc), limit(limitCount));
-      }
-      return query(figuresRef, where('franchiseId', '==', catIds[0]), limit(limitCount));
-    } else {
-      const sliceIds = catIds.slice(0, 30);
-      if (afterDoc) {
-        return query(figuresRef, where('franchiseId', 'in', sliceIds), startAfter(afterDoc), limit(limitCount));
-      }
-      return query(figuresRef, where('franchiseId', 'in', sliceIds), limit(limitCount));
-    }
-  }
-
-  if (statusFilter !== 'all') {
-    if (afterDoc) {
-      return query(figuresRef, where('status', '==', statusFilter), startAfter(afterDoc), limit(limitCount));
-    }
-    return query(figuresRef, where('status', '==', statusFilter), limit(limitCount));
-  }
-
-  // Ordenación directa en Firestore para el catálogo general
-  let firestoreOrderField = 'order';
-  let firestoreOrderDirection: 'asc' | 'desc' = 'asc';
-
-  if (sortBy === 'recent') {
-    firestoreOrderField = 'order';
-    firestoreOrderDirection = 'desc';
-  } else if (sortBy === 'oldest' || sortBy === 'default' || sortBy === 'likes-desc') {
-    firestoreOrderField = 'order';
-    firestoreOrderDirection = 'asc';
-  } else if (sortBy === 'name-asc') {
-    firestoreOrderField = 'title';
-    firestoreOrderDirection = 'asc';
-  } else if (sortBy === 'name-desc') {
-    firestoreOrderField = 'title';
-    firestoreOrderDirection = 'desc';
-  } else if (sortBy === 'finish') {
-    firestoreOrderField = 'finish';
-    firestoreOrderDirection = 'asc';
-  }
-
-  if (afterDoc) {
-    return query(
-      figuresRef,
-      orderBy(firestoreOrderField, firestoreOrderDirection),
-      startAfter(afterDoc),
-      limit(limitCount)
-    );
-  }
-  return query(
-    figuresRef,
-    orderBy(firestoreOrderField, firestoreOrderDirection),
-    limit(limitCount)
-  );
 }
 
 export function Storefront() {
@@ -225,10 +138,8 @@ export function Storefront() {
 
     // 4. Persistir en Firestore de manera segura y concurrente con increment
     try {
-      const figRef = doc(db, 'figures', figureId);
-      await updateDoc(figRef, {
-        likesCount: increment(delta),
-      });
+      const { toggleFigureLikeInDb } = await import('./services/firestoreService');
+      await toggleFigureLikeInDb(figureId, delta);
     } catch (err) {
       console.error("Error al guardar me gusta en Firestore:", err);
       // Revertir en caso de error
@@ -265,9 +176,10 @@ export function Storefront() {
     let isMounted = true;
     async function fetchTotalFiguresCount() {
       try {
-        const countSnap = await getCountFromServer(collection(db, 'figures'));
-        if (isMounted) {
-          setTotalFiguresInDb(countSnap.data().count);
+        const { fetchTotalFiguresCount: getTotalCount } = await import('./services/firestoreService');
+        const count = await getTotalCount();
+        if (isMounted && count !== null) {
+          setTotalFiguresInDb(count);
         }
       } catch (err) {
         console.warn("No se pudo obtener el conteo de figuras de Firestore:", err);
@@ -303,20 +215,15 @@ export function Storefront() {
 
       try {
         const initialLimit = sortBy === 'likes-desc' ? 12 : INITIAL_STEP;
-        const q = buildFiguresQuery(franchiseFilter, statusFilter, categories, null, initialLimit, sortBy);
-        const snapshot = await getDocs(q);
+        const { fetchFiguresBatch } = await import('./services/firestoreService');
+        const { products: data, lastDoc: lastVisible, hasMore: moreAvailable } =
+          await fetchFiguresBatch(franchiseFilter, statusFilter, categories, null, initialLimit, sortBy);
         if (isCancelled) return;
-
-        const data: Product[] = [];
-        snapshot.forEach((docSnap) => {
-          data.push({ id: docSnap.id, ...docSnap.data() } as Product);
-        });
 
         if (data.length > 0) {
           setProducts(data);
-          const lastVisible = snapshot.docs[snapshot.docs.length - 1] || null;
           setLastDoc(lastVisible);
-          setHasMore(snapshot.docs.length === initialLimit);
+          setHasMore(moreAvailable);
         } else if (franchiseFilter === 'all' && statusFilter === 'all') {
           // Si la base de datos de Firestore está vacía, usar las figuras locales de prueba ordenadas
           const localSorted = [...initialProducts].sort((a, b) => {
@@ -352,7 +259,7 @@ export function Storefront() {
     return () => {
       isCancelled = true;
     };
-  }, [franchiseFilter, statusFilter, sortBy]);
+  }, [franchiseFilter, statusFilter, categories, sortBy]);
 
   // Carga optimizada de categorías, diseñadores y configuración en paralelo
   useEffect(() => {
@@ -360,29 +267,14 @@ export function Storefront() {
 
     async function loadMetadata() {
       try {
-        const [catsSnap, desSnap, configSnap] = await Promise.all([
-          getDocs(query(collection(db, 'categories'), orderBy('order', 'asc'))),
-          getDocs(query(collection(db, 'designers'), orderBy('order', 'asc'))),
-          getDoc(doc(db, 'config', 'site')),
-        ]);
+        const { fetchCatalogMetadata } = await import('./services/firestoreService');
+        const { categories: dataCats, designers: dataDes, siteConfig: configData } = await fetchCatalogMetadata();
 
         if (!isMounted) return;
 
-        const dataCats: Category[] = [];
-        catsSnap.forEach((docSnap) => {
-          dataCats.push({ id: docSnap.id, ...docSnap.data() } as Category);
-        });
-        setCategories(dataCats);
-
-        const dataDes: Designer[] = [];
-        desSnap.forEach((docSnap) => {
-          dataDes.push({ id: docSnap.id, ...docSnap.data() } as Designer);
-        });
-        setDesigners(dataDes);
-
-        if (configSnap.exists()) {
-          setSiteConfig(configSnap.data() as SiteConfig);
-        }
+        if (dataCats.length > 0) setCategories(dataCats);
+        if (dataDes.length > 0) setDesigners(dataDes);
+        if (configData) setSiteConfig(configData);
       } catch (error) {
         console.warn("Error cargando metadatos del catálogo:", error);
       }
@@ -395,18 +287,15 @@ export function Storefront() {
     };
   }, []);
 
-  // Carga de siguientes lotes continuos de 3 en 3 anticipados por el scroll
+  // Carga de siguientes lotes continuos anticipados por el scroll
   const loadMore = useCallback(async () => {
     if (loadingMore || !hasMore || !lastDoc) return;
     setLoadingMore(true);
 
     try {
-      const qNext = buildFiguresQuery(franchiseFilter, statusFilter, categories, lastDoc, BATCH_SIZE, sortBy);
-      const snapshot = await getDocs(qNext);
-      const data: Product[] = [];
-      snapshot.forEach((docSnap) => {
-        data.push({ id: docSnap.id, ...docSnap.data() } as Product);
-      });
+      const { fetchFiguresBatch } = await import('./services/firestoreService');
+      const { products: data, lastDoc: lastVisible, hasMore: moreAvailable } =
+        await fetchFiguresBatch(franchiseFilter, statusFilter, categories, lastDoc, BATCH_SIZE, sortBy);
 
       setProducts((prev) => {
         const existingIds = new Set(prev.map((p) => p.id));
@@ -414,9 +303,8 @@ export function Storefront() {
         return [...prev, ...newItems];
       });
 
-      const nextLastDoc = snapshot.docs[snapshot.docs.length - 1] || null;
-      setLastDoc(nextLastDoc);
-      setHasMore(snapshot.docs.length === BATCH_SIZE);
+      setLastDoc(lastVisible);
+      setHasMore(moreAvailable);
     } catch (error) {
       console.error("Error cargando siguiente lote de figuras: ", error);
     } finally {
@@ -549,9 +437,8 @@ export function Storefront() {
       try {
         let allFigures = allStoreFiguresCacheRef.current;
         if (!allFigures) {
-          const snap = await getDocs(collection(db, 'figures'));
-          const list: Product[] = [];
-          snap.forEach((d) => list.push({ id: d.id, ...d.data() } as Product));
+          const { fetchAllFiguresForSearch } = await import('./services/firestoreService');
+          const list = await fetchAllFiguresForSearch();
           if (list.length > 0) {
             allStoreFiguresCacheRef.current = list;
             allFigures = list;

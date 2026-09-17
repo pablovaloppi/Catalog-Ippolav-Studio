@@ -262,9 +262,9 @@ export function ProductModal({ product, categoryName, designerName, onClose, con
             className="w-full h-full cursor-zoom-in"
           >
             <img 
-              src={getOptimizedCloudinaryUrl(currentImageUrl, 900)} 
-              srcSet={getCloudinarySrcSet(currentImageUrl, [480, 720, 960, 1200])}
-              sizes="(max-width: 672px) 100vw, 672px"
+              src={getOptimizedCloudinaryUrl(currentImageUrl, 1400, 'good')} 
+              srcSet={getCloudinarySrcSet(currentImageUrl, [720, 960, 1200, 1600, 2000], 'good')}
+              sizes="(max-width: 768px) 100vw, 700px"
               alt={product.title} 
               loading="eager"
               decoding="async"
@@ -310,7 +310,7 @@ export function ProductModal({ product, categoryName, designerName, onClose, con
                 className={`flex-shrink-0 w-20 aspect-square rounded border ${i === currentImageIndex ? 'border-primary shadow-[0_0_8px_rgba(255,215,0,0.4)]' : 'border-outline-variant/40 hover:border-primary/70'} overflow-hidden bg-surface-container-lowest transition-all snap-start`}
               >
                 <img 
-                  src={getOptimizedCloudinaryUrl(url, 160)} 
+                  src={getOptimizedCloudinaryUrl(url, 240, 'good')} 
                   alt={`Vista ${i + 1}`} 
                   loading="lazy"
                   decoding="async"
@@ -418,7 +418,7 @@ export function ProductModal({ product, categoryName, designerName, onClose, con
 
           <div className="w-full h-full flex items-center justify-center overflow-hidden">
             <img 
-              src={getOptimizedCloudinaryUrl(currentImageUrl, 1600)} 
+              src={getOptimizedCloudinaryUrl(currentImageUrl, 2400, 'best')} 
               alt="Vista Completa" 
               decoding="async"
               className={`max-w-full max-h-[95vh] object-contain transition-transform duration-300 ${fullscreenZoomed ? 'cursor-zoom-out' : 'cursor-zoom-in'}`}

@@ -109,8 +109,9 @@ const CatalogCard = memo(function CatalogCard({
   };
 
   const likesCount = product.likesCount || 0;
-  const optimizedSrc = getOptimizedCloudinaryUrl(imageUrl, 600);
-  const srcSet = getCloudinarySrcSet(imageUrl, [380, 520, 720, 960]);
+  // Generous 800px fallback and responsive breakpoints up to 1600px ensuring sharp 2x/3x Retina rendering
+  const optimizedSrc = getOptimizedCloudinaryUrl(imageUrl, 800, 'good');
+  const srcSet = getCloudinarySrcSet(imageUrl, [480, 720, 960, 1200, 1600], 'good');
 
   return (
     <article
@@ -128,7 +129,7 @@ const CatalogCard = memo(function CatalogCard({
           <img
             src={optimizedSrc}
             srcSet={srcSet}
-            sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 380px"
+            sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 400px"
             alt={product.title}
             loading={isPriority ? 'eager' : 'lazy'}
             decoding="async"
