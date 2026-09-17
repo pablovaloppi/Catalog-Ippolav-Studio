@@ -14,22 +14,32 @@ export function ImageMigrationTool({ config }: { config?: SiteConfig }) {
     setLogs(prev => [...prev, msg]);
   };
 
-  const uploadToCloudinary = async (base64Data: string) => {
+  const uploadToCloudinary = async (fileData: string) => {
     if (!config?.cloudinaryCloudName || !config?.cloudinaryUploadPreset) {
       throw new Error('Cloudinary no está configurado en la pestaña de Configuración.');
     }
 
+    const cloudName = config.cloudinaryCloudName.trim();
+    const uploadPreset = config.cloudinaryUploadPreset.trim();
+
     const formData = new FormData();
-    formData.append('file', base64Data);
-    formData.append('upload_preset', config.cloudinaryUploadPreset);
+    formData.append('file', fileData);
+    formData.append('upload_preset', uploadPreset);
     
-    const response = await fetch(`https://api.cloudinary.com/v1_1/${config.cloudinaryCloudName}/image/upload`, {
+    const response = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, {
       method: 'POST',
       body: formData
     });
     
     if (!response.ok) {
-      throw new Error(`Cloudinary API error: ${response.statusText}`);
+      let errorMsg = response.statusText;
+      try {
+        const errData = await response.json();
+        if (errData.error?.message) {
+          errorMsg = errData.error.message;
+        }
+      } catch (e) {}
+      throw new Error(errorMsg);
     }
     
     const data = await response.json();
@@ -73,20 +83,7 @@ export function ImageMigrationTool({ config }: { config?: SiteConfig }) {
              try {
                addLog(`  -> Iniciando migración de imagen ${index + 1}...`);
                
-               let base64Data = url;
-               if (isImgbb) {
-                  // Descargar la imagen de ImgBB y convertirla a base64
-                  const response = await fetch(url);
-                  const blob = await response.blob();
-                  base64Data = await new Promise((resolve, reject) => {
-                     const reader = new FileReader();
-                     reader.onloadend = () => resolve(reader.result as string);
-                     reader.onerror = reject;
-                     reader.readAsDataURL(blob);
-                  });
-               }
-
-               const downloadUrl = await uploadToCloudinary(base64Data);
+               const downloadUrl = await uploadToCloudinary(url);
                addLog(`  -> Subida a Cloudinary exitosa: imagen ${index + 1}`);
                return downloadUrl;
              } catch (err: any) {

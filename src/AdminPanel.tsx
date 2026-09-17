@@ -2045,18 +2045,28 @@ function FigureForm({ figure, categories, designers, onBack, orderCount, config 
 
       // Si Cloudinary está configurado, subir las imágenes comprimidas ahí
       if (config?.cloudinaryCloudName && config?.cloudinaryUploadPreset) {
+        const cloudName = config.cloudinaryCloudName.trim();
+        const uploadPreset = config.cloudinaryUploadPreset.trim();
+
         finalUrls = await Promise.all(compressedImages.map(async (base64) => {
           const formData = new FormData();
           formData.append('file', base64);
-          formData.append('upload_preset', config.cloudinaryUploadPreset!);
+          formData.append('upload_preset', uploadPreset);
           
-          const response = await fetch(`https://api.cloudinary.com/v1_1/${config.cloudinaryCloudName}/image/upload`, {
+          const response = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, {
             method: 'POST',
             body: formData
           });
 
           if (!response.ok) {
-            throw new Error('Error al subir a Cloudinary');
+            let errorMsg = response.statusText;
+            try {
+              const errData = await response.json();
+              if (errData.error?.message) {
+                errorMsg = errData.error.message;
+              }
+            } catch (e) {}
+            throw new Error(`Cloudinary API error: ${errorMsg}`);
           }
 
           const data = await response.json();
