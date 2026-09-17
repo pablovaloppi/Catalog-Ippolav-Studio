@@ -54,9 +54,9 @@ export function ImageMigrationTool({ config }: { config?: SiteConfig }) {
       const snapshot = await getDocs(collection(db, 'figures'));
       const figures: Product[] = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product));
       
-      const figuresToMigrate = figures.filter(f => f.imageUrls?.some(url => url.startsWith('data:image/')));
+      const figuresToMigrate = figures.filter(f => f.imageUrls?.some(url => url.startsWith('data:image/') || url.includes('i.ibb.co') || url.includes('imgbb.com')));
       setTotal(figuresToMigrate.length);
-      addLog(`Se encontraron ${figuresToMigrate.length} figuras con imágenes en Base64.`);
+      addLog(`Se encontraron ${figuresToMigrate.length} figuras con imágenes en Base64 o ImgBB.`);
 
       let migratedCount = 0;
 
@@ -66,14 +66,31 @@ export function ImageMigrationTool({ config }: { config?: SiteConfig }) {
         
         // Extraer las URLs actuales que son base64 para subirlas en paralelo
         const uploadPromises = figure.imageUrls?.map(async (url, index) => {
-          if (url.startsWith('data:image/')) {
+          const isBase64 = url.startsWith('data:image/');
+          const isImgbb = url.includes('i.ibb.co') || url.includes('imgbb.com');
+
+          if (isBase64 || isImgbb) {
              try {
-               addLog(`  -> Iniciando subida de imagen ${index + 1}...`);
-               const downloadUrl = await uploadToCloudinary(url);
-               addLog(`  -> Subida exitosa de imagen ${index + 1}`);
+               addLog(`  -> Iniciando migración de imagen ${index + 1}...`);
+               
+               let base64Data = url;
+               if (isImgbb) {
+                  // Descargar la imagen de ImgBB y convertirla a base64
+                  const response = await fetch(url);
+                  const blob = await response.blob();
+                  base64Data = await new Promise((resolve, reject) => {
+                     const reader = new FileReader();
+                     reader.onloadend = () => resolve(reader.result as string);
+                     reader.onerror = reject;
+                     reader.readAsDataURL(blob);
+                  });
+               }
+
+               const downloadUrl = await uploadToCloudinary(base64Data);
+               addLog(`  -> Subida a Cloudinary exitosa: imagen ${index + 1}`);
                return downloadUrl;
              } catch (err: any) {
-               addLog(`  -> Error subiendo imagen ${index + 1}: ${err.message}`);
+               addLog(`  -> Error migrando imagen ${index + 1}: ${err.message}`);
                return url; // conservar original si falla
              }
           }
