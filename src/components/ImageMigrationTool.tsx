@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { collection, getDocs, doc, updateDoc } from 'firebase/firestore';
-import { ref, uploadString, getDownloadURL } from 'firebase/storage';
-import { db, storage } from '../firebase';
+import { db } from '../firebase';
 import { Product } from '../types';
 
 export function ImageMigrationTool() {
@@ -10,9 +9,30 @@ export function ImageMigrationTool() {
   const [total, setTotal] = useState(0);
   const [logs, setLogs] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [apiKey, setApiKey] = useState('');
 
   const addLog = (msg: string) => {
     setLogs(prev => [...prev, msg]);
+  };
+
+  const uploadToImgbb = async (base64Data: string, key: string) => {
+    // Extraer solo la parte base64 sin el prefijo data:image/...;base64,
+    const base64Clean = base64Data.split(',')[1];
+    
+    const formData = new FormData();
+    formData.append('image', base64Clean);
+    
+    const response = await fetch(`https://api.imgbb.com/1/upload?key=${key}`, {
+      method: 'POST',
+      body: formData
+    });
+    
+    if (!response.ok) {
+      throw new Error(`ImgBB API error: ${response.statusText}`);
+    }
+    
+    const data = await response.json();
+    return data.data.url; // Retorna la URL directa de la imagen
   };
 
   const startMigration = async () => {
@@ -40,21 +60,13 @@ export function ImageMigrationTool() {
           const url = figure.imageUrls![i];
           if (url.startsWith('data:image/')) {
             try {
-              // Extraer tipo MIME y base64 puro
-              const matches = url.match(/^data:(image\/\w+);base64,(.*)$/);
-              let contentType = 'image/jpeg';
-              if (matches && matches.length === 3) {
-                contentType = matches[1];
-              }
-              const extension = contentType.split('/')[1] || 'jpg';
-              
-              const imageRef = ref(storage, `figures/${figure.id}/image_${i}_${Date.now()}.${extension}`);
-              addLog(`  -> Subiendo imagen ${i + 1} a Storage...`);
-              
-              await uploadString(imageRef, url, 'data_url');
-              const downloadUrl = await getDownloadURL(imageRef);
+              addLog(`  -> Subiendo imagen ${i + 1} a ImgBB (Cuenta vinculada)...`);
+              const downloadUrl = await uploadToImgbb(url, apiKey.trim());
               updatedUrls.push(downloadUrl);
-              addLog(`  -> Subida exitosa.`);
+              addLog(`  -> Subida exitosa: ${downloadUrl}`);
+              
+              // Pequeña pausa para no saturar la API gratuita
+              await new Promise(r => setTimeout(r, 1000));
             } catch (err: any) {
                addLog(`  -> Error subiendo imagen ${i + 1}: ${err.message}`);
                updatedUrls.push(url); // conservar la original si falla
@@ -91,19 +103,38 @@ export function ImageMigrationTool() {
              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
           </svg>
         </div>
-        <h2 className="text-xl font-bold text-on-surface">Herramienta de Migración a Storage</h2>
+        <h2 className="text-xl font-bold text-on-surface">Herramienta de Migración a ImgBB</h2>
       </div>
       
       <p className="text-on-surface-variant text-sm leading-relaxed">
-        Si ves que la aplicación carga lento o consume muchos datos, es porque hay figuras con imágenes guardadas directamente en el texto de la base de datos (Base64). 
-        Esta herramienta detectará automáticamente esas imágenes, las subirá de forma segura a <b>Firebase Storage</b> y actualizará tu base de datos para usar enlaces rápidos y optimizados.
+        Como Firebase Storage requiere tarjeta, esta herramienta subirá automáticamente tus imágenes pesadas en Base64 al servicio gratuito <b>ImgBB</b>. 
+        Para guardar las imágenes en tu propia cuenta (y así tener el control total sobre ellas), necesitas crear una clave API gratuita.
       </p>
 
       {!migrating && total === 0 && logs.length === 0 && (
-        <div className="pt-2">
+        <div className="pt-4 space-y-5 bg-surface-container-high p-5 rounded-lg border border-outline-variant/30">
+          <div>
+            <label className="block text-sm font-bold text-on-surface mb-2">
+              Tu API Key de ImgBB
+            </label>
+            <input
+              type="text"
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+              placeholder="Ej: 5e8c1ab998f4e24eb4f9408e..."
+              className="w-full px-4 py-2 bg-surface text-on-surface border border-outline rounded-lg focus:outline-none focus:border-primary transition-colors"
+            />
+            <p className="text-xs text-on-surface-variant mt-2 leading-relaxed">
+              1. Entra a <a href="https://api.imgbb.com/" target="_blank" rel="noreferrer" className="text-primary hover:underline font-semibold">api.imgbb.com</a> y crea una cuenta.<br />
+              2. Crea una "Client API Key" y pégala aquí arriba.<br />
+              3. ¡Listo! Todas las imágenes se guardarán en tu galería de ImgBB para siempre.
+            </p>
+          </div>
+          
           <button 
             onClick={startMigration}
-            className="px-6 py-3 bg-primary text-on-primary rounded-lg font-semibold shadow hover:bg-primary/90 transition-all flex items-center gap-2"
+            disabled={!apiKey.trim()}
+            className="px-6 py-3 bg-primary text-on-primary rounded-lg font-semibold shadow hover:bg-primary/90 transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Iniciar Análisis y Migración
           </button>
@@ -126,13 +157,6 @@ export function ImageMigrationTool() {
         <div className="p-4 bg-error/10 text-error rounded-lg text-sm">
           <p className="font-semibold mb-1">Hubo un problema:</p>
           {error}
-          <div className="mt-3 text-xs opacity-90 p-3 bg-error/20 rounded">
-            <strong>⚠️ IMPORTANTE:</strong> Si el error indica "unauthorized" o "CORS", debes asegurarte de ir a la consola de Firebase:
-            <ul className="list-disc ml-5 mt-1">
-              <li>Ir a <b>Storage</b> y darle click a "Comenzar" (si aún no lo has activado).</li>
-              <li>Asegurarte de que las <a href="https://console.firebase.google.com/" target="_blank" rel="noreferrer" className="underline font-bold">Reglas de Seguridad (Rules)</a> de Storage permitan escritura temporalmente.</li>
-            </ul>
-          </div>
         </div>
       )}
 
