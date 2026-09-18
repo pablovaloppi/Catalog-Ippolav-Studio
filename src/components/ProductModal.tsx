@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, MessageCircle, HelpCircle, View, ChevronLeft, ChevronRight, Heart } from 'lucide-react';
+import { X, MessageCircle, HelpCircle, View, ChevronLeft, ChevronRight, Heart, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
 import { Product, SiteConfig } from '../types';
 import { getOptimizedCloudinaryUrl, getCloudinarySrcSet } from '../cloudinaryUtils';
 
@@ -16,9 +16,27 @@ interface ProductModalProps {
 export function ProductModal({ product, categoryName, designerName, onClose, config, isLiked, onToggleLike }: ProductModalProps) {
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [isFullScreen, setIsFullScreen] = useState(false);
-  const [fullscreenZoomed, setFullscreenZoomed] = useState(false);
-  const [zoomOrigin, setZoomOrigin] = useState({ x: 50, y: 50 });
-  const lastFullscreenTapRef = useRef<number>(0);
+  
+  // Estados para Zoom y Pan (correr la imagen para ver partes ampliadas)
+  const [scale, setScale] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [isInteracting, setIsInteracting] = useState(false);
+
+  const scaleRef = useRef(1);
+  scaleRef.current = scale;
+  const panRef = useRef({ x: 0, y: 0 });
+  panRef.current = pan;
+
+  const fullscreenContainerRef = useRef<HTMLDivElement>(null);
+  const lastTapTimeRef = useRef<number>(0);
+  const lastTapPosRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const touchStartPosRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const panStartRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const pinchStartDistRef = useRef<number>(0);
+  const pinchStartScaleRef = useRef<number>(1);
+  const isPinchingRef = useRef<boolean>(false);
+  const touchMovedRef = useRef<boolean>(false);
+
   const [touchStart, setTouchStart] = useState<number | null>(null);
   const [touchEnd, setTouchEnd] = useState<number | null>(null);
 
@@ -28,20 +46,37 @@ export function ProductModal({ product, categoryName, designerName, onClose, con
   const isClosingModalManually = useRef(false);
   const closedByHistoryRef = useRef(false);
 
+  // Cálculo de límites máximos de desplazamiento (pan)
+  const getMaxPan = (currentScale: number) => {
+    if (!fullscreenContainerRef.current || currentScale <= 1) {
+      return { maxX: 0, maxY: 0 };
+    }
+    const rect = fullscreenContainerRef.current.getBoundingClientRect();
+    const maxX = Math.max(0, (rect.width * (currentScale - 1)) / 2);
+    const maxY = Math.max(0, (rect.height * (currentScale - 1)) / 2);
+    return { maxX, maxY };
+  };
+
+  const resetZoom = () => {
+    setScale(1);
+    setPan({ x: 0, y: 0 });
+  };
+
   // Reset de zoom al cambiar de imagen
   useEffect(() => {
-    setFullscreenZoomed(false);
+    resetZoom();
   }, [currentImageIndex]);
 
   // Apertura de zoom apilando un estado en el historial
   const openFullScreen = () => {
+    resetZoom();
     setIsFullScreen(true);
-    window.history.pushState({ modal: 'image-zoom', productId: product.id }, '');
+    window.history.pushState({ modal: 'image-zoom', productId: product?.id }, '');
   };
 
-  // Cierre de zoom manual (botón X o tap exterior en zoom)
+  // Cierre de zoom manual
   const closeFullScreen = () => {
-    setFullscreenZoomed(false);
+    resetZoom();
     if (isFullScreenRef.current) {
       setIsFullScreen(false);
       if (window.history.state?.modal === 'image-zoom') {
@@ -198,6 +233,196 @@ export function ProductModal({ product, categoryName, designerName, onClose, con
   
   const currentImageUrl = product.imageUrls?.[currentImageIndex] || '';
 
+  const handleDoubleTapOrClick = (clientX: number, clientY: number) => {
+    if (scaleRef.current > 1.05) {
+      resetZoom();
+    } else {
+      const targetScale = 2.5;
+      if (fullscreenContainerRef.current) {
+        const rect = fullscreenContainerRef.current.getBoundingClientRect();
+        const cx = rect.left + rect.width / 2;
+        const cy = rect.top + rect.height / 2;
+        const dx = clientX - cx;
+        const dy = clientY - cy;
+        const targetX = -dx * (targetScale - 1);
+        const targetY = -dy * (targetScale - 1);
+        const { maxX, maxY } = getMaxPan(targetScale);
+        setScale(targetScale);
+        setPan({
+          x: Math.min(maxX, Math.max(-maxX, targetX)),
+          y: Math.min(maxY, Math.max(-maxY, targetY)),
+        });
+      } else {
+        setScale(targetScale);
+      }
+    }
+  };
+
+  const handleOverlayTouchStart = (e: React.TouchEvent) => {
+    if (e.touches.length === 2) {
+      // Inicio de Pinch con dos dedos
+      isPinchingRef.current = true;
+      setIsInteracting(true);
+      const t1 = e.touches[0];
+      const t2 = e.touches[1];
+      pinchStartDistRef.current = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
+      pinchStartScaleRef.current = scaleRef.current;
+      return;
+    }
+
+    if (e.touches.length === 1) {
+      isPinchingRef.current = false;
+      const touch = e.touches[0];
+      touchStartPosRef.current = { x: touch.clientX, y: touch.clientY };
+      panStartRef.current = { ...panRef.current };
+      touchMovedRef.current = false;
+      if (scaleRef.current > 1.05) {
+        setIsInteracting(true);
+      }
+    }
+  };
+
+  const handleOverlayTouchMove = (e: React.TouchEvent) => {
+    if (e.touches.length === 2 && isPinchingRef.current) {
+      // Zoom por gesto de pinza (pinch)
+      const t1 = e.touches[0];
+      const t2 = e.touches[1];
+      const dist = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
+      if (pinchStartDistRef.current > 0) {
+        const factor = dist / pinchStartDistRef.current;
+        const nextScale = Math.min(4, Math.max(1, pinchStartScaleRef.current * factor));
+        setScale(nextScale);
+        if (nextScale <= 1) {
+          setPan({ x: 0, y: 0 });
+        } else {
+          const { maxX, maxY } = getMaxPan(nextScale);
+          setPan((prev) => ({
+            x: Math.min(maxX, Math.max(-maxX, prev.x)),
+            y: Math.min(maxY, Math.max(-maxY, prev.y)),
+          }));
+        }
+      }
+      return;
+    }
+
+    if (e.touches.length === 1 && !isPinchingRef.current) {
+      const touch = e.touches[0];
+      const dx = touch.clientX - touchStartPosRef.current.x;
+      const dy = touch.clientY - touchStartPosRef.current.y;
+
+      if (Math.hypot(dx, dy) > 8) {
+        touchMovedRef.current = true;
+      }
+
+      if (scaleRef.current > 1.05) {
+        // CORRER LA IMAGEN (Desplazamiento / Pan fluido en todas direcciones)
+        const nextX = panStartRef.current.x + dx;
+        const nextY = panStartRef.current.y + dy;
+        const { maxX, maxY } = getMaxPan(scaleRef.current);
+        setPan({
+          x: Math.min(maxX, Math.max(-maxX, nextX)),
+          y: Math.min(maxY, Math.max(-maxY, nextY)),
+        });
+      }
+    }
+  };
+
+  const handleOverlayTouchEnd = (e: React.TouchEvent) => {
+    setIsInteracting(false);
+
+    if (isPinchingRef.current) {
+      if (e.touches.length < 2) {
+        isPinchingRef.current = false;
+      }
+      return;
+    }
+
+    const changedTouch = e.changedTouches[0];
+    if (!changedTouch) return;
+
+    const dx = changedTouch.clientX - touchStartPosRef.current.x;
+    const dy = changedTouch.clientY - touchStartPosRef.current.y;
+    const movedDistance = Math.hypot(dx, dy);
+
+    // Si fue un toque sin arrastrar (tap)
+    if (movedDistance < 10) {
+      const now = Date.now();
+      const timeSinceLastTap = now - lastTapTimeRef.current;
+      const distFromLastTap = Math.hypot(
+        changedTouch.clientX - lastTapPosRef.current.x,
+        changedTouch.clientY - lastTapPosRef.current.y
+      );
+
+      // Doble toque dentro de 300ms
+      if (timeSinceLastTap < 300 && distFromLastTap < 40) {
+        lastTapTimeRef.current = 0;
+        handleDoubleTapOrClick(changedTouch.clientX, changedTouch.clientY);
+        return;
+      }
+
+      lastTapTimeRef.current = now;
+      lastTapPosRef.current = { x: changedTouch.clientX, y: changedTouch.clientY };
+
+      // Un solo toque NO hace zoom
+      return;
+    }
+
+    // Si la imagen no está en zoom (1x), swipe horizontal cambia de imagen
+    if (scaleRef.current <= 1.05) {
+      const minSwipeDistance = 50;
+      if (dx < -minSwipeDistance) {
+        handleNextImage();
+      } else if (dx > minSwipeDistance) {
+        handlePrevImage();
+      }
+    }
+  };
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (e.button !== 0) return;
+    touchStartPosRef.current = { x: e.clientX, y: e.clientY };
+    panStartRef.current = { ...panRef.current };
+    touchMovedRef.current = false;
+    if (scaleRef.current > 1.05) {
+      setIsInteracting(true);
+    }
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!isInteracting || scaleRef.current <= 1.05) return;
+    const dx = e.clientX - touchStartPosRef.current.x;
+    const dy = e.clientY - touchStartPosRef.current.y;
+    if (Math.hypot(dx, dy) > 4) touchMovedRef.current = true;
+
+    const nextX = panStartRef.current.x + dx;
+    const nextY = panStartRef.current.y + dy;
+    const { maxX, maxY } = getMaxPan(scaleRef.current);
+    setPan({
+      x: Math.min(maxX, Math.max(-maxX, nextX)),
+      y: Math.min(maxY, Math.max(-maxY, nextY)),
+    });
+  };
+
+  const handleMouseUp = () => {
+    setIsInteracting(false);
+  };
+
+  const handleWheel = (e: React.WheelEvent) => {
+    e.preventDefault();
+    const factor = e.deltaY < 0 ? 1.15 : 0.87;
+    const nextScale = Math.min(4, Math.max(1, scaleRef.current * factor));
+    setScale(nextScale);
+    if (nextScale <= 1) {
+      setPan({ x: 0, y: 0 });
+    } else {
+      const { maxX, maxY } = getMaxPan(nextScale);
+      setPan((prev) => ({
+        x: Math.min(maxX, Math.max(-maxX, prev.x)),
+        y: Math.min(maxY, Math.max(-maxY, prev.y)),
+      }));
+    }
+  };
+
   return (
     <div 
       className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/85 backdrop-blur-md p-0 md:p-6 transition-opacity duration-300"
@@ -250,13 +475,7 @@ export function ProductModal({ product, categoryName, designerName, onClose, con
         >
           <button 
             type="button" 
-            onClick={(e) => {
-              const now = Date.now();
-              const isDouble = now - lastFullscreenTapRef.current < 300;
-              lastFullscreenTapRef.current = now;
-              if (isDouble) {
-                setFullscreenZoomed(true);
-              }
+            onClick={() => {
               openFullScreen();
             }} 
             className="w-full h-full cursor-zoom-in"
@@ -377,92 +596,145 @@ export function ProductModal({ product, categoryName, designerName, onClose, con
         </div>
       </div>
 
-      {/* Full screen image overlay */}
+      {/* Full screen image overlay con Zoom por Pinch/Doble-Toque y Desplazamiento (Pan) */}
       {isFullScreen && (
         <div 
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 backdrop-blur-md p-4 animate-in fade-in select-none"
-          onClick={closeFullScreen}
-          onTouchStart={onTouchStart}
-          onTouchMove={onTouchMove}
-          onTouchEnd={onTouchEndEvent}
+          ref={fullscreenContainerRef}
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 backdrop-blur-md overflow-hidden select-none touch-none"
+          onClick={(e) => {
+            // Clic en el fondo cuando no hay zoom o cuando no se estaba arrastrando
+            if (e.target === e.currentTarget && scale <= 1.05 && !touchMovedRef.current) {
+              closeFullScreen();
+            }
+          }}
+          onTouchStart={handleOverlayTouchStart}
+          onTouchMove={handleOverlayTouchMove}
+          onTouchEnd={handleOverlayTouchEnd}
+          onMouseDown={handleMouseDown}
+          onMouseMove={handleMouseMove}
+          onMouseUp={handleMouseUp}
+          onWheel={handleWheel}
         >
+          {/* Botón cerrar */}
           <button 
-            className="absolute top-6 right-6 text-on-surface-variant hover:text-white bg-surface-container/50 hover:bg-surface-container p-2 rounded-full transition-colors z-10"
+            className="absolute top-5 right-5 text-on-surface-variant hover:text-white bg-surface-container/60 hover:bg-surface-container p-2.5 rounded-full transition-colors z-30 shadow-lg"
             onClick={(e) => { e.stopPropagation(); closeFullScreen(); }}
+            title="Cerrar vista completa (Esc)"
           >
             <X className="w-6 h-6" />
           </button>
           
+          {/* Botones de navegación de imágenes */}
           {product.imageUrls && product.imageUrls.length > 1 && (
             <>
               <button 
                 onClick={handlePrevImage}
-                className="absolute left-4 top-1/2 -translate-y-1/2 w-12 h-12 rounded-full bg-black/50 text-white flex items-center justify-center hover:bg-black/80 transition-colors z-10"
+                className={`absolute left-4 top-1/2 -translate-y-1/2 w-12 h-12 rounded-full bg-black/60 text-white flex items-center justify-center hover:bg-black/90 transition-all z-30 shadow-lg ${scale > 1.2 ? 'opacity-30 hover:opacity-100' : 'opacity-80 hover:opacity-100'}`}
+                title="Imagen anterior"
               >
                 <ChevronLeft className="w-8 h-8" />
               </button>
               <button 
                 onClick={handleNextImage}
-                className="absolute right-4 top-1/2 -translate-y-1/2 w-12 h-12 rounded-full bg-black/50 text-white flex items-center justify-center hover:bg-black/80 transition-colors z-10"
+                className={`absolute right-4 top-1/2 -translate-y-1/2 w-12 h-12 rounded-full bg-black/60 text-white flex items-center justify-center hover:bg-black/90 transition-all z-30 shadow-lg ${scale > 1.2 ? 'opacity-30 hover:opacity-100' : 'opacity-80 hover:opacity-100'}`}
+                title="Imagen siguiente"
               >
                 <ChevronRight className="w-8 h-8" />
               </button>
               
-              <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex gap-2 z-10">
-                {product.imageUrls.map((_, i) => (
-                  <div key={i} className={`w-2 h-2 rounded-full transition-colors ${i === currentImageIndex ? 'bg-primary' : 'bg-white/50'}`} />
-                ))}
+              <div className="absolute top-6 left-6 flex items-center gap-1.5 z-30 bg-black/50 backdrop-blur-sm px-3 py-1 rounded-full border border-white/10 text-xs text-white/80 font-mono">
+                <span>{currentImageIndex + 1}</span>
+                <span>/</span>
+                <span>{product.imageUrls.length}</span>
               </div>
             </>
           )}
 
-          <div className="w-full h-full flex items-center justify-center overflow-hidden">
+          {/* Contenedor interactivo de la imagen con soporte de pan y zoom */}
+          <div 
+            className="w-full h-full flex items-center justify-center pointer-events-auto"
+            onDoubleClick={(e) => {
+              e.stopPropagation();
+              handleDoubleTapOrClick(e.clientX, e.clientY);
+            }}
+          >
             <img 
               src={getOptimizedCloudinaryUrl(currentImageUrl, 2400, 'best')} 
               alt="Vista Completa" 
+              draggable={false}
               decoding="async"
-              className={`max-w-full max-h-[95vh] object-contain transition-transform duration-300 ${fullscreenZoomed ? 'cursor-zoom-out' : 'cursor-zoom-in'}`}
+              className="max-w-full max-h-[92vh] object-contain select-none will-change-transform"
               style={{
-                transform: fullscreenZoomed ? 'scale(2.5)' : 'scale(1)',
-                transformOrigin: `${zoomOrigin.x}% ${zoomOrigin.y}%`,
-              }}
-              onClick={(e) => {
-                e.stopPropagation();
-                const now = Date.now();
-                const isDouble = now - lastFullscreenTapRef.current < 300;
-                lastFullscreenTapRef.current = now;
-
-                if (isDouble) {
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  const x = ((e.clientX - rect.left) / rect.width) * 100;
-                  const y = ((e.clientY - rect.top) / rect.height) * 100;
-                  setZoomOrigin({ x, y });
-                  setFullscreenZoomed(prev => !prev);
-                } else {
-                  setTimeout(() => {
-                    if (lastFullscreenTapRef.current === now) {
-                      closeFullScreen();
-                    }
-                  }, 250);
-                }
-              }}
-              onTouchStart={(e) => {
-                e.stopPropagation();
-                const now = Date.now();
-                const isDouble = now - lastFullscreenTapRef.current < 300;
-                lastFullscreenTapRef.current = now;
-
-                if (isDouble) {
-                  e.preventDefault();
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  const touch = e.touches[0];
-                  const x = ((touch.clientX - rect.left) / rect.width) * 100;
-                  const y = ((touch.clientY - rect.top) / rect.height) * 100;
-                  setZoomOrigin({ x, y });
-                  setFullscreenZoomed(prev => !prev);
-                }
+                transform: `translate3d(${pan.x}px, ${pan.y}px, 0px) scale(${scale})`,
+                transition: isInteracting ? 'none' : 'transform 0.25s cubic-bezier(0.16, 1, 0.3, 1)',
+                cursor: scale > 1.05 ? (isInteracting ? 'grabbing' : 'grab') : 'zoom-in',
               }}
             />
+          </div>
+
+          {/* Barra inferior de controles de zoom y guía visual */}
+          <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 z-30 pointer-events-auto">
+            <div className="flex items-center gap-1.5 bg-surface-container/85 backdrop-blur-md px-3.5 py-1.5 rounded-full border border-outline-variant/50 shadow-2xl">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const nextScale = Math.max(1, scale - 0.5);
+                  setScale(nextScale);
+                  if (nextScale <= 1) setPan({ x: 0, y: 0 });
+                }}
+                disabled={scale <= 1.05}
+                className="p-1.5 rounded-full hover:bg-white/15 disabled:opacity-30 text-white transition-colors"
+                title="Alejar (-)"
+              >
+                <ZoomOut className="w-4 h-4" />
+              </button>
+
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (scale > 1.05) {
+                    resetZoom();
+                  } else {
+                    handleDoubleTapOrClick(window.innerWidth / 2, window.innerHeight / 2);
+                  }
+                }}
+                className="px-2 py-0.5 font-mono text-xs font-bold text-primary hover:text-primary/80 transition-colors"
+                title="Alternar zoom"
+              >
+                {Math.round(scale * 100)}%
+              </button>
+
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const nextScale = Math.min(4, scale + 0.5);
+                  setScale(nextScale);
+                }}
+                disabled={scale >= 4}
+                className="p-1.5 rounded-full hover:bg-white/15 disabled:opacity-30 text-white transition-colors"
+                title="Acercar (+)"
+              >
+                <ZoomIn className="w-4 h-4" />
+              </button>
+
+              {scale > 1.05 && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    resetZoom();
+                  }}
+                  className="flex items-center gap-1 ml-1 pl-2 border-l border-white/20 text-[11px] text-on-surface-variant hover:text-white transition-colors"
+                  title="Restablecer vista a 100%"
+                >
+                  <RotateCcw className="w-3 h-3" />
+                  <span>Restablecer</span>
+                </button>
+              )}
+            </div>
+
+            <span className="text-[10px] text-on-surface-variant/80 font-medium bg-black/40 px-3 py-0.5 rounded-full backdrop-blur-sm pointer-events-none hidden sm:inline-block">
+              {scale > 1.05 ? 'Arrastra para recorrer la escultura • Doble toque para 1x' : 'Pellizca con 2 dedos o toca 2 veces para zoom'}
+            </span>
           </div>
         </div>
       )}

@@ -11,11 +11,13 @@ import {
   ArrowUpZA, 
   Palette, 
   Check,
-  Heart
+  Heart,
+  Link2
 } from 'lucide-react';
 import { useState, useMemo } from 'react';
 import { Category, SortOption } from '../types';
 import { getCategoryHierarchyLabel } from '../categoryUtils';
+import { copySearchLinkToClipboard } from '../urlUtils';
 
 interface FilterSectionProps {
   searchQuery: string;
@@ -138,6 +140,7 @@ export function FilterSection({
     (scaleFilter !== 'all' ? 1 : 0);
 
   const currentSortOption = sortOptions.find(o => o.id === sortBy) || sortOptions[0];
+  const [isLinkCopied, setIsLinkCopied] = useState(false);
   
   return (
     <section id="filter-section" className="px-5 md:px-12 py-8 border-b border-outline-variant/20 bg-surface-container-lowest/60 relative">
@@ -148,16 +151,39 @@ export function FilterSection({
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-12 pr-10 py-3.5 bg-surface-container-low border border-outline-variant/40 rounded-xl text-on-surface placeholder:text-outline focus:border-primary focus:ring-1 focus:ring-primary text-sm transition-all shadow-inner outline-none"
+            className="w-full pl-12 pr-24 py-3.5 bg-surface-container-low border border-outline-variant/40 rounded-xl text-on-surface placeholder:text-outline focus:border-primary focus:ring-1 focus:ring-primary text-sm transition-all shadow-inner outline-none"
             placeholder="Buscar personaje o franquicia... (ej: Batman, Dragon Ball, Marvel)"
           />
           {searchQuery && (
-            <button
-              onClick={() => setSearchQuery('')}
-              className="absolute right-3.5 text-outline hover:text-on-surface p-1"
-            >
-              <X className="w-4 h-4" />
-            </button>
+            <div className="absolute right-3 flex items-center gap-1">
+              <button
+                type="button"
+                onClick={async () => {
+                  const success = await copySearchLinkToClipboard(searchQuery);
+                  if (success) {
+                    setIsLinkCopied(true);
+                    setTimeout(() => setIsLinkCopied(false), 2200);
+                  }
+                }}
+                className="p-1.5 rounded-lg text-outline hover:text-primary hover:bg-surface-container-high transition-colors relative"
+                title="Copiar enlace directo para enviar por WhatsApp o Instagram"
+              >
+                {isLinkCopied ? <Check className="w-4 h-4 text-emerald-400" /> : <Link2 className="w-4 h-4" />}
+                {isLinkCopied && (
+                  <span className="absolute -top-8 right-0 bg-surface-container-highest text-on-surface text-[10px] font-semibold px-2 py-0.5 rounded shadow-lg whitespace-nowrap border border-outline-variant/50 animate-in fade-in duration-150">
+                    ¡Link copiado!
+                  </span>
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={() => setSearchQuery('')}
+                className="p-1.5 rounded-lg text-outline hover:text-on-surface hover:bg-surface-container-high transition-colors"
+                title="Limpiar búsqueda"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
           )}
         </div>
 

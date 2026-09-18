@@ -8,6 +8,7 @@ import { Product, Category, Designer, SiteConfig, SortOption } from './types';
 import { getAllDescendantCategoryIds, getCategoryAncestors, getCategoryBreadcrumb } from './categoryUtils';
 import { products as initialProducts } from './data';
 import type { QueryDocumentSnapshot, DocumentData } from 'firebase/firestore';
+import { extractSearchQueryFromLocation } from './urlUtils';
 
 const NavigationDrawer = lazy(() => import('./components/NavigationDrawer').then(m => ({ default: m.NavigationDrawer })));
 const HowToBuy = lazy(() => import('./components/HowToBuy').then(m => ({ default: m.HowToBuy })));
@@ -46,8 +47,11 @@ function getFigureTimestamp(p: Product): number {
 
 export function Storefront() {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
+  
+  // Extraer término inicial si el enlace es por ej: /b=spiderman, /buscar=spiderman o ?b=spiderman
+  const initialUrlQuery = useMemo(() => extractSearchQueryFromLocation(), []);
+  const [searchQuery, setSearchQuery] = useState(initialUrlQuery);
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState(initialUrlQuery);
   const [isSearchingStore, setIsSearchingStore] = useState(false);
   const [searchResults, setSearchResults] = useState<Product[]>([]);
   const allStoreFiguresCacheRef = useRef<Product[] | null>(null);
@@ -420,6 +424,50 @@ export function Storefront() {
     }, 300);
     return () => clearTimeout(timer);
   }, [searchQuery]);
+
+  // Sincronización de la URL en la barra de direcciones (/b=termino)
+  useEffect(() => {
+    const trimmed = debouncedSearchQuery.trim();
+    if (trimmed) {
+      const newPath = `/b=${encodeURIComponent(trimmed)}`;
+      if (window.location.pathname !== newPath && !window.location.pathname.startsWith('/admin')) {
+        window.history.replaceState(null, '', newPath);
+      }
+    } else {
+      if (
+        window.location.pathname.startsWith('/b=') ||
+        window.location.pathname.startsWith('/buscar=') ||
+        window.location.pathname.startsWith('/b/') ||
+        window.location.pathname.startsWith('/buscar/')
+      ) {
+        window.history.replaceState(null, '', '/');
+      }
+    }
+  }, [debouncedSearchQuery]);
+
+  // Soporte para botones Atrás/Adelante del navegador
+  useEffect(() => {
+    const handlePopState = () => {
+      const q = extractSearchQueryFromLocation();
+      setSearchQuery(q);
+      setDebouncedSearchQuery(q);
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  // Si se ingresó directamente con un enlace tipo /b=spiderman, deslizar hacia el catálogo
+  useEffect(() => {
+    if (initialUrlQuery) {
+      const timer = setTimeout(() => {
+        const target = document.getElementById('filter-section') || document.getElementById('catalogo');
+        if (target) {
+          target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }, 350);
+      return () => clearTimeout(timer);
+    }
+  }, [initialUrlQuery]);
 
   // Ejecución de la búsqueda cuando debouncedSearchQuery tiene un valor
   useEffect(() => {

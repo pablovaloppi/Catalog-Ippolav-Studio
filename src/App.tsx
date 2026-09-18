@@ -9,6 +9,10 @@ export default function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<Storefront />} />
+        <Route path="/b=*" element={<Storefront />} />
+        <Route path="/b/*" element={<Storefront />} />
+        <Route path="/buscar=*" element={<Storefront />} />
+        <Route path="/buscar/*" element={<Storefront />} />
         <Route
           path="/admin"
           element={
@@ -17,7 +21,7 @@ export default function App() {
             </Suspense>
           }
         />
-        <Route path="*" element={<Navigate to="/" replace />} />
+        <Route path="*" element={<Storefront />} />
       </Routes>
     </BrowserRouter>
   );
