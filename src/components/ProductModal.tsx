@@ -36,6 +36,7 @@ export function ProductModal({ product, categoryName, designerName, onClose, con
   const pinchStartScaleRef = useRef<number>(1);
   const isPinchingRef = useRef<boolean>(false);
   const touchMovedRef = useRef<boolean>(false);
+  const lastTouchActionTimeRef = useRef<number>(0);
 
   const [touchStart, setTouchStart] = useState<number | null>(null);
   const [touchEnd, setTouchEnd] = useState<number | null>(null);
@@ -259,6 +260,8 @@ export function ProductModal({ product, categoryName, designerName, onClose, con
   };
 
   const handleOverlayTouchStart = (e: React.TouchEvent) => {
+    lastTouchActionTimeRef.current = Date.now();
+
     if (e.touches.length === 2) {
       // Inicio de Pinch con dos dedos
       isPinchingRef.current = true;
@@ -283,6 +286,8 @@ export function ProductModal({ product, categoryName, designerName, onClose, con
   };
 
   const handleOverlayTouchMove = (e: React.TouchEvent) => {
+    lastTouchActionTimeRef.current = Date.now();
+
     if (e.touches.length === 2 && isPinchingRef.current) {
       // Zoom por gesto de pinza (pinch)
       const t1 = e.touches[0];
@@ -328,6 +333,7 @@ export function ProductModal({ product, categoryName, designerName, onClose, con
   };
 
   const handleOverlayTouchEnd = (e: React.TouchEvent) => {
+    lastTouchActionTimeRef.current = Date.now();
     setIsInteracting(false);
 
     if (isPinchingRef.current) {
@@ -345,7 +351,7 @@ export function ProductModal({ product, categoryName, designerName, onClose, con
     const movedDistance = Math.hypot(dx, dy);
 
     // Si fue un toque sin arrastrar (tap)
-    if (movedDistance < 10) {
+    if (movedDistance < 15) {
       const now = Date.now();
       const timeSinceLastTap = now - lastTapTimeRef.current;
       const distFromLastTap = Math.hypot(
@@ -353,9 +359,10 @@ export function ProductModal({ product, categoryName, designerName, onClose, con
         changedTouch.clientY - lastTapPosRef.current.y
       );
 
-      // Doble toque dentro de 300ms
-      if (timeSinceLastTap < 300 && distFromLastTap < 40) {
+      // Doble toque detectado
+      if (timeSinceLastTap > 40 && timeSinceLastTap < 380 && distFromLastTap < 55) {
         lastTapTimeRef.current = 0;
+        lastTapPosRef.current = { x: 0, y: 0 };
         handleDoubleTapOrClick(changedTouch.clientX, changedTouch.clientY);
         return;
       }
@@ -379,6 +386,7 @@ export function ProductModal({ product, categoryName, designerName, onClose, con
   };
 
   const handleMouseDown = (e: React.MouseEvent) => {
+    if (Date.now() - lastTouchActionTimeRef.current < 800) return;
     if (e.button !== 0) return;
     touchStartPosRef.current = { x: e.clientX, y: e.clientY };
     panStartRef.current = { ...panRef.current };
@@ -389,6 +397,7 @@ export function ProductModal({ product, categoryName, designerName, onClose, con
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
+    if (Date.now() - lastTouchActionTimeRef.current < 800) return;
     if (!isInteracting || scaleRef.current <= 1.05) return;
     const dx = e.clientX - touchStartPosRef.current.x;
     const dy = e.clientY - touchStartPosRef.current.y;
@@ -602,6 +611,7 @@ export function ProductModal({ product, categoryName, designerName, onClose, con
           ref={fullscreenContainerRef}
           className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 backdrop-blur-md overflow-hidden select-none touch-none"
           onClick={(e) => {
+            if (Date.now() - lastTouchActionTimeRef.current < 800) return;
             // Clic en el fondo cuando no hay zoom o cuando no se estaba arrastrando
             if (e.target === e.currentTarget && scale <= 1.05 && !touchMovedRef.current) {
               closeFullScreen();
@@ -655,6 +665,7 @@ export function ProductModal({ product, categoryName, designerName, onClose, con
             className="w-full h-full flex items-center justify-center pointer-events-auto"
             onDoubleClick={(e) => {
               e.stopPropagation();
+              if (Date.now() - lastTouchActionTimeRef.current < 800) return;
               handleDoubleTapOrClick(e.clientX, e.clientY);
             }}
           >
