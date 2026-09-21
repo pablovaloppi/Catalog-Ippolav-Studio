@@ -388,8 +388,8 @@ export function RandomPickerTool({ categories, designers }: RandomPickerToolProp
         <div className="absolute -left-24 -bottom-24 w-80 h-80 bg-amber-500/5 rounded-full blur-3xl pointer-events-none" />
 
         <div className="max-w-3xl mx-auto flex flex-col items-center text-center space-y-6 relative z-10">
-          {/* Action Button & Reset Controls */}
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-3 w-full">
+          {/* Action Button */}
+          <div className="flex items-center justify-center w-full">
             <button
               onClick={handleDrawRandomFigure}
               disabled={availableFigures.length === 0 || isDrawing || loading}
@@ -413,20 +413,6 @@ export function RandomPickerTool({ categories, designers }: RandomPickerToolProp
               </span>
               <Sparkles className="w-5 h-5 text-amber-200" />
             </button>
-
-            {alreadySelectedFigures.length > 0 && (
-              <button
-                onClick={handleResetAllSelected}
-                disabled={isResettingAll || isDrawing}
-                className="inline-flex items-center justify-center gap-2 px-5 py-4 rounded-2xl font-bold text-sm bg-surface-container border border-error/30 text-error hover:bg-error/10 hover:border-error/50 transition-all shadow-md active:scale-95 cursor-pointer disabled:opacity-50"
-                title="Restablece selectedInRandomDraw a false para todas las figuras"
-              >
-                <RotateCcw className={`w-4 h-4 ${isResettingAll ? 'animate-spin' : ''}`} />
-                <span>
-                  {isResettingAll ? 'Reiniciando...' : `Reiniciar (${alreadySelectedFigures.length} a false)`}
-                </span>
-              </button>
-            )}
           </div>
 
           {availableFigures.length === 0 && !loading && (
