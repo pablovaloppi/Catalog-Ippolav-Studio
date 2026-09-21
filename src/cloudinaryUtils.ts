@@ -81,3 +81,81 @@ export function getCloudinarySrcSet(
     .join(', ');
 }
 
+/**
+ * Returns the highest resolution original/uncompressed image URL.
+ * Strips out any downscaling, width/height limits, or compression filters.
+ */
+export function getOriginalCloudinaryUrl(url: string): string {
+  if (!url || typeof url !== 'string') return '';
+  if (!url.includes('res.cloudinary.com') || !url.includes('/upload/')) {
+    return url;
+  }
+
+  const uploadIndex = url.indexOf('/upload/');
+  const prefix = url.substring(0, uploadIndex + 8); // includes '/upload/'
+  const rest = url.substring(uploadIndex + 8);
+
+  const parts = rest.split('/');
+  let startIndex = 0;
+
+  while (startIndex < parts.length - 1) {
+    const segment = parts[startIndex];
+    if (/^v\d+$/.test(segment)) {
+      break;
+    }
+    if (
+      segment.includes('f_auto') ||
+      segment.includes('q_auto') ||
+      segment.includes('w_') ||
+      segment.includes('h_') ||
+      segment.includes('c_') ||
+      segment.includes('dpr_') ||
+      segment.includes('q_')
+    ) {
+      startIndex++;
+    } else {
+      break;
+    }
+  }
+
+  const cleanPath = parts.slice(startIndex).join('/');
+  return `${prefix}${cleanPath}`;
+}
+
+/**
+ * Downloads an image file to the user's browser with the maximum possible fidelity.
+ */
+export async function downloadImageAsFile(url: string, filename: string): Promise<boolean> {
+  const originalUrl = getOriginalCloudinaryUrl(url);
+  try {
+    const response = await fetch(originalUrl, { mode: 'cors' });
+    if (!response.ok) throw new Error(`HTTP error ${response.status}`);
+    const blob = await response.blob();
+    const objectUrl = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = objectUrl;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 4000);
+    return true;
+  } catch (err) {
+    console.warn("Direct blob download failed, falling back to direct anchor download:", err);
+    try {
+      const link = document.createElement('a');
+      link.href = originalUrl;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      return true;
+    } catch (fallbackErr) {
+      console.error("Download fallback failed:", fallbackErr);
+      return false;
+    }
+  }
+}
+

@@ -43,6 +43,8 @@
         "whatsappMessage": { "type": "string", "maxLength": 5000 },
         "order": { "type": "number" },
         "likesCount": { "type": "number", "description": "Number of likes/hearts from visitors" },
+        "selectedInRandomDraw": { "type": "boolean", "description": "Flag indicating if the figure was selected in the random picker" },
+        "selectedInRandomDrawAt": { "type": "timestamp", "description": "Timestamp when the figure was drawn in random picker" },
         "createdAt": { "type": "timestamp" },
         "updatedAt": { "type": "timestamp" }
       },

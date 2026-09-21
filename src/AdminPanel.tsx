@@ -23,7 +23,7 @@ import {
 } from 'firebase/firestore';
 import { Product, Category, Designer, SiteConfig } from './types';
 import { products as initialProducts } from './data';
-import { Plus, ChevronUp, ChevronDown, Trash2, Edit2, LogOut, ImagePlus, UserCircle, Settings, Hash, Sparkles, Eye, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Heart, CornerDownRight, FolderTree } from 'lucide-react';
+import { Plus, ChevronUp, ChevronDown, Trash2, Edit2, LogOut, ImagePlus, UserCircle, Settings, Hash, Sparkles, Eye, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Heart, CornerDownRight, FolderTree, Dices } from 'lucide-react';
 import { ProductModal } from './components/ProductModal';
 import { 
   getCategoryAncestors, 
@@ -37,6 +37,7 @@ import {
 // Removed inline Category interface
 
 import { ImageMigrationTool } from './components/ImageMigrationTool';
+import { RandomPickerTool } from './components/RandomPickerTool';
 
 // ... other imports ...
 
@@ -180,8 +181,8 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   });
   const [initialLoading, setInitialLoading] = useState(true);
   
-  // views: figures-list, figure-form, categories-list, category-form, designers-list, designer-form, config, migration
-  const [view, setView] = useState<'figures-list' | 'figure-form' | 'categories-list' | 'category-form' | 'designers-list' | 'designer-form' | 'config' | 'migration'>('figures-list');
+  // views: figures-list, figure-form, categories-list, category-form, designers-list, designer-form, config, migration, random-picker
+  const [view, setView] = useState<'figures-list' | 'figure-form' | 'categories-list' | 'category-form' | 'designers-list' | 'designer-form' | 'config' | 'migration' | 'random-picker'>('figures-list');
   const [editingFigure, setEditingFigure] = useState<Product | null>(null);
   const [previewingFigure, setPreviewingFigure] = useState<Product | null>(null);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
@@ -853,6 +854,12 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                 Diseñadores
               </button>
               <button 
+                onClick={() => { setView('random-picker'); }} 
+                className={`text-sm font-semibold whitespace-nowrap transition-colors flex items-center gap-1.5 ${view === 'random-picker' ? 'text-primary' : 'text-on-surface-variant hover:text-on-surface'}`}
+              >
+                <Dices className="w-4 h-4 text-primary" /> Sorteo Aleatorio
+              </button>
+              <button 
                 onClick={() => { setView('config'); }} 
                 className={`text-sm font-semibold whitespace-nowrap transition-colors flex items-center gap-1 ${view === 'config' ? 'text-primary' : 'text-on-surface-variant hover:text-on-surface'}`}
               >
@@ -885,6 +892,15 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                 {totalAdminFigures === 0 && (
                   <button onClick={seedData} className="px-4 py-2 border border-outline-variant/50 hover:text-primary rounded-lg text-sm font-semibold transition-colors">
                     Cargar Datos Demo
+                  </button>
+                )}
+                {totalAdminFigures > 0 && (
+                  <button 
+                    onClick={() => setView('random-picker')}
+                    className="flex items-center gap-2 px-3 py-2 border border-primary/40 text-primary hover:bg-primary/10 font-semibold rounded-lg text-sm transition-all"
+                    title="Obtener una figura aleatoria de la base de datos"
+                  >
+                    <Dices className="w-4 h-4" /> Sorteo Aleatorio
                   </button>
                 )}
                 {totalAdminFigures > 0 && (
@@ -1189,6 +1205,12 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                               <Heart className="w-3 h-3 fill-rose-500 text-rose-500" />
                               {fig.likesCount || 0}
                             </span>
+                            {fig.selectedInRandomDraw && (
+                              <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-300 bg-amber-950/40 px-1.5 py-0.5 rounded border border-amber-500/30" title="Figura ya seleccionada en el sorteo aleatorio">
+                                <Sparkles className="w-2.5 h-2.5 text-amber-400" />
+                                Sorteada
+                              </span>
+                            )}
                           </div>
                         </div>
                         <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
@@ -1503,6 +1525,11 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
             designer={editingDesigner}
             onBack={() => { setView('designers-list'); setEditingDesigner(null); }}
             orderCount={designers.length}
+          />
+        ) : view === 'random-picker' ? (
+          <RandomPickerTool 
+            categories={categories}
+            designers={designers}
           />
         ) : view === 'config' ? (
           <ConfigForm config={siteConfig} />

@@ -14,6 +14,8 @@ export interface Product {
   whatsappMessage?: string;
   order?: number;
   likesCount?: number;
+  selectedInRandomDraw?: boolean;
+  selectedInRandomDrawAt?: any;
   createdAt?: any;
   updatedAt?: any;
 }
