@@ -27,7 +27,9 @@ import {
   RefreshCw,
   Image as ImageIcon,
   Flame,
-  Undo2
+  Undo2,
+  ZoomIn,
+  Maximize2
 } from 'lucide-react';
 import { ProductModal } from './ProductModal';
 
@@ -49,7 +51,11 @@ export function RandomPickerTool({ categories, designers }: RandomPickerToolProp
   const [selectedImageIndex, setSelectedImageIndex] = useState<number>(0);
   const [downloadingImage, setDownloadingImage] = useState<string | null>(null);
   const [downloadSuccess, setDownloadSuccess] = useState<boolean>(false);
-  const [previewFigure, setPreviewFigure] = useState<Product | null>(null);
+  const [previewModalOptions, setPreviewModalOptions] = useState<{
+    figure: Product;
+    fullScreen: boolean;
+    imageIndex: number;
+  } | null>(null);
 
   // Selected history tab/view
   const [showHistory, setShowHistory] = useState(false);
@@ -197,20 +203,25 @@ export function RandomPickerTool({ categories, designers }: RandomPickerToolProp
     }
   };
 
-  // Reset all marked figures
+  // Reset all marked figures (sets selectedInRandomDraw to false for all)
   const handleResetAllSelected = async () => {
-    if (alreadySelectedFigures.length === 0) return;
+    const figuresToReset = allFigures.filter(f => f.selectedInRandomDraw);
+    if (figuresToReset.length === 0) {
+      alert("No hay figuras marcadas actualmente. Todas las figuras ya tienen 'selectedInRandomDraw' en false.");
+      return;
+    }
+
     const confirmReset = window.confirm(
-      `¿Estás seguro de reiniciar el sorteo?\n\nSe desmarcarán las ${alreadySelectedFigures.length} figuras previamente seleccionadas y todas volverán a estar disponibles para el botón aleatorio.`
+      `¿Deseas reiniciar todas las figuras seleccionadas?\n\nSe restablecerá 'selectedInRandomDraw' a 'false' en las ${figuresToReset.length} figuras para que todas vuelvan a estar disponibles en el sorteo.`
     );
     if (!confirmReset) return;
 
     setIsResettingAll(true);
     try {
       const batchSize = 100;
-      for (let i = 0; i < alreadySelectedFigures.length; i += batchSize) {
+      for (let i = 0; i < figuresToReset.length; i += batchSize) {
         const batch = writeBatch(db);
-        const chunk = alreadySelectedFigures.slice(i, i + batchSize);
+        const chunk = figuresToReset.slice(i, i + batchSize);
         chunk.forEach(fig => {
           const docRef = doc(db, 'figures', fig.id);
           batch.update(docRef, {
@@ -222,7 +233,8 @@ export function RandomPickerTool({ categories, designers }: RandomPickerToolProp
         await batch.commit();
       }
       setSelectedFigure(null);
-      alert("¡Sorteo reiniciado! Todas las figuras están disponibles nuevamente.");
+      setShufflingFigure(null);
+      alert(`¡Sorteo reiniciado con éxito! Se restablecieron ${figuresToReset.length} figuras a 'false'.`);
     } catch (err) {
       console.error("Error al reiniciar todas las figuras:", err);
       alert("Ocurrió un error al reiniciar el sorteo.");
@@ -272,19 +284,27 @@ export function RandomPickerTool({ categories, designers }: RandomPickerToolProp
           </p>
         </div>
 
-        {alreadySelectedFigures.length > 0 && (
-          <div className="flex items-center gap-2 self-start md:self-auto">
-            <button
-              onClick={handleResetAllSelected}
-              disabled={isResettingAll || isDrawing}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border border-outline-variant/50 text-on-surface-variant hover:text-error hover:border-error/40 hover:bg-error/10 transition-colors disabled:opacity-50"
-              title="Volver a habilitar todas las figuras para el sorteo"
-            >
-              <RotateCcw className="w-3.5 h-3.5" />
-              {isResettingAll ? 'Reiniciando...' : 'Reiniciar Sorteo'}
-            </button>
-          </div>
-        )}
+        <div className="flex items-center gap-2 self-start md:self-auto">
+          <button
+            onClick={handleResetAllSelected}
+            disabled={isResettingAll || isDrawing || alreadySelectedFigures.length === 0}
+            className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold border transition-all ${
+              alreadySelectedFigures.length > 0
+                ? 'border-error/40 text-error hover:bg-error/15 hover:border-error/60 shadow-sm cursor-pointer'
+                : 'border-outline-variant/30 text-outline cursor-not-allowed opacity-50'
+            }`}
+            title="Restablecer todas las figuras a selectedInRandomDraw: false"
+          >
+            <RotateCcw className={`w-4 h-4 ${isResettingAll ? 'animate-spin' : ''}`} />
+            <span>
+              {isResettingAll 
+                ? 'Restableciendo a false...' 
+                : alreadySelectedFigures.length > 0 
+                ? `Reiniciar Sorteo (${alreadySelectedFigures.length} a false)` 
+                : 'Reiniciar Sorteo (0 marcadas)'}
+            </span>
+          </button>
+        </div>
       </div>
 
       {error && (
@@ -368,8 +388,8 @@ export function RandomPickerTool({ categories, designers }: RandomPickerToolProp
         <div className="absolute -left-24 -bottom-24 w-80 h-80 bg-amber-500/5 rounded-full blur-3xl pointer-events-none" />
 
         <div className="max-w-3xl mx-auto flex flex-col items-center text-center space-y-6 relative z-10">
-          {/* Action Button */}
-          <div>
+          {/* Action Button & Reset Controls */}
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-3 w-full">
             <button
               onClick={handleDrawRandomFigure}
               disabled={availableFigures.length === 0 || isDrawing || loading}
@@ -393,6 +413,20 @@ export function RandomPickerTool({ categories, designers }: RandomPickerToolProp
               </span>
               <Sparkles className="w-5 h-5 text-amber-200" />
             </button>
+
+            {alreadySelectedFigures.length > 0 && (
+              <button
+                onClick={handleResetAllSelected}
+                disabled={isResettingAll || isDrawing}
+                className="inline-flex items-center justify-center gap-2 px-5 py-4 rounded-2xl font-bold text-sm bg-surface-container border border-error/30 text-error hover:bg-error/10 hover:border-error/50 transition-all shadow-md active:scale-95 cursor-pointer disabled:opacity-50"
+                title="Restablece selectedInRandomDraw a false para todas las figuras"
+              >
+                <RotateCcw className={`w-4 h-4 ${isResettingAll ? 'animate-spin' : ''}`} />
+                <span>
+                  {isResettingAll ? 'Reiniciando...' : `Reiniciar (${alreadySelectedFigures.length} a false)`}
+                </span>
+              </button>
+            )}
           </div>
 
           {availableFigures.length === 0 && !loading && (
@@ -439,9 +473,9 @@ export function RandomPickerTool({ categories, designers }: RandomPickerToolProp
                 {!isDrawing && selectedFigure && (
                   <div className="flex items-center gap-2">
                     <button
-                      onClick={() => setPreviewFigure(selectedFigure)}
+                      onClick={() => setPreviewModalOptions({ figure: selectedFigure, fullScreen: false, imageIndex: selectedImageIndex })}
                       className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-surface-container hover:bg-surface-container-high text-on-surface border border-outline-variant/40 transition-colors"
-                      title="Ver en vista previa ampliada"
+                      title="Ver información y detalles de la figura"
                     >
                       <Eye className="w-3.5 h-3.5 text-primary" />
                       Ver Detalle
@@ -462,7 +496,23 @@ export function RandomPickerTool({ categories, designers }: RandomPickerToolProp
               <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-start">
                 {/* Image Showcase Container */}
                 <div className="md:col-span-6 space-y-3">
-                  <div className="relative aspect-[4/5] w-full rounded-2xl overflow-hidden bg-surface-container-low border border-outline-variant/30 flex items-center justify-center group shadow-inner">
+                  <div 
+                    onClick={() => {
+                      if (!isDrawing && selectedFigure) {
+                        setPreviewModalOptions({
+                          figure: selectedFigure,
+                          fullScreen: true,
+                          imageIndex: selectedImageIndex
+                        });
+                      }
+                    }}
+                    className={`relative aspect-[4/5] w-full rounded-2xl overflow-hidden bg-surface-container-low border border-outline-variant/30 flex items-center justify-center group shadow-inner transition-all ${
+                      !isDrawing && selectedFigure 
+                        ? 'cursor-pointer hover:border-primary/60 hover:shadow-primary/10 hover:shadow-lg' 
+                        : ''
+                    }`}
+                    title={!isDrawing && selectedFigure ? "Toca para abrir en pantalla completa con zoom y paneo táctil" : undefined}
+                  >
                     {currentImageUrl ? (
                       <img
                         src={currentImageUrl}
@@ -477,10 +527,20 @@ export function RandomPickerTool({ categories, designers }: RandomPickerToolProp
                     )}
 
                     {/* Quality watermark/tag */}
-                    <div className="absolute top-3 right-3 bg-black/70 backdrop-blur-md px-2.5 py-1 rounded-lg text-[10px] font-bold text-amber-300 border border-white/10 flex items-center gap-1">
+                    <div className="absolute top-3 right-3 bg-black/70 backdrop-blur-md px-2.5 py-1 rounded-lg text-[10px] font-bold text-amber-300 border border-white/10 flex items-center gap-1 pointer-events-none">
                       <Sparkles className="w-3 h-3" />
                       Máxima Calidad HD
                     </div>
+
+                    {/* Interactive Zoom pill overlay */}
+                    {!isDrawing && selectedFigure && (
+                      <div className="absolute bottom-3 inset-x-3 flex items-center justify-center pointer-events-none">
+                        <div className="bg-surface-container-high/90 backdrop-blur-md px-3 py-1.5 rounded-full border border-outline-variant/60 shadow-lg flex items-center gap-2 text-xs font-semibold text-on-surface group-hover:bg-primary group-hover:text-on-primary transition-all">
+                          <Maximize2 className="w-3.5 h-3.5 text-primary group-hover:text-on-primary" />
+                          <span>Toca la imagen para Pantalla Completa & Zoom</span>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {/* Multi-image Thumbnails (if available) */}
@@ -495,6 +555,7 @@ export function RandomPickerTool({ categories, designers }: RandomPickerToolProp
                               ? 'border-primary shadow-md scale-105'
                               : 'border-outline-variant/40 opacity-60 hover:opacity-100'
                           }`}
+                          title={`Ver foto ${idx + 1}`}
                         >
                           <img src={imgUrl} alt={`Foto ${idx + 1}`} className="w-full h-full object-cover" />
                         </button>
@@ -624,7 +685,7 @@ export function RandomPickerTool({ categories, designers }: RandomPickerToolProp
             </h3>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <input
               type="text"
               placeholder="Buscar en seleccionadas..."
@@ -632,6 +693,17 @@ export function RandomPickerTool({ categories, designers }: RandomPickerToolProp
               onChange={(e) => setHistorySearch(e.target.value)}
               className="bg-surface-container-low border border-outline-variant/40 rounded-xl px-3 py-1.5 text-xs text-on-surface placeholder:text-outline outline-none focus:border-primary w-full sm:w-48"
             />
+            {alreadySelectedFigures.length > 0 && (
+              <button
+                onClick={handleResetAllSelected}
+                disabled={isResettingAll || isDrawing}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold text-error bg-error/10 hover:bg-error/20 border border-error/30 transition-colors disabled:opacity-50 cursor-pointer"
+                title="Restablecer todas las figuras a selectedInRandomDraw: false"
+              >
+                <RotateCcw className={`w-3.5 h-3.5 ${isResettingAll ? 'animate-spin' : ''}`} />
+                <span>Restablecer todas a false</span>
+              </button>
+            )}
           </div>
         </div>
 
@@ -659,9 +731,13 @@ export function RandomPickerTool({ categories, designers }: RandomPickerToolProp
                   key={fig.id}
                   className="bg-surface-container-low border border-outline-variant/30 rounded-2xl p-3 flex items-center gap-3 hover:border-outline-variant/60 transition-all group"
                 >
-                  <div className="w-16 h-16 rounded-xl overflow-hidden bg-surface-container-lowest flex-shrink-0 border border-outline-variant/20 relative">
+                  <div 
+                    onClick={() => setPreviewModalOptions({ figure: fig, fullScreen: true, imageIndex: 0 })}
+                    className="w-16 h-16 rounded-xl overflow-hidden bg-surface-container-lowest flex-shrink-0 border border-outline-variant/20 relative cursor-pointer hover:border-primary/60 transition-colors"
+                    title="Toca para ver en pantalla completa con zoom"
+                  >
                     {coverImg ? (
-                      <img src={coverImg} alt={fig.title} className="w-full h-full object-cover" />
+                      <img src={coverImg} alt={fig.title} className="w-full h-full object-cover group-hover:scale-110 transition-transform" />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center text-outline">
                         <ImageIcon className="w-5 h-5 opacity-40" />
@@ -669,7 +745,11 @@ export function RandomPickerTool({ categories, designers }: RandomPickerToolProp
                     )}
                   </div>
 
-                  <div className="flex-1 min-w-0">
+                  <div 
+                    className="flex-1 min-w-0 cursor-pointer"
+                    onClick={() => setPreviewModalOptions({ figure: fig, fullScreen: false, imageIndex: 0 })}
+                    title="Ver detalle"
+                  >
                     <div className="flex items-center gap-1.5">
                       {fig.numericId && (
                         <span className="text-[10px] font-mono font-bold text-primary">
@@ -680,7 +760,7 @@ export function RandomPickerTool({ categories, designers }: RandomPickerToolProp
                         {franchiseObj?.name}
                       </span>
                     </div>
-                    <h4 className="text-xs font-bold text-on-surface truncate mt-0.5" title={fig.title}>
+                    <h4 className="text-xs font-bold text-on-surface truncate mt-0.5 group-hover:text-primary transition-colors" title={fig.title}>
                       {fig.title}
                     </h4>
                     <span className="text-[10px] text-outline block mt-0.5">
@@ -689,6 +769,13 @@ export function RandomPickerTool({ categories, designers }: RandomPickerToolProp
                   </div>
 
                   <div className="flex flex-col gap-1.5 flex-shrink-0">
+                    <button
+                      onClick={() => setPreviewModalOptions({ figure: fig, fullScreen: true, imageIndex: 0 })}
+                      className="p-1.5 rounded-lg bg-surface-container hover:bg-surface-container-high hover:text-primary text-outline transition-colors"
+                      title="Pantalla completa y zoom"
+                    >
+                      <Maximize2 className="w-3.5 h-3.5" />
+                    </button>
                     {coverImg && (
                       <button
                         onClick={() => handleDownloadImage(coverImg, 0)}
@@ -713,14 +800,16 @@ export function RandomPickerTool({ categories, designers }: RandomPickerToolProp
         )}
       </div>
 
-      {/* Product Detail Modal preview if opened */}
-      {previewFigure && (
+      {/* Product Detail Modal and Full-screen Image Viewer with zoom/pan */}
+      {previewModalOptions && (
         <ProductModal
-          product={previewFigure}
-          categoryName={getCategoryBreadcrumb(previewFigure.franchiseId, categories)}
-          designerName={designers.find(d => d.id === previewFigure.designerId)?.name}
+          product={previewModalOptions.figure}
+          categoryName={getCategoryBreadcrumb(previewModalOptions.figure.franchiseId, categories)}
+          designerName={designers.find(d => d.id === previewModalOptions.figure.designerId)?.name}
           config={null}
-          onClose={() => setPreviewFigure(null)}
+          initialFullScreen={previewModalOptions.fullScreen}
+          initialImageIndex={previewModalOptions.imageIndex}
+          onClose={() => setPreviewModalOptions(null)}
         />
       )}
     </div>

@@ -11,11 +11,24 @@ interface ProductModalProps {
   config?: SiteConfig | null;
   isLiked?: boolean;
   onToggleLike?: (productId: string) => void;
+  initialFullScreen?: boolean;
+  initialImageIndex?: number;
 }
 
-export function ProductModal({ product, categoryName, designerName, onClose, config, isLiked, onToggleLike }: ProductModalProps) {
-  const [currentImageIndex, setCurrentImageIndex] = useState(0);
-  const [isFullScreen, setIsFullScreen] = useState(false);
+export function ProductModal({ 
+  product, 
+  categoryName, 
+  designerName, 
+  onClose, 
+  config, 
+  isLiked, 
+  onToggleLike,
+  initialFullScreen = false,
+  initialImageIndex = 0
+}: ProductModalProps) {
+  const [currentImageIndex, setCurrentImageIndex] = useState(initialImageIndex);
+  const [isFullScreen, setIsFullScreen] = useState(initialFullScreen);
+  const startFullScreenRef = useRef(initialFullScreen);
   
   // Estados para Zoom y Pan (correr la imagen para ver partes ampliadas)
   const [scale, setScale] = useState(1);
@@ -80,7 +93,9 @@ export function ProductModal({ product, categoryName, designerName, onClose, con
     resetZoom();
     if (isFullScreenRef.current) {
       setIsFullScreen(false);
-      if (window.history.state?.modal === 'image-zoom') {
+      if (startFullScreenRef.current) {
+        closeModal();
+      } else if (window.history.state?.modal === 'image-zoom') {
         isClosingFullScreenManually.current = true;
         window.history.back();
       }
@@ -108,8 +123,9 @@ export function ProductModal({ product, categoryName, designerName, onClose, con
     if (!product) return;
 
     // Resetear índices y banderas al abrir nuevo producto
-    setCurrentImageIndex(0);
-    setIsFullScreen(false);
+    setCurrentImageIndex(initialImageIndex);
+    setIsFullScreen(initialFullScreen);
+    startFullScreenRef.current = initialFullScreen;
     closedByHistoryRef.current = false;
     isClosingFullScreenManually.current = false;
     isClosingModalManually.current = false;
@@ -120,6 +136,9 @@ export function ProductModal({ product, categoryName, designerName, onClose, con
 
     // Insertar estado de la figura en el historial
     window.history.pushState({ modal: 'product-modal', productId: product.id }, '');
+    if (initialFullScreen) {
+      window.history.pushState({ modal: 'image-zoom', productId: product.id }, '');
+    }
 
     const handlePopState = () => {
       // Si se cerró manualmente la imagen en zoom por clic en X, ignorar el popstate provocado por history.back()
@@ -138,6 +157,10 @@ export function ProductModal({ product, categoryName, designerName, onClose, con
       if (isFullScreenRef.current) {
         // El navegador ya hizo pop de 'image-zoom' volviendo a 'product-modal'. Solo cerramos el zoom:
         setIsFullScreen(false);
+        if (startFullScreenRef.current) {
+          closedByHistoryRef.current = true;
+          onClose();
+        }
         return;
       }
 
