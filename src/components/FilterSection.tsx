@@ -346,6 +346,34 @@ export function FilterSection({
                     ))}
                   </select>
                 </div>
+
+                {/* Favorites filter toggle in dropdown */}
+                {onToggleFavoritesOnly && (
+                  <div className="pt-2 border-t border-outline-variant/20">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onToggleFavoritesOnly();
+                        setIsFilterMenuOpen(false);
+                      }}
+                      className={`w-full flex items-center justify-between p-2.5 rounded-lg border text-xs font-semibold transition-all ${
+                        favoritesOnly
+                          ? 'bg-rose-950/80 border-rose-500 text-rose-300'
+                          : 'bg-surface-container border-outline-variant/30 text-on-surface hover:text-rose-400'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <Heart className={`w-4 h-4 ${favoritesCount > 0 ? 'fill-rose-500 text-rose-500' : 'text-rose-400'}`} />
+                        <span>Solo mis figuras favoritas guardadas</span>
+                      </div>
+                      {favoritesCount > 0 && (
+                        <span className="px-2 py-0.5 rounded-full bg-rose-500 text-white font-bold text-[10px]">
+                          {favoritesCount}
+                        </span>
+                      )}
+                    </button>
+                  </div>
+                )}
                 
                 <div className="pt-2 border-t border-outline-variant/20 flex justify-end">
                   <button 
@@ -354,6 +382,9 @@ export function FilterSection({
                       setStatusFilter('all');
                       setFinishFilter('all');
                       setScaleFilter('all');
+                      if (favoritesOnly && onToggleFavoritesOnly) {
+                        onToggleFavoritesOnly();
+                      }
                     }}
                     className="text-xs font-semibold text-on-surface-variant hover:text-primary transition-colors"
                   >
@@ -519,35 +550,10 @@ export function FilterSection({
         </div>
 
         <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-2 snap-x">
-          {onToggleFavoritesOnly && (
-            <button
-              onClick={onToggleFavoritesOnly}
-              className={`shrink-0 px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all snap-start flex items-center gap-1.5 shadow-sm ${
-                favoritesOnly
-                  ? 'bg-rose-950/90 border border-rose-500 text-rose-300 shadow-rose-950/40 ring-1 ring-rose-500/50'
-                  : 'bg-surface-container-low border border-rose-500/30 text-rose-400/90 hover:text-rose-300 hover:border-rose-500/60 hover:bg-rose-950/20'
-              }`}
-              title="Filtrar y mostrar solo tus figuras favoritas guardadas"
-            >
-              <Heart className={`w-3.5 h-3.5 ${favoritesCount > 0 ? 'fill-rose-500 text-rose-500' : 'text-rose-400'}`} />
-              <span>Favoritos</span>
-              {favoritesCount > 0 && (
-                <span className="px-1.5 py-0.2 rounded-full bg-rose-500 text-white font-bold text-[10px]">
-                  {favoritesCount}
-                </span>
-              )}
-            </button>
-          )}
-
           <button
-            onClick={() => {
-              if (favoritesOnly && onToggleFavoritesOnly) {
-                onToggleFavoritesOnly();
-              }
-              setFranchiseFilter('all');
-            }}
+            onClick={() => setFranchiseFilter('all')}
             className={`shrink-0 px-4 py-1.5 rounded-full text-xs font-semibold transition-all snap-start ${
-              franchiseFilter === 'all' && !favoritesOnly
+              franchiseFilter === 'all'
                 ? 'bg-surface-container border border-primary text-primary shadow-sm'
                 : 'bg-surface-container-low border border-outline-variant/30 text-on-surface-variant hover:text-on-surface hover:border-outline'
             }`}
@@ -557,14 +563,9 @@ export function FilterSection({
           {topLevelCategories.map((c) => (
             <button
               key={c.id}
-              onClick={() => {
-                if (favoritesOnly && onToggleFavoritesOnly) {
-                  onToggleFavoritesOnly();
-                }
-                setFranchiseFilter(c.id);
-              }}
+              onClick={() => setFranchiseFilter(c.id)}
               className={`shrink-0 px-4 py-1.5 rounded-full text-xs font-semibold transition-all snap-start ${
-                franchiseFilter === c.id && !favoritesOnly
+                franchiseFilter === c.id
                   ? 'bg-surface-container border border-primary text-primary shadow-sm'
                   : 'bg-surface-container-low border border-outline-variant/30 text-on-surface-variant hover:text-on-surface hover:border-outline'
               }`}

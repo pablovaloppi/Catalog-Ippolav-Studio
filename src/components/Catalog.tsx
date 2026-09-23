@@ -164,14 +164,17 @@ const CatalogCard = memo(function CatalogCard({
             type="button"
             onClick={(e) => {
               e.stopPropagation();
+              e.preventDefault();
               onToggleLike(product.id);
             }}
+            onPointerDown={(e) => e.stopPropagation()}
+            onTouchEnd={(e) => e.stopPropagation()}
             className={`absolute top-3 right-3 z-20 flex items-center gap-1.5 px-2.5 py-1.5 rounded-full backdrop-blur-md transition-all duration-200 active:scale-90 shadow-md ${
               isLiked
-                ? 'bg-rose-950/85 border border-rose-500/70 text-rose-300 shadow-rose-950/50'
+                ? 'bg-rose-950/85 border border-rose-500/70 text-rose-300 shadow-rose-950/50 ring-1 ring-rose-500/30'
                 : 'bg-black/60 hover:bg-black/80 border border-white/20 text-white/90 hover:text-rose-400'
             }`}
-            title={isLiked ? 'Ya te gusta esta figura (clic para quitar)' : 'Me gusta esta figura'}
+            title={isLiked ? 'Quitar de tus favoritos guardados' : 'Guardar en tus favoritos'}
             aria-label={`${likesCount} me gusta`}
           >
             <Heart
