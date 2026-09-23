@@ -14,7 +14,7 @@ import {
   Heart,
   Link2
 } from 'lucide-react';
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { Category, SortOption } from '../types';
 import { getCategoryHierarchyLabel } from '../categoryUtils';
 import { copySearchLinkToClipboard } from '../urlUtils';
@@ -141,50 +141,98 @@ export function FilterSection({
 
   const currentSortOption = sortOptions.find(o => o.id === sortBy) || sortOptions[0];
   const [isLinkCopied, setIsLinkCopied] = useState(false);
+  const [isSticky, setIsSticky] = useState(false);
+  const sentinelRef = useRef<HTMLDivElement>(null);
+
+  // Detectar scroll para fijar el buscador justo abajo del header
+  useEffect(() => {
+    let ticking = false;
+    const handleScroll = () => {
+      if (!ticking) {
+        window.requestAnimationFrame(() => {
+          if (sentinelRef.current) {
+            const rect = sentinelRef.current.getBoundingClientRect();
+            // El header mide 64px (h-16). Si la parte superior del buscador alcanza o pasa el header:
+            setIsSticky(rect.top <= 64);
+          }
+          ticking = false;
+        });
+        ticking = true;
+      }
+    };
+
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    window.addEventListener('resize', handleScroll, { passive: true });
+    handleScroll();
+
+    return () => {
+      window.removeEventListener('scroll', handleScroll);
+      window.removeEventListener('resize', handleScroll);
+    };
+  }, []);
   
   return (
     <section id="filter-section" className="px-5 md:px-12 py-8 border-b border-outline-variant/20 bg-surface-container-lowest/60 relative">
       <div className="max-w-4xl mx-auto space-y-4">
-        <div className="relative flex items-center">
-          <Search className="absolute left-4 text-on-surface-variant pointer-events-none w-5 h-5" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-12 pr-24 py-3.5 bg-surface-container-low border border-outline-variant/40 rounded-xl text-on-surface placeholder:text-outline focus:border-primary focus:ring-1 focus:ring-primary text-sm transition-all shadow-inner outline-none"
-            placeholder="Buscar personaje o franquicia... (ej: Batman, Dragon Ball, Marvel)"
-          />
-          {searchQuery && (
-            <div className="absolute right-3 flex items-center gap-1">
-              <button
-                type="button"
-                onClick={async () => {
-                  const success = await copySearchLinkToClipboard(searchQuery);
-                  if (success) {
-                    setIsLinkCopied(true);
-                    setTimeout(() => setIsLinkCopied(false), 2200);
-                  }
-                }}
-                className="p-1.5 rounded-lg text-outline hover:text-primary hover:bg-surface-container-high transition-colors relative"
-                title="Copiar enlace directo para enviar por WhatsApp o Instagram"
-              >
-                {isLinkCopied ? <Check className="w-4 h-4 text-emerald-400" /> : <Link2 className="w-4 h-4" />}
-                {isLinkCopied && (
-                  <span className="absolute -top-8 right-0 bg-surface-container-highest text-on-surface text-[10px] font-semibold px-2 py-0.5 rounded shadow-lg whitespace-nowrap border border-outline-variant/50 animate-in fade-in duration-150">
-                    ¡Link copiado!
-                  </span>
-                )}
-              </button>
-              <button
-                type="button"
-                onClick={() => setSearchQuery('')}
-                className="p-1.5 rounded-lg text-outline hover:text-on-surface hover:bg-surface-container-high transition-colors"
-                title="Limpiar búsqueda"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
+        {/* Contenedor ancla / buscador */}
+        <div ref={sentinelRef} className="relative">
+          {/* Espacio reservado para evitar saltos en la interfaz cuando el buscador se fija */}
+          {isSticky && (
+            <div className="h-[52px] w-full" aria-hidden="true" />
           )}
+
+          {/* Buscador (relativo o fijado debajo del header) */}
+          <div 
+            className={
+              isSticky
+                ? "fixed top-16 left-0 right-0 z-40 bg-surface/95 backdrop-blur-md border-b border-outline-variant/30 shadow-md px-5 md:px-12 py-2.5 transition-all duration-200"
+                : "relative"
+            }
+          >
+            <div className={isSticky ? "max-w-4xl mx-auto relative flex items-center" : "relative flex items-center"}>
+              <Search className="absolute left-4 text-on-surface-variant pointer-events-none w-5 h-5" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className={`w-full pl-12 pr-24 ${
+                  isSticky ? 'py-2.5 bg-surface-container shadow-sm' : 'py-3.5 bg-surface-container-low shadow-inner'
+                } border border-outline-variant/40 rounded-xl text-on-surface placeholder:text-outline focus:border-primary focus:ring-1 focus:ring-primary text-sm transition-all outline-none`}
+                placeholder="Buscar personaje o franquicia... (ej: Batman, Dragon Ball, Marvel)"
+              />
+              {searchQuery && (
+                <div className="absolute right-3 flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const success = await copySearchLinkToClipboard(searchQuery);
+                      if (success) {
+                        setIsLinkCopied(true);
+                        setTimeout(() => setIsLinkCopied(false), 2200);
+                      }
+                    }}
+                    className="p-1.5 rounded-lg text-outline hover:text-primary hover:bg-surface-container-high transition-colors relative"
+                    title="Copiar enlace directo para enviar por WhatsApp o Instagram"
+                  >
+                    {isLinkCopied ? <Check className="w-4 h-4 text-emerald-400" /> : <Link2 className="w-4 h-4" />}
+                    {isLinkCopied && (
+                      <span className="absolute -top-8 right-0 bg-surface-container-highest text-on-surface text-[10px] font-semibold px-2 py-0.5 rounded shadow-lg whitespace-nowrap border border-outline-variant/50 animate-in fade-in duration-150">
+                        ¡Link copiado!
+                      </span>
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery('')}
+                    className="p-1.5 rounded-lg text-outline hover:text-on-surface hover:bg-surface-container-high transition-colors"
+                    title="Limpiar búsqueda"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
 
         <div className="flex items-center justify-between gap-3 pt-1">
