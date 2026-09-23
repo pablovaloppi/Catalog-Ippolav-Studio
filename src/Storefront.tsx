@@ -60,6 +60,7 @@ export function Storefront() {
   const [finishFilter, setFinishFilter] = useState('all');
   const [scaleFilter, setScaleFilter] = useState('all');
   const [sortBy, setSortBy] = useState<SortOption>('default');
+  const [favoritesOnly, setFavoritesOnly] = useState(false);
   
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   
@@ -562,16 +563,126 @@ export function Storefront() {
     };
   }, [debouncedSearchQuery, statusFilter, allowedFranchiseIds, finishFilter, scaleFilter, sortBy, categories]);
 
+  // Precarga de todas las figuras cuando se activa la vista de Favoritos para asegurar que aparezcan todas las guardadas
+  useEffect(() => {
+    if (!favoritesOnly) return;
+    let isMounted = true;
+
+    async function loadAllFiguresForFavorites() {
+      if (!allStoreFiguresCacheRef.current) {
+        try {
+          const { fetchAllFiguresForSearch } = await import('./services/firestoreService');
+          const list = await fetchAllFiguresForSearch();
+          if (isMounted) {
+            allStoreFiguresCacheRef.current = list.length > 0 ? list : initialProducts;
+          }
+        } catch {
+          if (isMounted) {
+            allStoreFiguresCacheRef.current = initialProducts;
+          }
+        }
+      }
+    }
+
+    loadAllFiguresForFavorites();
+    return () => {
+      isMounted = false;
+    };
+  }, [favoritesOnly]);
+
+  // Lista de productos favoritos del usuario
+  const favoriteProducts = useMemo(() => {
+    if (!favoritesOnly) return [];
+    const sourceList = allStoreFiguresCacheRef.current || products;
+    const list = sourceList.filter((p) => likedFigureIds.has(p.id));
+
+    const searchQueryLower = searchQuery.toLowerCase().trim();
+    const filtered = list.filter((product) => {
+      const matchesSearch =
+        !searchQueryLower ||
+        product.title.toLowerCase().includes(searchQueryLower) ||
+        (product.numericId && product.numericId.toLowerCase().includes(searchQueryLower)) ||
+        (categorySearchMap.get(product.franchiseId) || '').includes(searchQueryLower);
+
+      const matchesStatus = statusFilter === 'all' || product.status === statusFilter;
+      const matchesFranchise = !allowedFranchiseIds || allowedFranchiseIds.has(product.franchiseId);
+      const matchesFinish = finishFilter === 'all' || product.finish === finishFilter;
+      const matchesScale = scaleFilter === 'all' || (Array.isArray(product.scale) && product.scale.includes(scaleFilter));
+
+      return matchesSearch && matchesStatus && matchesFranchise && matchesFinish && matchesScale;
+    });
+
+    return filtered.sort((a, b) => {
+      if (sortBy === 'likes-desc') {
+        const likesA = a.likesCount ?? 0;
+        const likesB = b.likesCount ?? 0;
+        if (likesB !== likesA) return likesB - likesA;
+        return (a.order ?? 0) - (b.order ?? 0);
+      }
+      if (sortBy === 'recent') {
+        const timeA = getFigureTimestamp(a);
+        const timeB = getFigureTimestamp(b);
+        if (timeB !== timeA) return timeB - timeA;
+        return (b.order ?? 0) - (a.order ?? 0);
+      }
+      if (sortBy === 'oldest') {
+        const timeA = getFigureTimestamp(a);
+        const timeB = getFigureTimestamp(b);
+        if (timeA !== timeB) return timeA - timeB;
+        return (a.order ?? 0) - (b.order ?? 0);
+      }
+      if (sortBy === 'name-asc') return a.title.localeCompare(b.title, 'es', { sensitivity: 'base' });
+      if (sortBy === 'name-desc') return b.title.localeCompare(a.title, 'es', { sensitivity: 'base' });
+      return 0;
+    });
+  }, [favoritesOnly, likedFigureIds, products, searchQuery, statusFilter, allowedFranchiseIds, finishFilter, scaleFilter, sortBy, categorySearchMap]);
+
+  const handleToggleFavoritesOnly = useCallback(() => {
+    setFavoritesOnly((prev) => {
+      const next = !prev;
+      if (next) {
+        const catalogEl = document.getElementById('catalogo') || document.getElementById('filter-section');
+        if (catalogEl) {
+          catalogEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }
+      return next;
+    });
+  }, []);
+
+  const handleOpenFavorites = useCallback(() => {
+    setFavoritesOnly(true);
+    const catalogEl = document.getElementById('catalogo') || document.getElementById('filter-section');
+    if (catalogEl) {
+      catalogEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, []);
+
   const isSearchActive = searchQuery.trim() !== '';
   const isSearchBusy = isSearchActive && (isSearchingStore || searchQuery !== debouncedSearchQuery);
   const showStoreLoader = loading || isSearchBusy;
 
+  const displayedCatalogProducts = favoritesOnly
+    ? favoriteProducts
+    : (isSearchActive ? searchResults : sortedAndFilteredProducts);
+
   return (
     <>
-      <Header onOpenDrawer={() => setIsDrawerOpen(true)} />
+      <Header 
+        onOpenDrawer={() => setIsDrawerOpen(true)} 
+        favoritesCount={likedFigureIds.size}
+        onOpenFavorites={handleOpenFavorites}
+        isFavoritesActive={favoritesOnly}
+      />
       {isDrawerOpen && (
         <Suspense fallback={null}>
-          <NavigationDrawer isOpen={isDrawerOpen} onClose={() => setIsDrawerOpen(false)} />
+          <NavigationDrawer 
+            isOpen={isDrawerOpen} 
+            onClose={() => setIsDrawerOpen(false)} 
+            favoritesCount={likedFigureIds.size}
+            onOpenFavorites={handleOpenFavorites}
+            isFavoritesActive={favoritesOnly}
+          />
         </Suspense>
       )}
       
@@ -593,6 +704,9 @@ export function Storefront() {
           categories={categories}
           availableFinishes={availableFinishes}
           availableScales={availableScales}
+          favoritesOnly={favoritesOnly}
+          onToggleFavoritesOnly={handleToggleFavoritesOnly}
+          favoritesCount={likedFigureIds.size}
         />
         {showStoreLoader ? (
           <div className="flex flex-col justify-center items-center py-24 text-primary">
@@ -610,15 +724,17 @@ export function Storefront() {
           </div>
         ) : (
           <Catalog
-            products={isSearchActive ? searchResults : sortedAndFilteredProducts}
+            products={displayedCatalogProducts}
             categories={categories}
             onSelectProduct={setSelectedProduct}
-            hasMore={isSearchActive ? false : hasMore}
+            hasMore={favoritesOnly || isSearchActive ? false : hasMore}
             loadingMore={loadingMore}
             onLoadMore={loadMore}
-            totalFiguresInDb={totalFiguresInDb}
+            totalFiguresInDb={favoritesOnly ? favoriteProducts.length : totalFiguresInDb}
             likedFigureIds={likedFigureIds}
             onToggleLike={handleToggleLike}
+            favoritesOnly={favoritesOnly}
+            onClearFavoritesFilter={() => setFavoritesOnly(false)}
           />
         )}
         <Franchises onSelectFranchise={setFranchiseFilter} categories={categories} />

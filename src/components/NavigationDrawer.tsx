@@ -1,11 +1,20 @@
-import { X, Home, Palette, Shapes, HelpCircle, MessageCircle } from 'lucide-react';
+import { X, Home, Palette, Shapes, HelpCircle, MessageCircle, Heart } from 'lucide-react';
 
 interface NavigationDrawerProps {
   isOpen: boolean;
   onClose: () => void;
+  favoritesCount?: number;
+  onOpenFavorites?: () => void;
+  isFavoritesActive?: boolean;
 }
 
-export function NavigationDrawer({ isOpen, onClose }: NavigationDrawerProps) {
+export function NavigationDrawer({ 
+  isOpen, 
+  onClose,
+  favoritesCount = 0,
+  onOpenFavorites,
+  isFavoritesActive = false
+}: NavigationDrawerProps) {
   return (
     <>
       <div
@@ -55,6 +64,32 @@ export function NavigationDrawer({ isOpen, onClose }: NavigationDrawerProps) {
               <Home className="w-5 h-5" />
               <span>Inicio</span>
             </a>
+            
+            {onOpenFavorites && (
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onOpenFavorites();
+                }}
+                className={`w-full flex items-center justify-between px-4 py-3 rounded active:opacity-80 transition-all text-sm font-semibold text-left ${
+                  isFavoritesActive
+                    ? 'bg-rose-950/60 text-rose-300 border-l-2 border-rose-500'
+                    : 'text-on-surface-variant hover:text-rose-400 hover:bg-rose-950/20'
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <Heart className={`w-5 h-5 ${favoritesCount > 0 ? 'fill-rose-500 text-rose-500' : 'text-rose-400'}`} />
+                  <span>Mis Favoritos</span>
+                </div>
+                {favoritesCount > 0 && (
+                  <span className="px-2 py-0.5 rounded-full bg-rose-500 text-white font-bold text-xs">
+                    {favoritesCount}
+                  </span>
+                )}
+              </button>
+            )}
+
             <a
               href="#catalogo"
               onClick={onClose}

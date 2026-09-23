@@ -487,13 +487,13 @@ export function ProductModal({
                 onClick={() => onToggleLike(product.id)}
                 className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold transition-all active:scale-95 border ${
                   isLiked
-                    ? 'bg-rose-950/80 border-rose-500/60 text-rose-300'
-                    : 'bg-surface-container border-outline-variant/40 text-on-surface hover:text-rose-400'
+                    ? 'bg-rose-950/80 border-rose-500/70 text-rose-300 shadow-sm shadow-rose-950/50'
+                    : 'bg-surface-container border-outline-variant/40 text-on-surface hover:text-rose-400 hover:border-rose-500/40'
                 }`}
-                title={isLiked ? 'Ya te gusta esta figura (clic para quitar)' : 'Me gusta esta figura'}
+                title={isLiked ? 'Quitar de tus favoritos guardados' : 'Guardar en tus favoritos'}
               >
-                <Heart className={`w-3.5 h-3.5 ${isLiked ? 'fill-rose-500 text-rose-500' : ''}`} />
-                <span>{product.likesCount || 0} {product.likesCount === 1 ? 'corazón' : 'corazones'}</span>
+                <Heart className={`w-3.5 h-3.5 transition-transform ${isLiked ? 'fill-rose-500 text-rose-500 scale-105' : ''}`} />
+                <span>{isLiked ? 'Guardado en Favoritos' : 'Favorito'} ({product.likesCount || 0})</span>
               </button>
             )}
           </div>

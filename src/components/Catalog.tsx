@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect, memo } from 'react';
-import { ArrowRight, PlusCircle, Heart } from 'lucide-react';
+import { ArrowRight, PlusCircle, Heart, Sparkles, Palette } from 'lucide-react';
 import { Product, Category } from '../types';
 import { getOptimizedCloudinaryUrl, getCloudinarySrcSet } from '../cloudinaryUtils';
 
@@ -219,6 +219,8 @@ interface CatalogProps {
   totalFiguresInDb?: number | null;
   likedFigureIds?: Set<string>;
   onToggleLike?: (productId: string) => void;
+  favoritesOnly?: boolean;
+  onClearFavoritesFilter?: () => void;
 }
 
 export function Catalog({
@@ -231,6 +233,8 @@ export function Catalog({
   totalFiguresInDb,
   likedFigureIds,
   onToggleLike,
+  favoritesOnly = false,
+  onClearFavoritesFilter,
 }: CatalogProps) {
   // Punto de anticipación de carga de figuras:
   // Se activa en la 6ª figura cargada (índice 5), y luego 3 figuras antes de finalizar cada lote
@@ -281,38 +285,91 @@ export function Catalog({
 
   return (
     <section id="catalogo" className="px-5 md:px-12 py-12">
-      <div className="flex flex-col sm:flex-row sm:items-end justify-between mb-8 pb-4 border-b border-outline-variant/20 gap-3">
-        <div>
-          <span className="text-[10px] font-bold text-primary tracking-widest uppercase">Galería Oficial</span>
-          <h2 className="font-serif text-3xl font-medium text-on-surface mt-1">Catálogo de Colección</h2>
+      {favoritesOnly ? (
+        <div className="flex flex-col sm:flex-row sm:items-end justify-between mb-8 pb-4 border-b border-rose-500/30 gap-4">
+          <div>
+            <div className="flex items-center gap-2">
+              <Heart className="w-4 h-4 text-rose-500 fill-rose-500 animate-pulse" />
+              <span className="text-[10px] font-bold text-rose-400 tracking-widest uppercase">Colección Personal</span>
+            </div>
+            <h2 className="font-serif text-3xl font-medium text-on-surface mt-1">Mis Figuras Favoritas</h2>
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-2 bg-rose-950/60 px-3.5 py-1.5 rounded-full border border-rose-500/40 w-fit shadow-sm">
+              <span className="inline-block w-2 h-2 rounded-full bg-rose-400"></span>
+              <span className="text-xs font-semibold text-rose-200">
+                <span className="text-white font-bold">{products.length}</span> {products.length === 1 ? 'figura guardada' : 'figuras guardadas'}
+              </span>
+            </div>
+            {onClearFavoritesFilter && (
+              <button
+                type="button"
+                onClick={onClearFavoritesFilter}
+                className="text-xs font-semibold text-primary hover:underline px-2 py-1 transition-colors cursor-pointer"
+              >
+                ← Ver todo el catálogo
+              </button>
+            )}
+          </div>
         </div>
-        <div className="flex items-center gap-2 bg-surface-container-low px-3.5 py-1.5 rounded-full border border-outline-variant/30 w-fit shadow-sm">
-          <span className="inline-block w-2 h-2 rounded-full bg-emerald-400"></span>
-          <span className="text-xs font-semibold text-on-surface-variant">
-            <span className="text-on-surface font-bold">{displayTotal}</span> {displayTotal === 1 ? 'figura en catálogo' : 'figuras en catálogo'}
-          </span>
+      ) : (
+        <div className="flex flex-col sm:flex-row sm:items-end justify-between mb-8 pb-4 border-b border-outline-variant/20 gap-3">
+          <div>
+            <span className="text-[10px] font-bold text-primary tracking-widest uppercase">Galería Oficial</span>
+            <h2 className="font-serif text-3xl font-medium text-on-surface mt-1">Catálogo de Colección</h2>
+          </div>
+          <div className="flex items-center gap-2 bg-surface-container-low px-3.5 py-1.5 rounded-full border border-outline-variant/30 w-fit shadow-sm">
+            <span className="inline-block w-2 h-2 rounded-full bg-emerald-400"></span>
+            <span className="text-xs font-semibold text-on-surface-variant">
+              <span className="text-on-surface font-bold">{displayTotal}</span> {displayTotal === 1 ? 'figura en catálogo' : 'figuras en catálogo'}
+            </span>
+          </div>
         </div>
-      </div>
+      )}
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-        {products.map((product, index) => {
-          const isTrigger = index === triggerIndex;
-          return (
-            <CatalogCard
-              key={product.id}
-              product={product}
-              index={index}
-              categoryName={categories.find((c) => c.id === product.franchiseId)?.name}
-              onSelect={onSelectProduct}
-              articleRef={isTrigger ? (el) => { triggerTargetRef.current = el; } : undefined}
-              isLiked={likedFigureIds ? likedFigureIds.has(product.id) : false}
-              onToggleLike={onToggleLike}
-            />
-          );
-        })}
-      </div>
+      {favoritesOnly && products.length === 0 ? (
+        <div className="py-16 px-4 text-center max-w-md mx-auto space-y-4 bg-surface-container-low/50 rounded-2xl border border-outline-variant/30 my-6">
+          <div className="w-16 h-16 rounded-full bg-rose-500/10 border border-rose-500/30 flex items-center justify-center mx-auto text-rose-400">
+            <Heart className="w-8 h-8 stroke-[1.5]" />
+          </div>
+          <h3 className="font-serif text-xl font-bold text-on-surface">No tienes figuras guardadas</h3>
+          <p className="text-xs text-on-surface-variant leading-relaxed">
+            Presiona el icono de corazón <Heart className="w-3.5 h-3.5 inline text-rose-400 fill-rose-400 mx-0.5" /> en cualquier figura del catálogo para guardarla en tus favoritos y acceder rápidamente a ellas aquí.
+          </p>
+          {onClearFavoritesFilter && (
+            <div className="pt-2">
+              <button
+                type="button"
+                onClick={onClearFavoritesFilter}
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold bg-primary text-on-primary-fixed hover:brightness-110 transition-all shadow-md active:scale-95 cursor-pointer"
+              >
+                <Palette className="w-4 h-4" />
+                <span>Explorar todo el Catálogo</span>
+              </button>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+          {products.map((product, index) => {
+            const isTrigger = index === triggerIndex;
+            return (
+              <CatalogCard
+                key={product.id}
+                product={product}
+                index={index}
+                categoryName={categories.find((c) => c.id === product.franchiseId)?.name}
+                onSelect={onSelectProduct}
+                articleRef={isTrigger ? (el) => { triggerTargetRef.current = el; } : undefined}
+                isLiked={likedFigureIds ? likedFigureIds.has(product.id) : false}
+                onToggleLike={onToggleLike}
+              />
+            );
+          })}
+        </div>
+      )}
       
-      {products.length === 0 && !loadingMore && (
+      {!favoritesOnly && products.length === 0 && !loadingMore && (
         <div className="py-16 text-center space-y-3">
           <p className="text-on-surface-variant text-base">No se encontraron figuras con esos filtros.</p>
           {hasMore && onLoadMore && (
@@ -327,11 +384,11 @@ export function Catalog({
       )}
 
       {/* Centinela invisible de precarga: la carga ocurre silenciosamente sin spinners que interrumpan el scroll */}
-      {hasMore && (
+      {hasMore && !favoritesOnly && (
         <div ref={bottomSentinelRef} className="h-4 w-full pointer-events-none opacity-0" />
       )}
 
-      {!hasMore && products.length > 0 && (
+      {!hasMore && !favoritesOnly && products.length > 0 && (
         <div className="mt-8 py-4 text-center">
           <span className="text-xs text-on-surface-variant/80 font-medium tracking-wide">
             ✓ Has explorado todas las figuras disponibles ({displayTotal})

@@ -35,6 +35,9 @@ interface FilterSectionProps {
   categories: Category[];
   availableFinishes: string[];
   availableScales: string[];
+  favoritesOnly?: boolean;
+  onToggleFavoritesOnly?: () => void;
+  favoritesCount?: number;
 }
 
 const sortOptions: {
@@ -111,6 +114,9 @@ export function FilterSection({
   categories,
   availableFinishes,
   availableScales,
+  favoritesOnly = false,
+  onToggleFavoritesOnly,
+  favoritesCount = 0,
 }: FilterSectionProps) {
   const [isFilterMenuOpen, setIsFilterMenuOpen] = useState(false);
   const [isSortMenuOpen, setIsSortMenuOpen] = useState(false);
@@ -137,7 +143,8 @@ export function FilterSection({
     (statusFilter !== 'all' ? 1 : 0) + 
     (franchiseFilter !== 'all' ? 1 : 0) + 
     (finishFilter !== 'all' ? 1 : 0) + 
-    (scaleFilter !== 'all' ? 1 : 0);
+    (scaleFilter !== 'all' ? 1 : 0) +
+    (favoritesOnly ? 1 : 0);
 
   const currentSortOption = sortOptions.find(o => o.id === sortBy) || sortOptions[0];
   const [isLinkCopied, setIsLinkCopied] = useState(false);
@@ -189,12 +196,25 @@ export function FilterSection({
                 : "relative"
             }
           >
-            <div className={isSticky ? "max-w-4xl mx-auto relative flex items-center" : "relative flex items-center"}>
+            <form 
+              onSubmit={(e) => {
+                e.preventDefault();
+                const inputEl = e.currentTarget.querySelector('input');
+                if (inputEl) inputEl.blur();
+              }}
+              className={isSticky ? "max-w-4xl mx-auto relative flex items-center" : "relative flex items-center"}
+            >
               <Search className="absolute left-4 text-on-surface-variant pointer-events-none w-5 h-5" />
               <input
-                type="text"
+                type="search"
+                enterKeyHint="search"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.currentTarget.blur();
+                  }
+                }}
                 className={`w-full pl-12 pr-24 ${
                   isSticky ? 'py-2.5 bg-surface-container shadow-sm' : 'py-3.5 bg-surface-container-low shadow-inner'
                 } border border-outline-variant/40 rounded-xl text-on-surface placeholder:text-outline focus:border-primary focus:ring-1 focus:ring-primary text-sm transition-all outline-none`}
@@ -231,7 +251,7 @@ export function FilterSection({
                   </button>
                 </div>
               )}
-            </div>
+            </form>
           </div>
         </div>
 
@@ -499,10 +519,35 @@ export function FilterSection({
         </div>
 
         <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-2 snap-x">
+          {onToggleFavoritesOnly && (
+            <button
+              onClick={onToggleFavoritesOnly}
+              className={`shrink-0 px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all snap-start flex items-center gap-1.5 shadow-sm ${
+                favoritesOnly
+                  ? 'bg-rose-950/90 border border-rose-500 text-rose-300 shadow-rose-950/40 ring-1 ring-rose-500/50'
+                  : 'bg-surface-container-low border border-rose-500/30 text-rose-400/90 hover:text-rose-300 hover:border-rose-500/60 hover:bg-rose-950/20'
+              }`}
+              title="Filtrar y mostrar solo tus figuras favoritas guardadas"
+            >
+              <Heart className={`w-3.5 h-3.5 ${favoritesCount > 0 ? 'fill-rose-500 text-rose-500' : 'text-rose-400'}`} />
+              <span>Favoritos</span>
+              {favoritesCount > 0 && (
+                <span className="px-1.5 py-0.2 rounded-full bg-rose-500 text-white font-bold text-[10px]">
+                  {favoritesCount}
+                </span>
+              )}
+            </button>
+          )}
+
           <button
-            onClick={() => setFranchiseFilter('all')}
+            onClick={() => {
+              if (favoritesOnly && onToggleFavoritesOnly) {
+                onToggleFavoritesOnly();
+              }
+              setFranchiseFilter('all');
+            }}
             className={`shrink-0 px-4 py-1.5 rounded-full text-xs font-semibold transition-all snap-start ${
-              franchiseFilter === 'all'
+              franchiseFilter === 'all' && !favoritesOnly
                 ? 'bg-surface-container border border-primary text-primary shadow-sm'
                 : 'bg-surface-container-low border border-outline-variant/30 text-on-surface-variant hover:text-on-surface hover:border-outline'
             }`}
@@ -512,9 +557,14 @@ export function FilterSection({
           {topLevelCategories.map((c) => (
             <button
               key={c.id}
-              onClick={() => setFranchiseFilter(c.id)}
+              onClick={() => {
+                if (favoritesOnly && onToggleFavoritesOnly) {
+                  onToggleFavoritesOnly();
+                }
+                setFranchiseFilter(c.id);
+              }}
               className={`shrink-0 px-4 py-1.5 rounded-full text-xs font-semibold transition-all snap-start ${
-                franchiseFilter === c.id
+                franchiseFilter === c.id && !favoritesOnly
                   ? 'bg-surface-container border border-primary text-primary shadow-sm'
                   : 'bg-surface-container-low border border-outline-variant/30 text-on-surface-variant hover:text-on-surface hover:border-outline'
               }`}
