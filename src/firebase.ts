@@ -1,5 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import { getFirestore } from 'firebase/firestore';
+import { getAnalytics, isSupported, Analytics } from 'firebase/analytics';
 
 const firebaseConfig = {
   apiKey: "AIzaSyAsn7iuVc6HczgGo3Pa84VUJRm8_0UEfiY",
@@ -12,4 +13,21 @@ const firebaseConfig = {
 
 export const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
+
+let analyticsInstance: Analytics | null = null;
+
+export async function getFirebaseAnalytics(): Promise<Analytics | null> {
+  if (typeof window === 'undefined') return null;
+  if (analyticsInstance) return analyticsInstance;
+  try {
+    const supported = await isSupported();
+    if (supported) {
+      analyticsInstance = getAnalytics(app);
+      return analyticsInstance;
+    }
+  } catch (e) {
+    console.warn("Firebase Analytics no disponible en este entorno:", e);
+  }
+  return null;
+}
 

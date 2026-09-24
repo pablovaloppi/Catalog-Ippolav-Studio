@@ -22,7 +22,8 @@ import {
   ArrowUpRight,
   Sparkles,
   Layers,
-  ChevronRight
+  ChevronRight,
+  BarChart3
 } from 'lucide-react';
 import { Product } from '../types';
 
@@ -295,6 +296,85 @@ export function AnalyticsDashboard({ allFigures = [], onSelectFigure }: Analytic
                 <span>{aggregated.topSearches.length} palabras clave</span>
                 <span className="text-amber-400 font-semibold">Demanda activa</span>
               </div>
+            </div>
+          </div>
+
+          {/* Panel de Estado de Integraciones: Firebase Analytics & Meta Pixel */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Tarjeta Meta Pixel */}
+            <div className="bg-surface-container-low border border-pink-500/20 rounded-xl p-5 relative overflow-hidden group hover:border-pink-500/40 transition-all shadow-sm">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-lg bg-pink-500/10 flex items-center justify-center text-pink-400">
+                    <Instagram className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-sm text-on-surface">Meta Pixel (Instagram & Facebook)</h4>
+                    <p className="text-[11px] text-on-surface-variant">Construcción de audiencias & retargeting</p>
+                  </div>
+                </div>
+                <span className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-[10px] font-bold">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                  Conectado
+                </span>
+              </div>
+
+              <div className="mt-4 grid grid-cols-3 gap-2 text-center">
+                <div className="p-2 rounded bg-surface-container border border-outline-variant/20">
+                  <span className="block text-[10px] text-outline">PageView</span>
+                  <span className="text-xs font-bold text-on-surface">Automático</span>
+                </div>
+                <div className="p-2 rounded bg-surface-container border border-outline-variant/20">
+                  <span className="block text-[10px] text-outline">ViewContent</span>
+                  <span className="text-xs font-bold text-pink-400">Por Figura</span>
+                </div>
+                <div className="p-2 rounded bg-surface-container border border-outline-variant/20">
+                  <span className="block text-[10px] text-outline">Lead / WhatsApp</span>
+                  <span className="text-xs font-bold text-emerald-400">Conversión</span>
+                </div>
+              </div>
+
+              <p className="mt-3 text-[11px] text-on-surface-variant/90 leading-relaxed">
+                El Píxel de Meta rastrea a todos los visitantes que vienen de tu Instagram, acumulando la audiencia para tus campañas y midiendo la efectividad de tus publicaciones.
+              </p>
+            </div>
+
+            {/* Tarjeta Firebase Analytics & GA4 */}
+            <div className="bg-surface-container-low border border-amber-500/20 rounded-xl p-5 relative overflow-hidden group hover:border-amber-500/40 transition-all shadow-sm">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-lg bg-amber-500/10 flex items-center justify-center text-amber-400">
+                    <BarChart3 className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-sm text-on-surface">Firebase & Google Analytics 4</h4>
+                    <p className="text-[11px] text-on-surface-variant">Métricas globales y flujo de navegación</p>
+                  </div>
+                </div>
+                <span className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-[10px] font-bold">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                  Activo
+                </span>
+              </div>
+
+              <div className="mt-4 grid grid-cols-3 gap-2 text-center">
+                <div className="p-2 rounded bg-surface-container border border-outline-variant/20">
+                  <span className="block text-[10px] text-outline">view_item</span>
+                  <span className="text-xs font-bold text-on-surface">Catálogo</span>
+                </div>
+                <div className="p-2 rounded bg-surface-container border border-outline-variant/20">
+                  <span className="block text-[10px] text-outline">generate_lead</span>
+                  <span className="text-xs font-bold text-emerald-400">WhatsApp</span>
+                </div>
+                <div className="p-2 rounded bg-surface-container border border-outline-variant/20">
+                  <span className="block text-[10px] text-outline">search</span>
+                  <span className="text-xs font-bold text-amber-400">Búsquedas</span>
+                </div>
+              </div>
+
+              <p className="mt-3 text-[11px] text-on-surface-variant/90 leading-relaxed">
+                Firebase Analytics registra las sesiones, orígenes de tráfico y retención, sincronizándose de forma nativa con Google Analytics 4 en la nube de Google.
+              </p>
             </div>
           </div>
 

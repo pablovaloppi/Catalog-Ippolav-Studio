@@ -12,11 +12,32 @@ import {
   where,
   Timestamp
 } from 'firebase/firestore';
-import { db } from '../firebase';
+import { logEvent } from 'firebase/analytics';
+import { db, getFirebaseAnalytics } from '../firebase';
 import { Product } from '../types';
+import { 
+  initMetaPixel, 
+  trackPixelPageView, 
+  trackPixelViewContent, 
+  trackPixelContact, 
+  trackPixelSearch, 
+  trackPixelAddToWishlist 
+} from './metaPixelService';
 
 export type TrafficSource = 'instagram' | 'whatsapp' | 'direct' | 'other';
 export type DeviceType = 'mobile' | 'desktop';
+
+// Safe wrapper to trigger Firebase Analytics events
+async function safeLogFirebaseEvent(eventName: string, params?: Record<string, any>) {
+  try {
+    const analytics = await getFirebaseAnalytics();
+    if (analytics) {
+      logEvent(analytics, eventName, params);
+    }
+  } catch (err) {
+    // Non-blocking
+  }
+}
 
 export interface DailyAnalyticsData {
   id: string; // YYYY-MM-DD
@@ -114,13 +135,23 @@ export function detectDeviceType(): DeviceType {
 /**
  * Tracks a new visitor session arrival (deduplicated per browser session)
  */
-export async function trackPageView(): Promise<void> {
+export async function trackPageView(metaPixelId?: string): Promise<void> {
   if (typeof window === 'undefined') return;
+
+  // Initialize Meta Pixel if ID is configured
+  if (metaPixelId) {
+    initMetaPixel(metaPixelId);
+  }
+  trackPixelPageView();
+  safeLogFirebaseEvent('page_view', {
+    page_location: window.location.href,
+    traffic_source: detectTrafficSource(),
+  });
 
   try {
     const sessionKey = 'ippolav_session_tracked_' + getTodayKey();
     if (sessionStorage.getItem(sessionKey)) {
-      return; // Already tracked for this session today
+      return; // Already tracked in daily Firestore doc for this session today
     }
     sessionStorage.setItem(sessionKey, '1');
 
@@ -163,6 +194,14 @@ export async function trackPageView(): Promise<void> {
 export async function trackFigureView(figure: { id: string; title: string; franchiseId?: string }): Promise<void> {
   if (!figure || !figure.id) return;
 
+  // Track in Meta Pixel & Firebase Analytics
+  trackPixelViewContent(figure);
+  safeLogFirebaseEvent('view_item', {
+    item_id: figure.id,
+    item_name: figure.title,
+    item_category: figure.franchiseId || 'Figures',
+  });
+
   try {
     const source = detectTrafficSource();
     const device = detectDeviceType();
@@ -198,6 +237,14 @@ export async function trackFigureView(figure: { id: string; title: string; franc
  */
 export async function trackWhatsAppClick(figure: { id: string; title: string; price?: number }): Promise<void> {
   if (!figure || !figure.id) return;
+
+  // Track in Meta Pixel & Firebase Analytics as high-value conversion Lead
+  trackPixelContact(figure);
+  safeLogFirebaseEvent('generate_lead', {
+    item_id: figure.id,
+    item_name: figure.title,
+    channel: 'whatsapp',
+  });
 
   try {
     const source = detectTrafficSource();
@@ -236,6 +283,12 @@ export async function trackSearchQuery(term: string): Promise<void> {
   const cleaned = term.trim().toLowerCase();
   if (!cleaned || cleaned.length < 2) return;
 
+  // Track in Meta Pixel & Firebase Analytics
+  trackPixelSearch(cleaned);
+  safeLogFirebaseEvent('search', {
+    search_term: cleaned,
+  });
+
   try {
     const source = detectTrafficSource();
     const device = detectDeviceType();
@@ -261,6 +314,17 @@ export async function trackSearchQuery(term: string): Promise<void> {
   } catch (err) {
     console.warn('Analytics search query error:', err);
   }
+}
+
+/**
+ * Tracks when a user marks a figure as favorite (AddToWishlist)
+ */
+export function trackFigureFavorite(figure: { id: string; title: string }): void {
+  trackPixelAddToWishlist(figure);
+  safeLogFirebaseEvent('add_to_wishlist', {
+    item_id: figure.id,
+    item_name: figure.title,
+  });
 }
 
 /**

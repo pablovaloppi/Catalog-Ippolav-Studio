@@ -44,4 +44,6 @@ export interface SiteConfig {
   whatsappMessageTemplate: string;
   cloudinaryCloudName?: string;
   cloudinaryUploadPreset?: string;
+  metaPixelId?: string;
+  googleAnalyticsId?: string;
 }

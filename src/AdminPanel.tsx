@@ -2433,6 +2433,49 @@ function ConfigForm({ config }: { config: SiteConfig }) {
           </div>
         </div>
 
+        <div className="w-full h-px bg-outline-variant/30 my-6"></div>
+
+        <div className="space-y-4">
+          <h3 className="text-lg font-bold text-primary">Analítica & Píxel de Meta (Instagram / Facebook)</h3>
+          <p className="text-xs text-on-surface-variant">
+            Conecta tu <strong>Píxel de Meta</strong> y <strong>Google Analytics</strong> para registrar automáticamente a todos los visitantes que llegan desde tus Stories, biografía y anuncios de Instagram.
+          </p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-1">
+              <label className="text-sm font-bold text-on-surface flex items-center gap-1.5">
+                <span className="text-pink-400">📸</span> ID del Meta Pixel (Instagram & Facebook)
+              </label>
+              <input 
+                type="text" 
+                name="metaPixelId" 
+                value={formData.metaPixelId || ''} 
+                onChange={handleChange} 
+                placeholder="Ej: 123456789012345" 
+                className="w-full p-3 bg-surface-container border border-outline-variant/30 rounded-lg text-sm font-mono" 
+              />
+              <p className="text-xs text-outline mt-1">
+                Registra automáticamente eventos de <code>PageView</code>, <code>ViewContent</code> (figuras vistas), <code>Search</code> y conversiones de <code>Contact / Lead</code> (WhatsApp).
+              </p>
+            </div>
+            <div className="space-y-1">
+              <label className="text-sm font-bold text-on-surface flex items-center gap-1.5">
+                <span className="text-amber-400">📈</span> ID de Medición de Google Analytics (GA4)
+              </label>
+              <input 
+                type="text" 
+                name="googleAnalyticsId" 
+                value={formData.googleAnalyticsId || ''} 
+                onChange={handleChange} 
+                placeholder="Ej: G-XXXXXXXXXX" 
+                className="w-full p-3 bg-surface-container border border-outline-variant/30 rounded-lg text-sm font-mono" 
+              />
+              <p className="text-xs text-outline mt-1">
+                Conecta tu propiedad de Google Analytics 4 para ver estadísticas globales y reportes en la app móvil.
+              </p>
+            </div>
+          </div>
+        </div>
+
         <div className="flex justify-end gap-3 pt-6 border-t border-outline-variant/20">
           {success && <span className="text-green-500 font-bold self-center mr-4">¡Guardado!</span>}
           <button type="submit" disabled={loading} className="px-6 py-2 bg-primary text-on-primary font-bold rounded-lg hover:brightness-110 active:scale-95 transition-all disabled:opacity-50">

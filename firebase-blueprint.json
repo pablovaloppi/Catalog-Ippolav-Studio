@@ -85,7 +85,9 @@
         "whatsappMessageTemplate": { "type": "string" },
         "instagram": { "type": "string" },
         "facebook": { "type": "string" },
-        "youtube": { "type": "string" }
+        "youtube": { "type": "string" },
+        "metaPixelId": { "type": "string" },
+        "googleAnalyticsId": { "type": "string" }
       }
     },
     "analyticsDaily": {

@@ -9,7 +9,7 @@ import { getAllDescendantCategoryIds, getCategoryAncestors, getCategoryBreadcrum
 import { products as initialProducts } from './data';
 import type { QueryDocumentSnapshot, DocumentData } from 'firebase/firestore';
 import { extractSearchQueryFromLocation, extractFigureIdFromLocation } from './urlUtils';
-import { trackPageView, trackSearchQuery } from './services/analyticsService';
+import { trackPageView, trackSearchQuery, trackFigureFavorite } from './services/analyticsService';
 
 const NavigationDrawer = lazy(() => import('./components/NavigationDrawer').then(m => ({ default: m.NavigationDrawer })));
 const HowToBuy = lazy(() => import('./components/HowToBuy').then(m => ({ default: m.HowToBuy })));
@@ -165,6 +165,7 @@ export function Storefront() {
         initialProducts.find((p) => p.id === figureId) ||
         (selectedProduct?.id === figureId ? selectedProduct : null);
       if (targetFig) {
+        trackFigureFavorite(targetFig);
         setFavoriteFiguresList((prev) => {
           if (prev.some((p) => p.id === figureId)) return prev;
           return [...prev, { ...targetFig, likesCount: Math.max(0, (targetFig.likesCount || 0) + delta) }];
@@ -349,7 +350,12 @@ export function Storefront() {
 
         if (dataCats.length > 0) setCategories(dataCats);
         if (dataDes.length > 0) setDesigners(dataDes);
-        if (configData) setSiteConfig(configData);
+        if (configData) {
+          setSiteConfig(configData);
+          if (configData.metaPixelId) {
+            trackPageView(configData.metaPixelId);
+          }
+        }
       } catch (error) {
         console.warn("Error cargando metadatos del catálogo:", error);
       }
