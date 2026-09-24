@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, MessageCircle, HelpCircle, View, ChevronLeft, ChevronRight, Heart, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
+import { X, MessageCircle, HelpCircle, View, ChevronLeft, ChevronRight, Heart, ZoomIn, ZoomOut, RotateCcw, Share2, Check } from 'lucide-react';
 import { Product, SiteConfig } from '../types';
 import { getOptimizedCloudinaryUrl, getCloudinarySrcSet } from '../cloudinaryUtils';
+import { shareFigure } from '../urlUtils';
 
 interface ProductModalProps {
   product: Product | null;
@@ -28,7 +29,20 @@ export function ProductModal({
 }: ProductModalProps) {
   const [currentImageIndex, setCurrentImageIndex] = useState(initialImageIndex);
   const [isFullScreen, setIsFullScreen] = useState(initialFullScreen);
+  const [shareStatus, setShareStatus] = useState<'idle' | 'copied' | 'shared'>('idle');
   const startFullScreenRef = useRef(initialFullScreen);
+  
+  // Manejador para compartir mediante la Web Share API nativa (con fallback a portapapeles)
+  const handleShare = async () => {
+    if (!product) return;
+    const res = await shareFigure(product, categoryName);
+    if (res.shared || res.method === 'clipboard') {
+      setShareStatus('copied');
+      setTimeout(() => {
+        setShareStatus('idle');
+      }, 2500);
+    }
+  };
   
   // Estados para Zoom y Pan (correr la imagen para ver partes ampliadas)
   const [scale, setScale] = useState(1);
@@ -496,6 +510,28 @@ export function ProductModal({
                 <span>{isLiked ? 'Guardado en Favoritos' : 'Favorito'} ({product.likesCount || 0})</span>
               </button>
             )}
+            <button
+              type="button"
+              onClick={handleShare}
+              className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold transition-all active:scale-95 border ${
+                shareStatus === 'copied'
+                  ? 'bg-emerald-950/80 border-emerald-500/70 text-emerald-300 shadow-sm shadow-emerald-950/50'
+                  : 'bg-surface-container border-outline-variant/40 text-on-surface hover:text-primary hover:border-primary/50'
+              }`}
+              title="Compartir enlace directo a esta figura"
+            >
+              {shareStatus === 'copied' ? (
+                <>
+                  <Check className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>¡Enlace copiado!</span>
+                </>
+              ) : (
+                <>
+                  <Share2 className="w-3.5 h-3.5 text-primary" />
+                  <span>Compartir</span>
+                </>
+              )}
+            </button>
           </div>
         </div>
 
@@ -625,6 +661,28 @@ export function ProductModal({
               <span>Consultar disponibilidad y tiempos</span>
             </a>
           )}
+
+          <button
+            type="button"
+            onClick={handleShare}
+            className={`w-full text-xs font-bold py-3 px-4 rounded-lg flex items-center justify-center gap-2 border transition-all active:scale-95 shadow-sm ${
+              shareStatus === 'copied'
+                ? 'bg-emerald-950/70 border-emerald-500/80 text-emerald-300'
+                : 'bg-surface-container hover:bg-surface-container-high border-outline-variant/40 hover:border-primary/50 text-on-surface'
+            }`}
+          >
+            {shareStatus === 'copied' ? (
+              <>
+                <Check className="w-4 h-4 text-emerald-400" />
+                <span>¡Enlace directo a la figura copiado!</span>
+              </>
+            ) : (
+              <>
+                <Share2 className="w-4 h-4 text-primary" />
+                <span>Compartir enlace a esta pieza</span>
+              </>
+            )}
+          </button>
         </div>
       </div>
 

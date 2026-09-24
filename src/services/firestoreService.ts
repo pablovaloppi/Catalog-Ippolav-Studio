@@ -151,6 +151,31 @@ export async function fetchTotalFiguresCount(): Promise<number | null> {
   }
 }
 
+export async function fetchFigureById(figureId: string): Promise<Product | null> {
+  try {
+    const figSnap = await getDoc(doc(db, 'figures', figureId));
+    if (figSnap.exists()) {
+      return { id: figSnap.id, ...figSnap.data() } as Product;
+    }
+    return null;
+  } catch (err) {
+    console.warn("No se pudo obtener la figura por ID:", err);
+    return null;
+  }
+}
+
+export async function fetchFiguresByIds(figureIds: string[]): Promise<Product[]> {
+  if (!figureIds || figureIds.length === 0) return [];
+  try {
+    const promises = figureIds.map((id) => fetchFigureById(id));
+    const results = await Promise.all(promises);
+    return results.filter((p): p is Product => p !== null);
+  } catch (err) {
+    console.warn("No se pudieron obtener las figuras por IDs:", err);
+    return [];
+  }
+}
+
 export async function toggleFigureLikeInDb(figureId: string, delta: number): Promise<void> {
   const figRef = doc(db, 'figures', figureId);
   await updateDoc(figRef, {

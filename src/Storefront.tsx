@@ -8,7 +8,7 @@ import { Product, Category, Designer, SiteConfig, SortOption } from './types';
 import { getAllDescendantCategoryIds, getCategoryAncestors, getCategoryBreadcrumb } from './categoryUtils';
 import { products as initialProducts } from './data';
 import type { QueryDocumentSnapshot, DocumentData } from 'firebase/firestore';
-import { extractSearchQueryFromLocation } from './urlUtils';
+import { extractSearchQueryFromLocation, extractFigureIdFromLocation } from './urlUtils';
 
 const NavigationDrawer = lazy(() => import('./components/NavigationDrawer').then(m => ({ default: m.NavigationDrawer })));
 const HowToBuy = lazy(() => import('./components/HowToBuy').then(m => ({ default: m.HowToBuy })));
@@ -73,6 +73,8 @@ export function Storefront() {
   const [designers, setDesigners] = useState<Designer[]>([]);
   const [siteConfig, setSiteConfig] = useState<SiteConfig | null>(null);
   const [loading, setLoading] = useState(true);
+  const [favoriteFiguresList, setFavoriteFiguresList] = useState<Product[]>([]);
+  const [isLoadingFavorites, setIsLoadingFavorites] = useState(false);
 
   // Registro local de figuras que a este usuario le gustan
   const [likedFigureIds, setLikedFigureIds] = useState<Set<string>>(() => {
@@ -83,6 +85,55 @@ export function Storefront() {
       return new Set<string>();
     }
   });
+
+  // Cargar figuras favoritas desde Firestore si no están en memoria local al iniciar o al cambiar favoritos
+  useEffect(() => {
+    if (likedFigureIds.size === 0) {
+      setFavoriteFiguresList([]);
+      return;
+    }
+
+    let isCancelled = false;
+
+    async function syncFavoriteFigures() {
+      const neededIds: string[] = Array.from(likedFigureIds);
+      
+      // Identificar cuáles ya tenemos en memoria
+      const knownMap = new Map<string, Product>();
+      initialProducts.forEach(p => { if (likedFigureIds.has(p.id)) knownMap.set(p.id, p); });
+      products.forEach(p => { if (likedFigureIds.has(p.id)) knownMap.set(p.id, p); });
+      favoriteFiguresList.forEach(p => { if (likedFigureIds.has(p.id)) knownMap.set(p.id, p); });
+
+      const missingIds: string[] = neededIds.filter((id: string) => !knownMap.has(id));
+
+      if (missingIds.length === 0) {
+        setFavoriteFiguresList(Array.from(knownMap.values()));
+        return;
+      }
+
+      setIsLoadingFavorites(true);
+      try {
+        const { fetchFiguresByIds } = await import('./services/firestoreService');
+        const fetchedMissing = await fetchFiguresByIds(missingIds);
+        if (isCancelled) return;
+
+        fetchedMissing.forEach(p => knownMap.set(p.id, p));
+        setFavoriteFiguresList(Array.from(knownMap.values()));
+      } catch (err) {
+        console.warn("Error cargando figuras favoritas:", err);
+      } finally {
+        if (!isCancelled) {
+          setIsLoadingFavorites(false);
+        }
+      }
+    }
+
+    syncFavoriteFigures();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [likedFigureIds, products]);
 
   // Manejador para dar/quitar me gusta con actualización optimista y persistencia en Firestore
   const handleToggleLike = useCallback(async (figureId: string) => {
@@ -101,6 +152,23 @@ export function Storefront() {
       localStorage.setItem('ippolav_liked_figures', JSON.stringify(Array.from(nextSet)));
     } catch (e) {
       console.warn("No se pudo guardar me gusta en localStorage:", e);
+    }
+
+    // 2. Actualizar lista de favoritos en memoria
+    if (wasLiked) {
+      setFavoriteFiguresList((prev) => prev.filter((p) => p.id !== figureId));
+    } else {
+      // Buscar figura en los productos cargados
+      const targetFig = products.find((p) => p.id === figureId) ||
+        searchResults.find((p) => p.id === figureId) ||
+        initialProducts.find((p) => p.id === figureId) ||
+        (selectedProduct?.id === figureId ? selectedProduct : null);
+      if (targetFig) {
+        setFavoriteFiguresList((prev) => {
+          if (prev.some((p) => p.id === figureId)) return prev;
+          return [...prev, { ...targetFig, likesCount: Math.max(0, (targetFig.likesCount || 0) + delta) }];
+        });
+      }
     }
 
     // 2. Actualización optimista en el estado de productos y búsqueda
@@ -289,6 +357,40 @@ export function Storefront() {
 
     return () => {
       isMounted = false;
+    };
+  }, []);
+
+  // Carga y apertura automática de figura si se ingresa mediante un enlace directo compartido (?figura=id)
+  useEffect(() => {
+    const directFigureId = extractFigureIdFromLocation();
+    if (!directFigureId) return;
+
+    let isCancelled = false;
+
+    async function loadDirectFigure() {
+      // 1. Revisar si la figura ya se encuentra en las figuras iniciales
+      const localFig = initialProducts.find((p) => p.id === directFigureId);
+      if (localFig) {
+        setSelectedProduct(localFig);
+        return;
+      }
+
+      // 2. Si no, consultar directamente en Firestore
+      try {
+        const { fetchFigureById } = await import('./services/firestoreService');
+        const figure = await fetchFigureById(directFigureId);
+        if (!isCancelled && figure) {
+          setSelectedProduct(figure);
+        }
+      } catch (err) {
+        console.warn("No se pudo cargar la figura directa compartida:", err);
+      }
+    }
+
+    loadDirectFigure();
+
+    return () => {
+      isCancelled = true;
     };
   }, []);
 
@@ -563,38 +665,28 @@ export function Storefront() {
     };
   }, [debouncedSearchQuery, statusFilter, allowedFranchiseIds, finishFilter, scaleFilter, sortBy, categories]);
 
-  // Precarga de todas las figuras cuando se activa la vista de Favoritos para asegurar que aparezcan todas las guardadas
-  useEffect(() => {
-    if (!favoritesOnly) return;
-    let isMounted = true;
-
-    async function loadAllFiguresForFavorites() {
-      if (!allStoreFiguresCacheRef.current) {
-        try {
-          const { fetchAllFiguresForSearch } = await import('./services/firestoreService');
-          const list = await fetchAllFiguresForSearch();
-          if (isMounted) {
-            allStoreFiguresCacheRef.current = list.length > 0 ? list : initialProducts;
-          }
-        } catch {
-          if (isMounted) {
-            allStoreFiguresCacheRef.current = initialProducts;
-          }
-        }
-      }
-    }
-
-    loadAllFiguresForFavorites();
-    return () => {
-      isMounted = false;
-    };
-  }, [favoritesOnly]);
-
   // Lista de productos favoritos del usuario
   const favoriteProducts = useMemo(() => {
     if (!favoritesOnly) return [];
-    const sourceList = allStoreFiguresCacheRef.current || products;
-    const list = sourceList.filter((p) => likedFigureIds.has(p.id));
+
+    // Combinar todas las figuras conocidas que estén en favoritos
+    const allKnownMap = new Map<string, Product>();
+    initialProducts.forEach((p) => {
+      if (likedFigureIds.has(p.id)) allKnownMap.set(p.id, p);
+    });
+    products.forEach((p) => {
+      if (likedFigureIds.has(p.id)) allKnownMap.set(p.id, p);
+    });
+    favoriteFiguresList.forEach((p) => {
+      if (likedFigureIds.has(p.id)) allKnownMap.set(p.id, p);
+    });
+    if (allStoreFiguresCacheRef.current) {
+      allStoreFiguresCacheRef.current.forEach((p) => {
+        if (likedFigureIds.has(p.id)) allKnownMap.set(p.id, p);
+      });
+    }
+
+    const list = Array.from(allKnownMap.values());
 
     const searchQueryLower = searchQuery.toLowerCase().trim();
     const filtered = list.filter((product) => {
@@ -633,9 +725,9 @@ export function Storefront() {
       }
       if (sortBy === 'name-asc') return a.title.localeCompare(b.title, 'es', { sensitivity: 'base' });
       if (sortBy === 'name-desc') return b.title.localeCompare(a.title, 'es', { sensitivity: 'base' });
-      return 0;
+      return (a.order ?? 0) - (b.order ?? 0);
     });
-  }, [favoritesOnly, likedFigureIds, products, searchQuery, statusFilter, allowedFranchiseIds, finishFilter, scaleFilter, sortBy, categorySearchMap]);
+  }, [favoritesOnly, likedFigureIds, favoriteFiguresList, products, searchQuery, statusFilter, allowedFranchiseIds, finishFilter, scaleFilter, sortBy, categorySearchMap]);
 
   const handleToggleFavoritesOnly = useCallback(() => {
     setFavoritesOnly((prev) => {
@@ -652,6 +744,11 @@ export function Storefront() {
 
   const handleOpenFavorites = useCallback(() => {
     setFavoritesOnly(true);
+    setFranchiseFilter('all');
+    setStatusFilter('all');
+    setFinishFilter('all');
+    setScaleFilter('all');
+    setSearchQuery('');
     const catalogEl = document.getElementById('catalogo') || document.getElementById('filter-section');
     if (catalogEl) {
       catalogEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -660,7 +757,7 @@ export function Storefront() {
 
   const isSearchActive = searchQuery.trim() !== '';
   const isSearchBusy = isSearchActive && (isSearchingStore || searchQuery !== debouncedSearchQuery);
-  const showStoreLoader = loading || isSearchBusy;
+  const showStoreLoader = favoritesOnly ? isLoadingFavorites : (loading || isSearchBusy);
 
   const displayedCatalogProducts = favoritesOnly
     ? favoriteProducts
