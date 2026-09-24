@@ -309,7 +309,10 @@ export function AnalyticsDashboard({ allFigures = [], onSelectFigure }: Analytic
                     <Instagram className="w-5 h-5" />
                   </div>
                   <div>
-                    <h4 className="font-bold text-sm text-on-surface">Meta Pixel (Instagram & Facebook)</h4>
+                    <div className="flex items-center gap-2">
+                      <h4 className="font-bold text-sm text-on-surface">Meta Pixel (Instagram & Facebook)</h4>
+                      <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-pink-500/10 text-pink-300 border border-pink-500/20">1649607870067319</span>
+                    </div>
                     <p className="text-[11px] text-on-surface-variant">Construcción de audiencias & retargeting</p>
                   </div>
                 </div>
@@ -347,7 +350,10 @@ export function AnalyticsDashboard({ allFigures = [], onSelectFigure }: Analytic
                     <BarChart3 className="w-5 h-5" />
                   </div>
                   <div>
-                    <h4 className="font-bold text-sm text-on-surface">Firebase & Google Analytics 4</h4>
+                    <div className="flex items-center gap-2">
+                      <h4 className="font-bold text-sm text-on-surface">Firebase & Google Analytics 4</h4>
+                      <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-300 border border-amber-500/20">G-T3T6T4LR95</span>
+                    </div>
                     <p className="text-[11px] text-on-surface-variant">Métricas globales y flujo de navegación</p>
                   </div>
                 </div>

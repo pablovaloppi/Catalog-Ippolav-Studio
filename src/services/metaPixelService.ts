@@ -10,8 +10,10 @@ declare global {
   }
 }
 
+const DEFAULT_PIXEL_ID = '1649607870067319';
+
 let isPixelInitialized = false;
-let currentPixelId: string | null = null;
+let currentPixelId: string | null = DEFAULT_PIXEL_ID;
 
 /**
  * Initializes the Meta Pixel snippet in the browser.
@@ -20,7 +22,7 @@ let currentPixelId: string | null = null;
 export function initMetaPixel(pixelId?: string): void {
   if (typeof window === 'undefined') return;
 
-  const targetId = pixelId?.trim() || currentPixelId;
+  const targetId = pixelId?.trim() || currentPixelId || DEFAULT_PIXEL_ID;
   if (!targetId) return;
 
   if (isPixelInitialized && currentPixelId === targetId) {

@@ -24,11 +24,26 @@ import {
   trackPixelAddToWishlist 
 } from './metaPixelService';
 
+declare global {
+  interface Window {
+    gtag?: (...args: any[]) => void;
+    dataLayer?: any[];
+  }
+}
+
 export type TrafficSource = 'instagram' | 'whatsapp' | 'direct' | 'other';
 export type DeviceType = 'mobile' | 'desktop';
 
-// Safe wrapper to trigger Firebase Analytics events
-async function safeLogFirebaseEvent(eventName: string, params?: Record<string, any>) {
+// Safe wrapper to trigger Google Analytics (gtag.js) and Firebase Analytics events
+async function safeLogTrackingEvent(eventName: string, params?: Record<string, any>) {
+  if (typeof window !== 'undefined' && typeof window.gtag === 'function') {
+    try {
+      window.gtag('event', eventName, params);
+    } catch (e) {
+      // Non-blocking
+    }
+  }
+
   try {
     const analytics = await getFirebaseAnalytics();
     if (analytics) {
@@ -143,7 +158,7 @@ export async function trackPageView(metaPixelId?: string): Promise<void> {
     initMetaPixel(metaPixelId);
   }
   trackPixelPageView();
-  safeLogFirebaseEvent('page_view', {
+  safeLogTrackingEvent('page_view', {
     page_location: window.location.href,
     traffic_source: detectTrafficSource(),
   });
@@ -196,7 +211,7 @@ export async function trackFigureView(figure: { id: string; title: string; franc
 
   // Track in Meta Pixel & Firebase Analytics
   trackPixelViewContent(figure);
-  safeLogFirebaseEvent('view_item', {
+  safeLogTrackingEvent('view_item', {
     item_id: figure.id,
     item_name: figure.title,
     item_category: figure.franchiseId || 'Figures',
@@ -240,7 +255,7 @@ export async function trackWhatsAppClick(figure: { id: string; title: string; pr
 
   // Track in Meta Pixel & Firebase Analytics as high-value conversion Lead
   trackPixelContact(figure);
-  safeLogFirebaseEvent('generate_lead', {
+  safeLogTrackingEvent('generate_lead', {
     item_id: figure.id,
     item_name: figure.title,
     channel: 'whatsapp',
@@ -285,7 +300,7 @@ export async function trackSearchQuery(term: string): Promise<void> {
 
   // Track in Meta Pixel & Firebase Analytics
   trackPixelSearch(cleaned);
-  safeLogFirebaseEvent('search', {
+  safeLogTrackingEvent('search', {
     search_term: cleaned,
   });
 
@@ -321,7 +336,7 @@ export async function trackSearchQuery(term: string): Promise<void> {
  */
 export function trackFigureFavorite(figure: { id: string; title: string }): void {
   trackPixelAddToWishlist(figure);
-  safeLogFirebaseEvent('add_to_wishlist', {
+  safeLogTrackingEvent('add_to_wishlist', {
     item_id: figure.id,
     item_name: figure.title,
   });
