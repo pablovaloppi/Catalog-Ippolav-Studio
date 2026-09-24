@@ -21,8 +21,13 @@ import {
   trackPixelViewContent, 
   trackPixelContact, 
   trackPixelSearch, 
-  trackPixelAddToWishlist 
+  trackPixelAddToWishlist,
+  isAnalyticsExcluded,
+  setAnalyticsExclusion,
+  EXCLUDE_ANALYTICS_KEY
 } from './metaPixelService';
+
+export { isAnalyticsExcluded, setAnalyticsExclusion, EXCLUDE_ANALYTICS_KEY };
 
 declare global {
   interface Window {
@@ -35,7 +40,9 @@ export type TrafficSource = 'instagram' | 'whatsapp' | 'direct' | 'other';
 export type DeviceType = 'mobile' | 'desktop';
 
 // Safe wrapper to trigger Google Analytics (gtag.js) and Firebase Analytics events
-async function safeLogTrackingEvent(eventName: string, params?: Record<string, any>) {
+async function safeLogTrackingEvent(eventName: string, params?: Record<string, any>, bypassExclusion = false) {
+  if (!bypassExclusion && isAnalyticsExcluded()) return;
+
   if (typeof window !== 'undefined' && typeof window.gtag === 'function') {
     try {
       window.gtag('event', eventName, params);
@@ -150,18 +157,19 @@ export function detectDeviceType(): DeviceType {
 /**
  * Tracks a new visitor session arrival (deduplicated per browser session)
  */
-export async function trackPageView(metaPixelId?: string): Promise<void> {
+export async function trackPageView(metaPixelId?: string, bypassExclusion = false): Promise<void> {
   if (typeof window === 'undefined') return;
+  if (!bypassExclusion && isAnalyticsExcluded()) return;
 
   // Initialize Meta Pixel if ID is configured
   if (metaPixelId) {
-    initMetaPixel(metaPixelId);
+    initMetaPixel(metaPixelId, bypassExclusion);
   }
-  trackPixelPageView();
+  trackPixelPageView(bypassExclusion);
   safeLogTrackingEvent('page_view', {
     page_location: window.location.href,
     traffic_source: detectTrafficSource(),
-  });
+  }, bypassExclusion);
 
   try {
     const sessionKey = 'ippolav_session_tracked_' + getTodayKey();
@@ -206,16 +214,20 @@ export async function trackPageView(metaPixelId?: string): Promise<void> {
 /**
  * Tracks when a visitor opens and views a figure's detail modal
  */
-export async function trackFigureView(figure: { id: string; title: string; franchiseId?: string }): Promise<void> {
+export async function trackFigureView(
+  figure: { id: string; title: string; franchiseId?: string },
+  bypassExclusion = false
+): Promise<void> {
   if (!figure || !figure.id) return;
+  if (!bypassExclusion && isAnalyticsExcluded()) return;
 
   // Track in Meta Pixel & Firebase Analytics
-  trackPixelViewContent(figure);
+  trackPixelViewContent(figure, bypassExclusion);
   safeLogTrackingEvent('view_item', {
     item_id: figure.id,
     item_name: figure.title,
     item_category: figure.franchiseId || 'Figures',
-  });
+  }, bypassExclusion);
 
   try {
     const source = detectTrafficSource();
@@ -254,16 +266,20 @@ export async function trackFigureView(figure: { id: string; title: string; franc
 /**
  * Tracks when a visitor clicks the WhatsApp inquiry/buy button for a figure
  */
-export async function trackWhatsAppClick(figure: { id: string; title: string; price?: number }): Promise<void> {
+export async function trackWhatsAppClick(
+  figure: { id: string; title: string; price?: number },
+  bypassExclusion = false
+): Promise<void> {
   if (!figure || !figure.id) return;
+  if (!bypassExclusion && isAnalyticsExcluded()) return;
 
   // Track in Meta Pixel & Firebase Analytics as high-value conversion Lead
-  trackPixelContact(figure);
+  trackPixelContact(figure, bypassExclusion);
   safeLogTrackingEvent('generate_lead', {
     item_id: figure.id,
     item_name: figure.title,
     channel: 'whatsapp',
-  });
+  }, bypassExclusion);
 
   try {
     const source = detectTrafficSource();
@@ -302,15 +318,16 @@ export async function trackWhatsAppClick(figure: { id: string; title: string; pr
 /**
  * Tracks what search terms visitors are querying in the search bar
  */
-export async function trackSearchQuery(term: string): Promise<void> {
+export async function trackSearchQuery(term: string, bypassExclusion = false): Promise<void> {
   const cleaned = term.trim().toLowerCase();
   if (!cleaned || cleaned.length < 2) return;
+  if (!bypassExclusion && isAnalyticsExcluded()) return;
 
   // Track in Meta Pixel & Firebase Analytics
-  trackPixelSearch(cleaned);
+  trackPixelSearch(cleaned, bypassExclusion);
   safeLogTrackingEvent('search', {
     search_term: cleaned,
-  });
+  }, bypassExclusion);
 
   try {
     const source = detectTrafficSource();
@@ -346,12 +363,13 @@ export async function trackSearchQuery(term: string): Promise<void> {
 /**
  * Tracks when a user marks a figure as favorite (AddToWishlist)
  */
-export function trackFigureFavorite(figure: { id: string; title: string }): void {
-  trackPixelAddToWishlist(figure);
+export function trackFigureFavorite(figure: { id: string; title: string }, bypassExclusion = false): void {
+  if (!bypassExclusion && isAnalyticsExcluded()) return;
+  trackPixelAddToWishlist(figure, bypassExclusion);
   safeLogTrackingEvent('add_to_wishlist', {
     item_id: figure.id,
     item_name: figure.title,
-  });
+  }, bypassExclusion);
 }
 
 /**

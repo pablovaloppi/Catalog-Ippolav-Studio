@@ -7,20 +7,62 @@ declare global {
   interface Window {
     fbq?: any;
     _fbq?: any;
+    'ga-disable-G-T3T6T4LR95'?: boolean;
   }
 }
 
+export const EXCLUDE_ANALYTICS_KEY = 'ippolav_exclude_analytics';
 const DEFAULT_PIXEL_ID = '1649607870067319';
 
 let isPixelInitialized = false;
 let currentPixelId: string | null = DEFAULT_PIXEL_ID;
 
 /**
+ * Checks if tracking is excluded for this client (e.g. Admin testing / Admin logged in)
+ */
+export function isAnalyticsExcluded(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    const stored = localStorage.getItem(EXCLUDE_ANALYTICS_KEY);
+    if (stored === 'true') return true;
+    if (stored === 'false') return false;
+
+    // Check if the current route is within the admin panel
+    if (
+      window.location.pathname.startsWith('/admin') ||
+      window.location.hash.includes('admin')
+    ) {
+      return true;
+    }
+  } catch {
+    return false;
+  }
+  return false;
+}
+
+/**
+ * Enables or disables analytics exclusion for this browser
+ */
+export function setAnalyticsExclusion(exclude: boolean): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(EXCLUDE_ANALYTICS_KEY, exclude ? 'true' : 'false');
+    // Disable or enable Google Analytics on the global window object
+    window['ga-disable-G-T3T6T4LR95'] = exclude;
+  } catch (e) {
+    console.warn('Error configurando exclusión de analíticas:', e);
+  }
+}
+
+/**
  * Initializes the Meta Pixel snippet in the browser.
  * Safe to call multiple times with or without a custom Pixel ID.
  */
-export function initMetaPixel(pixelId?: string): void {
+export function initMetaPixel(pixelId?: string, bypassExclusion = false): void {
   if (typeof window === 'undefined') return;
+  if (!bypassExclusion && isAnalyticsExcluded()) {
+    return;
+  }
 
   const targetId = pixelId?.trim() || currentPixelId || DEFAULT_PIXEL_ID;
   if (!targetId) return;
@@ -70,8 +112,9 @@ export function initMetaPixel(pixelId?: string): void {
 /**
  * Tracks standard PageView event in Meta Pixel
  */
-export function trackPixelPageView(): void {
+export function trackPixelPageView(bypassExclusion = false): void {
   if (typeof window === 'undefined' || !window.fbq) return;
+  if (!bypassExclusion && isAnalyticsExcluded()) return;
   try {
     window.fbq('track', 'PageView');
   } catch (e) {
@@ -82,8 +125,12 @@ export function trackPixelPageView(): void {
 /**
  * Tracks ViewContent when a visitor opens a figure modal
  */
-export function trackPixelViewContent(figure: { id: string; title: string; franchiseId?: string }): void {
+export function trackPixelViewContent(
+  figure: { id: string; title: string; franchiseId?: string },
+  bypassExclusion = false
+): void {
   if (typeof window === 'undefined' || !window.fbq || !figure) return;
+  if (!bypassExclusion && isAnalyticsExcluded()) return;
   try {
     window.fbq('track', 'ViewContent', {
       content_name: figure.title,
@@ -99,8 +146,9 @@ export function trackPixelViewContent(figure: { id: string; title: string; franc
 /**
  * Tracks Contact / Lead event when a visitor clicks WhatsApp for a figure
  */
-export function trackPixelContact(figure: { id: string; title: string }): void {
+export function trackPixelContact(figure: { id: string; title: string }, bypassExclusion = false): void {
   if (typeof window === 'undefined' || !window.fbq || !figure) return;
+  if (!bypassExclusion && isAnalyticsExcluded()) return;
   try {
     window.fbq('track', 'Contact', {
       content_name: figure.title,
@@ -120,8 +168,9 @@ export function trackPixelContact(figure: { id: string; title: string }): void {
 /**
  * Tracks Search event in Meta Pixel
  */
-export function trackPixelSearch(searchQuery: string): void {
+export function trackPixelSearch(searchQuery: string, bypassExclusion = false): void {
   if (typeof window === 'undefined' || !window.fbq || !searchQuery) return;
+  if (!bypassExclusion && isAnalyticsExcluded()) return;
   try {
     window.fbq('track', 'Search', {
       search_string: searchQuery,
@@ -135,8 +184,9 @@ export function trackPixelSearch(searchQuery: string): void {
 /**
  * Tracks AddToWishlist (Favoritos) in Meta Pixel
  */
-export function trackPixelAddToWishlist(figure: { id: string; title: string }): void {
+export function trackPixelAddToWishlist(figure: { id: string; title: string }, bypassExclusion = false): void {
   if (typeof window === 'undefined' || !window.fbq || !figure) return;
+  if (!bypassExclusion && isAnalyticsExcluded()) return;
   try {
     window.fbq('track', 'AddToWishlist', {
       content_name: figure.title,
@@ -146,3 +196,4 @@ export function trackPixelAddToWishlist(figure: { id: string; title: string }): 
     console.warn('Error en Meta Pixel AddToWishlist:', e);
   }
 }
+

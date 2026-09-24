@@ -3,6 +3,7 @@ import { User, onAuthStateChanged } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { auth } from '../firebaseAuth';
+import { setAnalyticsExclusion } from '../services/analyticsService';
 
 interface AuthContextType {
   user: User | null;
@@ -30,10 +31,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // Check if user is an admin by querying the admins collection
         try {
           const adminDoc = await getDoc(doc(db, 'admins', currentUser.uid));
-          setIsAdmin(adminDoc.exists() || currentUser.email === 'pablovaloppi@gmail.com');
+          const hasAdminAccess = adminDoc.exists() || currentUser.email === 'pablovaloppi@gmail.com';
+          setIsAdmin(hasAdminAccess);
+          if (hasAdminAccess) {
+            setAnalyticsExclusion(true);
+          }
         } catch (error) {
           console.error("Error checking admin status", error);
-          setIsAdmin(currentUser.email === 'pablovaloppi@gmail.com');
+          const hasAdminAccess = currentUser.email === 'pablovaloppi@gmail.com';
+          setIsAdmin(hasAdminAccess);
+          if (hasAdminAccess) {
+            setAnalyticsExclusion(true);
+          }
         }
       } else {
         setIsAdmin(false);
@@ -50,3 +59,4 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     </AuthContext.Provider>
   );
 }
+

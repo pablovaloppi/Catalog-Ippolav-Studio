@@ -177,6 +177,20 @@ export function FilterSection({
       window.removeEventListener('resize', handleScroll);
     };
   }, []);
+
+  // Llevar el scroll al inicio del catálogo suavemente
+  const scrollToCatalogStart = () => {
+    const catalogEl = document.getElementById('catalogo') || document.getElementById('filter-section');
+    if (catalogEl) {
+      const headerOffset = 70;
+      const elementPosition = catalogEl.getBoundingClientRect().top;
+      const offsetPosition = elementPosition + window.pageYOffset - headerOffset;
+      window.scrollTo({
+        top: Math.max(0, offsetPosition),
+        behavior: 'smooth',
+      });
+    }
+  };
   
   return (
     <section id="filter-section" className="px-5 md:px-12 py-8 border-b border-outline-variant/20 bg-surface-container-lowest/60 relative">
@@ -199,12 +213,22 @@ export function FilterSection({
             <form 
               onSubmit={(e) => {
                 e.preventDefault();
+                scrollToCatalogStart();
                 const inputEl = e.currentTarget.querySelector('input');
                 if (inputEl) inputEl.blur();
               }}
               className={isSticky ? "max-w-4xl mx-auto relative flex items-center" : "relative flex items-center"}
             >
-              <Search className="absolute left-4 text-on-surface-variant pointer-events-none w-5 h-5" />
+              <button
+                type="submit"
+                onClick={scrollToCatalogStart}
+                aria-label="Buscar en el catálogo"
+                title="Buscar e ir al inicio del catálogo"
+                className="absolute left-2.5 p-1.5 rounded-lg text-on-surface-variant hover:text-primary hover:bg-surface-container-high transition-colors z-10"
+              >
+                <Search className="w-5 h-5" />
+              </button>
+
               <input
                 type="search"
                 enterKeyHint="search"
@@ -212,16 +236,25 @@ export function FilterSection({
                 onChange={(e) => setSearchQuery(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
+                    scrollToCatalogStart();
                     e.currentTarget.blur();
                   }
                 }}
-                className={`w-full pl-12 pr-24 ${
+                className={`w-full pl-12 pr-28 ${
                   isSticky ? 'py-2.5 bg-surface-container shadow-sm' : 'py-3.5 bg-surface-container-low shadow-inner'
                 } border border-outline-variant/40 rounded-xl text-on-surface placeholder:text-outline focus:border-primary focus:ring-1 focus:ring-primary text-sm transition-all outline-none`}
                 placeholder="Buscar personaje o franquicia... (ej: Batman, Dragon Ball, Marvel)"
               />
               {searchQuery && (
-                <div className="absolute right-3 flex items-center gap-1">
+                <div className="absolute right-2.5 flex items-center gap-1 z-10">
+                  <button
+                    type="submit"
+                    onClick={scrollToCatalogStart}
+                    className="px-2.5 py-1 rounded-lg bg-primary text-on-primary-fixed text-xs font-bold hover:brightness-110 active:scale-95 transition-all shadow-sm flex items-center gap-1"
+                    title="Buscar e ir al inicio de los resultados"
+                  >
+                    <span>Buscar</span>
+                  </button>
                   <button
                     type="button"
                     onClick={async () => {
@@ -243,7 +276,10 @@ export function FilterSection({
                   </button>
                   <button
                     type="button"
-                    onClick={() => setSearchQuery('')}
+                    onClick={() => {
+                      setSearchQuery('');
+                      scrollToCatalogStart();
+                    }}
                     className="p-1.5 rounded-lg text-outline hover:text-on-surface hover:bg-surface-container-high transition-colors"
                     title="Limpiar búsqueda"
                   >

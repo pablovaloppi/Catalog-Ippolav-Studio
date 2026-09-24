@@ -2474,6 +2474,13 @@ function ConfigForm({ config }: { config: SiteConfig }) {
               </p>
             </div>
           </div>
+          
+          <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-lg flex items-start gap-2.5 text-xs text-emerald-300">
+            <span className="text-base leading-none mt-0.5">🛡️</span>
+            <div>
+              <strong>Filtro de Administrador Activo:</strong> Cuando estás navegando o probando el catálogo, tus propias visitas, clics y búsquedas son automáticamente excluidas de Meta Pixel, Google Analytics y de las estadísticas para no alterar los datos reales de clientes.
+            </div>
+          </div>
         </div>
 
         <div className="flex justify-end gap-3 pt-6 border-t border-outline-variant/20">

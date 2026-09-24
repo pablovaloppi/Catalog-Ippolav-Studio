@@ -547,6 +547,18 @@ export function Storefront() {
       if (window.location.pathname !== newPath && !window.location.pathname.startsWith('/admin')) {
         window.history.replaceState(null, '', newPath);
       }
+
+      // Llevar suavemente a la cabecera del catálogo si está fuera de vista
+      const catalogEl = document.getElementById('catalogo') || document.getElementById('filter-section');
+      if (catalogEl && window.scrollY > 300) {
+        const headerOffset = 70;
+        const elementPosition = catalogEl.getBoundingClientRect().top;
+        const offsetPosition = elementPosition + window.pageYOffset - headerOffset;
+        window.scrollTo({
+          top: Math.max(0, offsetPosition),
+          behavior: 'smooth',
+        });
+      }
     } else {
       if (
         window.location.pathname.startsWith('/b=') ||

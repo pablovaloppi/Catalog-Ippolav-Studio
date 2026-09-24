@@ -5,6 +5,8 @@ import {
   trackFigureView,
   trackWhatsAppClick,
   trackSearchQuery,
+  isAnalyticsExcluded,
+  setAnalyticsExclusion,
   DailyAnalyticsData, 
   AnalyticsEventItem 
 } from '../services/analyticsService';
@@ -21,14 +23,17 @@ import {
   RefreshCw, 
   Eye, 
   Calendar, 
-  ShoppingBag,
-  ArrowUpRight,
-  Sparkles,
-  Layers,
-  ChevronRight,
-  BarChart3,
-  PlayCircle,
-  Check
+  ShoppingBag, 
+  ArrowUpRight, 
+  Sparkles, 
+  Layers, 
+  ChevronRight, 
+  BarChart3, 
+  PlayCircle, 
+  Check,
+  ShieldCheck,
+  ShieldAlert,
+  Info
 } from 'lucide-react';
 import { Product } from '../types';
 
@@ -45,6 +50,14 @@ export function AnalyticsDashboard({ allFigures = [], onSelectFigure }: Analytic
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isSimulating, setIsSimulating] = useState(false);
   const [testSuccess, setTestSuccess] = useState(false);
+  const [isExcluded, setIsExcluded] = useState<boolean>(() => {
+    return isAnalyticsExcluded();
+  });
+
+  const toggleExclusion = (newVal: boolean) => {
+    setAnalyticsExclusion(newVal);
+    setIsExcluded(newVal);
+  };
 
   const loadData = useCallback(async (days: number) => {
     setLoading(true);
@@ -76,20 +89,20 @@ export function AnalyticsDashboard({ allFigures = [], onSelectFigure }: Analytic
     if (isSimulating) return;
     setIsSimulating(true);
     try {
-      // Pick figures from catalog to test telemetry
+      // Pick figures from catalog to test telemetry with explicit bypass
       const sampleFigures = allFigures.length > 0 ? allFigures.slice(0, 3) : [
         { id: 'fig_demo_1', title: 'Figura Colección Edición Especial' },
         { id: 'fig_demo_2', title: 'Estatua Resina Premium 1/6' }
       ];
 
       for (const fig of sampleFigures) {
-        await trackFigureView(fig as any);
+        await trackFigureView(fig as any, true);
       }
       if (sampleFigures[0]) {
-        await trackWhatsAppClick(sampleFigures[0] as any);
+        await trackWhatsAppClick(sampleFigures[0] as any, true);
       }
-      await trackSearchQuery('Dragon Ball');
-      await trackSearchQuery('Anime');
+      await trackSearchQuery('Dragon Ball', true);
+      await trackSearchQuery('Anime', true);
 
       setTestSuccess(true);
       setTimeout(() => setTestSuccess(false), 3500);
@@ -343,6 +356,45 @@ export function AnalyticsDashboard({ allFigures = [], onSelectFigure }: Analytic
             className="p-2 bg-surface-container hover:bg-surface-container-high border border-outline-variant/30 rounded-lg text-on-surface-variant hover:text-primary transition-colors disabled:opacity-50"
           >
             <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin text-primary' : ''}`} />
+          </button>
+        </div>
+      </div>
+
+      {/* Banner de Exclusión de Métricas de Administrador */}
+      <div className="bg-surface-container-low border border-primary/20 rounded-xl p-4 md:p-5 flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="flex items-start gap-3.5">
+          <div className={`p-2.5 rounded-xl mt-0.5 shrink-0 ${isExcluded ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'}`}>
+            {isExcluded ? <ShieldCheck className="w-5 h-5" /> : <ShieldAlert className="w-5 h-5" />}
+          </div>
+          <div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <h3 className="font-medium text-sm md:text-base text-on-surface">
+                {isExcluded ? 'Exclusión de Administrador Activada' : 'Exclusión de Administrador Desactivada'}
+              </h3>
+              <span className={`px-2 py-0.5 text-[10px] uppercase font-bold tracking-wider rounded-full border ${isExcluded ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' : 'bg-amber-500/10 border-amber-500/30 text-amber-400'}`}>
+                {isExcluded ? 'Tus visitas no cuentan' : 'Modo Registro Completo'}
+              </span>
+            </div>
+            <p className="text-xs text-on-surface-variant mt-1 leading-relaxed max-w-2xl">
+              {isExcluded
+                ? 'Tus interacciones (navegar el catálogo, subir figuras, abrir modales, probar el botón de WhatsApp y hacer búsquedas) están bloqueadas en Google Analytics (GA4), Meta Pixel y las estadísticas internas para mantener métricas 100% limpias de clientes reales.'
+                : 'Tus visitas y pruebas en el catálogo se registrarán en las estadísticas como si fueras un visitante más.'}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3 shrink-0 self-end md:self-center">
+          <button
+            type="button"
+            onClick={() => toggleExclusion(!isExcluded)}
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold border transition-all active:scale-95 ${
+              isExcluded
+                ? 'bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border-emerald-500/30'
+                : 'bg-surface-container hover:bg-surface-container-high text-on-surface-variant border-outline-variant/40'
+            }`}
+          >
+            <span className={`w-2 h-2 rounded-full ${isExcluded ? 'bg-emerald-400 animate-pulse' : 'bg-on-surface-variant'}`} />
+            {isExcluded ? 'Exclusión: Activada' : 'Activar Exclusión'}
           </button>
         </div>
       </div>
