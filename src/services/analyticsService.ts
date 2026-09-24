@@ -223,14 +223,18 @@ export async function trackFigureView(figure: { id: string; title: string; franc
     const today = getTodayKey();
 
     const dailyRef = doc(db, 'analytics_daily', today);
-    const cleanKey = figure.id.replace(/[./#[\]$]/g, '_');
+    const cleanKey = String(figure.id).replace(/[^a-zA-Z0-9_-]/g, '_');
 
     await setDoc(dailyRef, {
       date: today,
       viewsTotal: increment(1),
-      [`figureViews.${cleanKey}.id`]: figure.id,
-      [`figureViews.${cleanKey}.title`]: figure.title,
-      [`figureViews.${cleanKey}.count`]: increment(1),
+      figureViews: {
+        [cleanKey]: {
+          id: figure.id,
+          title: figure.title,
+          count: increment(1),
+        }
+      },
       updatedAt: serverTimestamp(),
     }, { merge: true });
 
@@ -267,14 +271,18 @@ export async function trackWhatsAppClick(figure: { id: string; title: string; pr
     const today = getTodayKey();
 
     const dailyRef = doc(db, 'analytics_daily', today);
-    const cleanKey = figure.id.replace(/[./#[\]$]/g, '_');
+    const cleanKey = String(figure.id).replace(/[^a-zA-Z0-9_-]/g, '_');
 
     await setDoc(dailyRef, {
       date: today,
       whatsappTotalClicks: increment(1),
-      [`whatsappClicks.${cleanKey}.id`]: figure.id,
-      [`whatsappClicks.${cleanKey}.title`]: figure.title,
-      [`whatsappClicks.${cleanKey}.count`]: increment(1),
+      whatsappClicks: {
+        [cleanKey]: {
+          id: figure.id,
+          title: figure.title,
+          count: increment(1),
+        }
+      },
       updatedAt: serverTimestamp(),
     }, { merge: true });
 
@@ -310,12 +318,16 @@ export async function trackSearchQuery(term: string): Promise<void> {
     const today = getTodayKey();
 
     const dailyRef = doc(db, 'analytics_daily', today);
-    const safeKey = cleaned.replace(/[./#[\]$]/g, '_').slice(0, 50);
+    const safeKey = cleaned.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 50);
 
     await setDoc(dailyRef, {
       date: today,
-      [`searchTerms.${safeKey}.term`]: cleaned,
-      [`searchTerms.${safeKey}.count`]: increment(1),
+      searchTerms: {
+        [safeKey]: {
+          term: cleaned,
+          count: increment(1),
+        }
+      },
       updatedAt: serverTimestamp(),
     }, { merge: true });
 

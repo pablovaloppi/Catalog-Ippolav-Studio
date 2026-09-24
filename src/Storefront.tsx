@@ -536,10 +536,13 @@ export function Storefront() {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  // Sincronización de la URL en la barra de direcciones (/b=termino)
+  // Sincronización de la URL en la barra de direcciones (/b=termino) y telemetría de búsqueda
   useEffect(() => {
     const trimmed = debouncedSearchQuery.trim();
     if (trimmed) {
+      if (trimmed.length >= 2) {
+        trackSearchQuery(trimmed);
+      }
       const newPath = `/b=${encodeURIComponent(trimmed)}`;
       if (window.location.pathname !== newPath && !window.location.pathname.startsWith('/admin')) {
         window.history.replaceState(null, '', newPath);

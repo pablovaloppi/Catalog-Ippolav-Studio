@@ -1,5 +1,6 @@
 import { Paintbrush, MessageCircle, Camera } from 'lucide-react';
 import { SiteConfig } from '../types';
+import { trackWhatsAppClick } from '../services/analyticsService';
 
 export function Contact({ config }: { config: SiteConfig | null }) {
   const whatsappUrl = config?.whatsapp 
@@ -39,6 +40,9 @@ export function Contact({ config }: { config: SiteConfig | null }) {
             href={whatsappUrl}
             target="_blank"
             rel="noopener noreferrer"
+            onClick={() => {
+              trackWhatsAppClick({ id: 'contacto_general', title: 'Comisión Personalizada / Asesoramiento' });
+            }}
             className="w-full sm:w-auto gold-shimmer text-on-primary-fixed text-sm font-bold px-8 py-3.5 rounded-lg flex items-center justify-center gap-2 shadow-xl hover:brightness-110 active:scale-95 transition-all uppercase tracking-wider"
           >
             <MessageCircle className="w-5 h-5" />

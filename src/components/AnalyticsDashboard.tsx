@@ -2,6 +2,9 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { 
   fetchDailyAnalytics, 
   fetchRecentEvents, 
+  trackFigureView,
+  trackWhatsAppClick,
+  trackSearchQuery,
   DailyAnalyticsData, 
   AnalyticsEventItem 
 } from '../services/analyticsService';
@@ -23,7 +26,9 @@ import {
   Sparkles,
   Layers,
   ChevronRight,
-  BarChart3
+  BarChart3,
+  PlayCircle,
+  Check
 } from 'lucide-react';
 import { Product } from '../types';
 
@@ -38,6 +43,8 @@ export function AnalyticsDashboard({ allFigures = [], onSelectFigure }: Analytic
   const [dailyData, setDailyData] = useState<DailyAnalyticsData[]>([]);
   const [recentEvents, setRecentEvents] = useState<AnalyticsEventItem[]>([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isSimulating, setIsSimulating] = useState(false);
+  const [testSuccess, setTestSuccess] = useState(false);
 
   const loadData = useCallback(async (days: number) => {
     setLoading(true);
@@ -65,6 +72,37 @@ export function AnalyticsDashboard({ allFigures = [], onSelectFigure }: Analytic
     loadData(daysRange);
   };
 
+  const handleRunDiagnostics = async () => {
+    if (isSimulating) return;
+    setIsSimulating(true);
+    try {
+      // Pick figures from catalog to test telemetry
+      const sampleFigures = allFigures.length > 0 ? allFigures.slice(0, 3) : [
+        { id: 'fig_demo_1', title: 'Figura Colección Edición Especial' },
+        { id: 'fig_demo_2', title: 'Estatua Resina Premium 1/6' }
+      ];
+
+      for (const fig of sampleFigures) {
+        await trackFigureView(fig as any);
+      }
+      if (sampleFigures[0]) {
+        await trackWhatsAppClick(sampleFigures[0] as any);
+      }
+      await trackSearchQuery('Dragon Ball');
+      await trackSearchQuery('Anime');
+
+      setTestSuccess(true);
+      setTimeout(() => setTestSuccess(false), 3500);
+
+      // Refresh data
+      await loadData(daysRange);
+    } catch (err) {
+      console.warn('Error running diagnostics:', err);
+    } finally {
+      setIsSimulating(false);
+    }
+  };
+
   // Métricas agregadas del período seleccionado
   const aggregated = useMemo(() => {
     let totalViews = 0;
@@ -80,7 +118,7 @@ export function AnalyticsDashboard({ allFigures = [], onSelectFigure }: Analytic
     const figureWhatsAppMap = new Map<string, { id: string; title: string; count: number }>();
     const searchTermsMap = new Map<string, { term: string; count: number }>();
 
-    dailyData.forEach((day) => {
+    dailyData.forEach((day: any) => {
       totalViews += day.viewsTotal || 0;
       instagramViews += day.viewsFromInstagram || 0;
       whatsappViews += day.viewsFromWhatsApp || 0;
@@ -90,27 +128,32 @@ export function AnalyticsDashboard({ allFigures = [], onSelectFigure }: Analytic
       desktopViews += day.deviceDesktop || 0;
       totalWhatsAppClicks += day.whatsappTotalClicks || 0;
 
-      if (day.figureViews) {
+      // 1. Parse standard nested maps
+      if (day.figureViews && typeof day.figureViews === 'object') {
         Object.entries(day.figureViews).forEach(([_, rawItem]) => {
           const item = rawItem as { id: string; title: string; count: number };
           if (!item || !item.id) return;
-          const current = figureViewsMap.get(item.id) || { id: item.id, title: item.title || item.id, count: 0 };
+          const matched = allFigures.find(f => f.id === item.id);
+          const title = item.title || matched?.title || item.id;
+          const current = figureViewsMap.get(item.id) || { id: item.id, title, count: 0 };
           current.count += item.count || 0;
           figureViewsMap.set(item.id, current);
         });
       }
 
-      if (day.whatsappClicks) {
+      if (day.whatsappClicks && typeof day.whatsappClicks === 'object') {
         Object.entries(day.whatsappClicks).forEach(([_, rawItem]) => {
           const item = rawItem as { id: string; title: string; count: number };
           if (!item || !item.id) return;
-          const current = figureWhatsAppMap.get(item.id) || { id: item.id, title: item.title || item.id, count: 0 };
+          const matched = allFigures.find(f => f.id === item.id);
+          const title = item.title || matched?.title || item.id;
+          const current = figureWhatsAppMap.get(item.id) || { id: item.id, title, count: 0 };
           current.count += item.count || 0;
           figureWhatsAppMap.set(item.id, current);
         });
       }
 
-      if (day.searchTerms) {
+      if (day.searchTerms && typeof day.searchTerms === 'object') {
         Object.entries(day.searchTerms).forEach(([_, rawItem]) => {
           const item = rawItem as { term: string; count: number };
           if (!item || !item.term) return;
@@ -119,7 +162,84 @@ export function AnalyticsDashboard({ allFigures = [], onSelectFigure }: Analytic
           searchTermsMap.set(item.term, current);
         });
       }
+
+      // 2. Parse any dot-separated field keys (e.g., 'figureViews.fig_1.count')
+      Object.keys(day).forEach((key) => {
+        if (key.startsWith('figureViews.') && key.endsWith('.count')) {
+          const parts = key.split('.');
+          const figId = parts[1];
+          const count = Number(day[key]) || 0;
+          if (figId && count > 0) {
+            const rawTitle = day[`figureViews.${figId}.title`];
+            const matched = allFigures.find(f => f.id === figId || f.id.replace(/[^a-zA-Z0-9_-]/g, '_') === figId);
+            const actualId = matched?.id || figId;
+            const title = rawTitle || matched?.title || actualId;
+            const current = figureViewsMap.get(actualId) || { id: actualId, title, count: 0 };
+            if (!day.figureViews || !day.figureViews[figId]) {
+              current.count += count;
+              figureViewsMap.set(actualId, current);
+            }
+          }
+        }
+
+        if (key.startsWith('whatsappClicks.') && key.endsWith('.count')) {
+          const parts = key.split('.');
+          const figId = parts[1];
+          const count = Number(day[key]) || 0;
+          if (figId && count > 0) {
+            const rawTitle = day[`whatsappClicks.${figId}.title`];
+            const matched = allFigures.find(f => f.id === figId || f.id.replace(/[^a-zA-Z0-9_-]/g, '_') === figId);
+            const actualId = matched?.id || figId;
+            const title = rawTitle || matched?.title || actualId;
+            const current = figureWhatsAppMap.get(actualId) || { id: actualId, title, count: 0 };
+            if (!day.whatsappClicks || !day.whatsappClicks[figId]) {
+              current.count += count;
+              figureWhatsAppMap.set(actualId, current);
+            }
+          }
+        }
+
+        if (key.startsWith('searchTerms.') && key.endsWith('.count')) {
+          const parts = key.split('.');
+          const termKey = parts[1];
+          const count = Number(day[key]) || 0;
+          if (termKey && count > 0) {
+            const rawTerm = day[`searchTerms.${termKey}.term`] || termKey.replace(/_/g, ' ');
+            const current = searchTermsMap.get(rawTerm) || { term: rawTerm, count: 0 };
+            if (!day.searchTerms || !day.searchTerms[termKey]) {
+              current.count += count;
+              searchTermsMap.set(rawTerm, current);
+            }
+          }
+        }
+      });
     });
+
+    // 3. Complement with recent events log if daily maps were empty
+    if (recentEvents && recentEvents.length > 0) {
+      recentEvents.forEach((ev) => {
+        if (ev.type === 'figure_view' && ev.figureId) {
+          const matched = allFigures.find(f => f.id === ev.figureId);
+          const title = ev.figureTitle || matched?.title || ev.figureId;
+          if (!figureViewsMap.has(ev.figureId)) {
+            figureViewsMap.set(ev.figureId, { id: ev.figureId, title, count: 1 });
+          }
+        }
+        if (ev.type === 'whatsapp_click' && ev.figureId) {
+          const matched = allFigures.find(f => f.id === ev.figureId);
+          const title = ev.figureTitle || matched?.title || ev.figureId;
+          if (!figureWhatsAppMap.has(ev.figureId)) {
+            figureWhatsAppMap.set(ev.figureId, { id: ev.figureId, title, count: 1 });
+          }
+        }
+        if (ev.type === 'search' && ev.searchTerm) {
+          const clean = ev.searchTerm.trim().toLowerCase();
+          if (clean && !searchTermsMap.has(clean)) {
+            searchTermsMap.set(clean, { term: clean, count: 1 });
+          }
+        }
+      });
+    }
 
     // Ranking de figuras más vistas
     const topViewedFigures = Array.from(figureViewsMap.values()).sort((a, b) => b.count - a.count);
@@ -148,7 +268,7 @@ export function AnalyticsDashboard({ allFigures = [], onSelectFigure }: Analytic
       instagramPercentage,
       conversionRate
     };
-  }, [dailyData]);
+  }, [dailyData, recentEvents, allFigures]);
 
   return (
     <div className="space-y-8 animate-fadeIn">
@@ -199,6 +319,22 @@ export function AnalyticsDashboard({ allFigures = [], onSelectFigure }: Analytic
               30 Días
             </button>
           </div>
+
+          <button
+            onClick={handleRunDiagnostics}
+            disabled={isSimulating || loading}
+            title="Enviar pulso de prueba a las métricas para verificar Firestore, Meta Pixel y GA4"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-primary/10 hover:bg-primary/20 border border-primary/30 rounded-lg text-primary text-xs font-semibold transition-all active:scale-95 disabled:opacity-50"
+          >
+            {isSimulating ? (
+              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+            ) : testSuccess ? (
+              <Check className="w-3.5 h-3.5 text-emerald-400" />
+            ) : (
+              <PlayCircle className="w-3.5 h-3.5" />
+            )}
+            <span>{isSimulating ? 'Probando...' : testSuccess ? '¡Telemetría Enviada!' : 'Probar Métricas'}</span>
+          </button>
 
           <button
             onClick={handleRefresh}
