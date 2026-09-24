@@ -23,7 +23,7 @@ import {
 } from 'firebase/firestore';
 import { Product, Category, Designer, SiteConfig } from './types';
 import { products as initialProducts } from './data';
-import { Plus, ChevronUp, ChevronDown, Trash2, Edit2, LogOut, ImagePlus, UserCircle, Settings, Hash, Sparkles, Eye, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Heart, CornerDownRight, FolderTree, Dices } from 'lucide-react';
+import { Plus, ChevronUp, ChevronDown, Trash2, Edit2, LogOut, ImagePlus, UserCircle, Settings, Hash, Sparkles, Eye, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Heart, CornerDownRight, FolderTree, Dices, TrendingUp } from 'lucide-react';
 import { ProductModal } from './components/ProductModal';
 import { 
   getCategoryAncestors, 
@@ -38,6 +38,7 @@ import {
 
 import { ImageMigrationTool } from './components/ImageMigrationTool';
 import { RandomPickerTool } from './components/RandomPickerTool';
+import { AnalyticsDashboard } from './components/AnalyticsDashboard';
 
 // ... other imports ...
 
@@ -854,6 +855,12 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                 Diseñadores
               </button>
               <button 
+                onClick={() => { setView('analytics'); }} 
+                className={`text-sm font-semibold whitespace-nowrap transition-colors flex items-center gap-1.5 ${view === 'analytics' ? 'text-primary' : 'text-on-surface-variant hover:text-on-surface'}`}
+              >
+                <TrendingUp className="w-4 h-4 text-primary" /> Métricas
+              </button>
+              <button 
                 onClick={() => { setView('random-picker'); }} 
                 className={`text-sm font-semibold whitespace-nowrap transition-colors flex items-center gap-1.5 ${view === 'random-picker' ? 'text-primary' : 'text-on-surface-variant hover:text-on-surface'}`}
               >
@@ -1525,6 +1532,10 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
             designer={editingDesigner}
             onBack={() => { setView('designers-list'); setEditingDesigner(null); }}
             orderCount={designers.length}
+          />
+        ) : view === 'analytics' ? (
+          <AnalyticsDashboard 
+            allFigures={allAdminFiguresCacheRef.current || figures} 
           />
         ) : view === 'random-picker' ? (
           <RandomPickerTool 

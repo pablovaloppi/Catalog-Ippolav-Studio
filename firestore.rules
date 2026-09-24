@@ -89,5 +89,17 @@ service cloud.firestore {
       allow read: if true;
       allow create, update, delete: if isAdmin() && isValidId(configId);
     }
+
+    match /analytics_daily/{dateId} {
+      allow read: if isAdmin();
+      allow create, update: if isValidId(dateId);
+      allow delete: if isAdmin();
+    }
+
+    match /analytics_events/{eventId} {
+      allow read: if isAdmin();
+      allow create: if isValidId(eventId) && incoming().type is string;
+      allow update, delete: if isAdmin();
+    }
   }
 }

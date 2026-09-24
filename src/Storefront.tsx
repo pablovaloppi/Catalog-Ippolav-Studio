@@ -9,6 +9,7 @@ import { getAllDescendantCategoryIds, getCategoryAncestors, getCategoryBreadcrum
 import { products as initialProducts } from './data';
 import type { QueryDocumentSnapshot, DocumentData } from 'firebase/firestore';
 import { extractSearchQueryFromLocation, extractFigureIdFromLocation } from './urlUtils';
+import { trackPageView, trackSearchQuery } from './services/analyticsService';
 
 const NavigationDrawer = lazy(() => import('./components/NavigationDrawer').then(m => ({ default: m.NavigationDrawer })));
 const HowToBuy = lazy(() => import('./components/HowToBuy').then(m => ({ default: m.HowToBuy })));
@@ -259,6 +260,7 @@ export function Storefront() {
       }
     }
     fetchTotalFiguresCount();
+    trackPageView();
     return () => {
       isMounted = false;
     };
@@ -648,6 +650,9 @@ export function Storefront() {
 
         if (!isCancelled) {
           setSearchResults(matched);
+          if (debouncedSearchQuery.trim().length >= 2) {
+            trackSearchQuery(debouncedSearchQuery);
+          }
         }
       } catch (err) {
         console.error("Error buscando figuras en el catálogo:", err);

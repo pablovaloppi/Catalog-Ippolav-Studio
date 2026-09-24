@@ -87,6 +87,38 @@
         "facebook": { "type": "string" },
         "youtube": { "type": "string" }
       }
+    },
+    "analyticsDaily": {
+      "title": "AnalyticsDaily",
+      "description": "Aggregated daily site telemetry and metrics",
+      "type": "object",
+      "properties": {
+        "date": { "type": "string" },
+        "viewsTotal": { "type": "number" },
+        "viewsFromInstagram": { "type": "number" },
+        "viewsFromWhatsApp": { "type": "number" },
+        "viewsFromDirect": { "type": "number" },
+        "viewsFromOther": { "type": "number" },
+        "deviceMobile": { "type": "number" },
+        "deviceDesktop": { "type": "number" },
+        "whatsappTotalClicks": { "type": "number" },
+        "updatedAt": { "type": "timestamp" }
+      }
+    },
+    "analyticsEvent": {
+      "title": "AnalyticsEvent",
+      "description": "Anonymous live interaction event log",
+      "type": "object",
+      "properties": {
+        "type": { "type": "string" },
+        "source": { "type": "string" },
+        "figureId": { "type": "string" },
+        "figureTitle": { "type": "string" },
+        "searchTerm": { "type": "string" },
+        "device": { "type": "string" },
+        "timestamp": { "type": "timestamp" }
+      },
+      "required": ["type", "timestamp"]
     }
   },
   "firestore": {
@@ -109,6 +141,14 @@
     "config/{configId}": {
       "schema": "config",
       "description": "Stores the store configuration."
+    },
+    "analytics_daily/{dateId}": {
+      "schema": "analyticsDaily",
+      "description": "Stores aggregated daily analytics."
+    },
+    "analytics_events/{eventId}": {
+      "schema": "analyticsEvent",
+      "description": "Stores recent visitor interaction events."
     }
   }
 }

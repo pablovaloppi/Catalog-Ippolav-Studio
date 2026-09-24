@@ -3,6 +3,7 @@ import { X, MessageCircle, HelpCircle, View, ChevronLeft, ChevronRight, Heart, Z
 import { Product, SiteConfig } from '../types';
 import { getOptimizedCloudinaryUrl, getCloudinarySrcSet } from '../cloudinaryUtils';
 import { shareFigure } from '../urlUtils';
+import { trackFigureView, trackWhatsAppClick } from '../services/analyticsService';
 
 interface ProductModalProps {
   product: Product | null;
@@ -32,6 +33,13 @@ export function ProductModal({
   const [shareStatus, setShareStatus] = useState<'idle' | 'copied' | 'shared'>('idle');
   const startFullScreenRef = useRef(initialFullScreen);
   
+  // Seguimiento de telemetría de visualización de figura
+  useEffect(() => {
+    if (product) {
+      trackFigureView(product);
+    }
+  }, [product?.id]);
+
   // Manejador para compartir mediante la Web Share API nativa (con fallback a portapapeles)
   const handleShare = async () => {
     if (!product) return;
@@ -645,6 +653,9 @@ export function ProductModal({
               href={whatsappUrl}
               target="_blank"
               rel="noopener noreferrer"
+              onClick={() => {
+                if (product) trackWhatsAppClick(product);
+              }}
               className="w-full gold-shimmer text-on-primary-fixed text-sm font-bold py-3.5 px-4 rounded-lg flex items-center justify-center gap-2 shadow-lg tracking-wider uppercase hover:brightness-110 active:scale-95 transition-all"
             >
               <MessageCircle className="w-5 h-5" />
@@ -655,6 +666,9 @@ export function ProductModal({
               href={whatsappUrl}
               target="_blank"
               rel="noopener noreferrer"
+              onClick={() => {
+                if (product) trackWhatsAppClick(product);
+              }}
               className="w-full gold-shimmer text-on-primary-fixed text-sm font-bold py-3.5 px-4 rounded-lg flex items-center justify-center gap-2 shadow-lg tracking-wider uppercase hover:brightness-110 active:scale-95 transition-all"
             >
               <HelpCircle className="w-5 h-5" />
