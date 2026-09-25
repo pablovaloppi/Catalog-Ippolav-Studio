@@ -100,7 +100,7 @@ export function RandomPickerTool({ categories, designers }: RandomPickerToolProp
     return poolFigures.filter(f => !f.selectedInRandomDraw);
   }, [poolFigures]);
 
-  // Figures already selected
+  // Figures already selected across the entire database
   const alreadySelectedFigures = useMemo(() => {
     return allFigures
       .filter(f => f.selectedInRandomDraw)
@@ -110,6 +110,27 @@ export function RandomPickerTool({ categories, designers }: RandomPickerToolProp
         return timeB - timeA;
       });
   }, [allFigures]);
+
+  // Figures for the past history (excludes the currently active selected figure)
+  const pastSelectedFigures = useMemo(() => {
+    return alreadySelectedFigures.filter(f => f.id !== selectedFigure?.id);
+  }, [alreadySelectedFigures, selectedFigure]);
+
+  // Auto-load the most recently selected figure if none is active
+  useEffect(() => {
+    if (selectedFigure) {
+      // Keep selected figure in sync with realtime updates from Firestore
+      const updated = allFigures.find(f => f.id === selectedFigure.id);
+      if (updated) {
+        setSelectedFigure(updated);
+      }
+      return;
+    }
+
+    if (alreadySelectedFigures.length > 0) {
+      setSelectedFigure(alreadySelectedFigures[0]);
+    }
+  }, [allFigures, alreadySelectedFigures, selectedFigure]);
 
   // Handle the random draw action
   const handleDrawRandomFigure = async () => {
@@ -267,15 +288,16 @@ export function RandomPickerTool({ categories, designers }: RandomPickerToolProp
       .sort((a, b) => a.name.localeCompare(b.name, 'es', { sensitivity: 'base' }));
   }, [categories]);
 
-  // Filtered history list
+  // Filtered history list (past selected figures excluding current active showcase figure)
   const filteredHistory = useMemo(() => {
-    if (!historySearch.trim()) return alreadySelectedFigures;
+    const baseList = pastSelectedFigures;
+    if (!historySearch.trim()) return baseList;
     const q = historySearch.toLowerCase();
-    return alreadySelectedFigures.filter(f => 
+    return baseList.filter(f => 
       f.title.toLowerCase().includes(q) || 
       (f.numericId && f.numericId.toLowerCase().includes(q))
     );
-  }, [alreadySelectedFigures, historySearch]);
+  }, [pastSelectedFigures, historySearch]);
 
   const activeCategoryObj = categories.find(c => c.id === (selectedFigure?.franchiseId || shufflingFigure?.franchiseId));
   const activeDesignerObj = designers.find(d => d.id === (selectedFigure?.designerId || shufflingFigure?.designerId));
@@ -454,13 +476,13 @@ export function RandomPickerTool({ categories, designers }: RandomPickerToolProp
 
           {/* Figure Display Area */}
           {(currentDisplayFigure || isDrawing) && (
-            <div className="w-full mt-4 text-left border border-outline-variant/40 bg-surface-container-lowest rounded-3xl p-5 md:p-8 shadow-2xl space-y-6 transition-all animate-in fade-in duration-300">
+            <div id="sorteador-showcase" className="w-full mt-4 text-left border border-outline-variant/40 bg-surface-container-lowest rounded-3xl p-5 md:p-8 shadow-2xl space-y-6 transition-all animate-in fade-in duration-300">
               {/* Badge & Status */}
               <div className="flex flex-wrap items-center justify-between gap-3 border-b border-outline-variant/20 pb-4">
                 <div className="flex items-center gap-2">
                   <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-primary/20 text-primary border border-primary/40">
                     <Sparkles className="w-3.5 h-3.5" />
-                    {isDrawing ? 'Sorteando...' : '¡Figura Seleccionada!'}
+                    {isDrawing ? 'Sorteando...' : 'Última Figura Seleccionada'}
                   </span>
                   {currentDisplayFigure?.numericId && (
                     <span className="px-2.5 py-1 rounded-full text-xs font-mono font-bold bg-surface-container-high text-on-surface border border-outline-variant/40">
@@ -473,7 +495,7 @@ export function RandomPickerTool({ categories, designers }: RandomPickerToolProp
                   <div className="flex items-center gap-2">
                     <button
                       onClick={() => setPreviewModalOptions({ figure: selectedFigure, fullScreen: false, imageIndex: selectedImageIndex })}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-surface-container hover:bg-surface-container-high text-on-surface border border-outline-variant/40 transition-colors"
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-surface-container hover:bg-surface-container-high text-on-surface border border-outline-variant/40 transition-colors cursor-pointer"
                       title="Ver información y detalles de la figura"
                     >
                       <Eye className="w-3.5 h-3.5 text-primary" />
@@ -481,8 +503,8 @@ export function RandomPickerTool({ categories, designers }: RandomPickerToolProp
                     </button>
                     <button
                       onClick={() => handleUnmarkFigure(selectedFigure.id)}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold text-on-surface-variant hover:text-error hover:bg-error/10 border border-outline-variant/30 transition-colors"
-                      title="Desmarcar esta figura para que pueda volver a salir"
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold text-on-surface-variant hover:text-error hover:bg-error/10 border border-outline-variant/30 transition-colors cursor-pointer"
+                      title="Desmarcar esta figura para que pueda volver a salir en el sorteo"
                     >
                       <Undo2 className="w-3.5 h-3.5" />
                       Desmarcar
@@ -692,15 +714,20 @@ export function RandomPickerTool({ categories, designers }: RandomPickerToolProp
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-outline-variant/20 pb-4">
           <div className="flex items-center gap-2.5">
             <History className="w-5 h-5 text-primary" />
-            <h3 className="font-serif font-bold text-lg text-on-surface">
-              Historial de Figuras Ya Seleccionadas ({alreadySelectedFigures.length})
-            </h3>
+            <div>
+              <h3 className="font-serif font-bold text-lg text-on-surface">
+                Historial de Figuras Anteriores ({pastSelectedFigures.length})
+              </h3>
+              <p className="text-[11px] text-outline hidden sm:block">
+                Figuras seleccionadas previamente. La última figura obtenida se mantiene activa arriba para ver, descargar y compartir.
+              </p>
+            </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
             <input
               type="text"
-              placeholder="Buscar en seleccionadas..."
+              placeholder="Buscar en historial..."
               value={historySearch}
               onChange={(e) => setHistorySearch(e.target.value)}
               className="bg-surface-container-low border border-outline-variant/40 rounded-xl px-3 py-1.5 text-xs text-on-surface placeholder:text-outline outline-none focus:border-primary w-full sm:w-48"
@@ -713,21 +740,27 @@ export function RandomPickerTool({ categories, designers }: RandomPickerToolProp
                 title="Restablecer todas las figuras a selectedInRandomDraw: false"
               >
                 <RotateCcw className={`w-3.5 h-3.5 ${isResettingAll ? 'animate-spin' : ''}`} />
-                <span>Restablecer todas a false</span>
+                <span>Restablecer sorteo</span>
               </button>
             )}
           </div>
         </div>
 
-        {alreadySelectedFigures.length === 0 ? (
-          <div className="py-12 text-center text-on-surface-variant space-y-2">
+        {pastSelectedFigures.length === 0 ? (
+          <div className="py-10 text-center text-on-surface-variant space-y-2 max-w-md mx-auto">
             <Dices className="w-10 h-10 mx-auto text-outline/40" />
-            <p className="text-sm">Aún no se ha seleccionado ninguna figura.</p>
-            <p className="text-xs text-outline">Presiona "Obtener Figura Aleatoria" arriba para iniciar el sorteo.</p>
+            <p className="text-sm font-semibold text-on-surface">
+              {selectedFigure ? 'Aún no hay figuras en el historial anterior' : 'Aún no se ha seleccionado ninguna figura'}
+            </p>
+            <p className="text-xs text-outline leading-relaxed">
+              {selectedFigure 
+                ? 'La figura actual está lista arriba para ver, descargar y compartir. Al sortear una nueva figura, la figura anterior se guardará automáticamente en este historial.' 
+                : 'Presiona "Obtener Figura Aleatoria" arriba para iniciar el sorteo.'}
+            </p>
           </div>
         ) : filteredHistory.length === 0 ? (
           <div className="py-8 text-center text-on-surface-variant text-xs">
-            No se encontraron figuras seleccionadas que coincidan con "{historySearch}".
+            No se encontraron figuras en el historial que coincidan con "{historySearch}".
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5 max-h-[500px] overflow-y-auto pr-1">
@@ -744,9 +777,16 @@ export function RandomPickerTool({ categories, designers }: RandomPickerToolProp
                   className="bg-surface-container-low border border-outline-variant/30 rounded-2xl p-3 flex items-center gap-3 hover:border-outline-variant/60 transition-all group"
                 >
                   <div 
-                    onClick={() => setPreviewModalOptions({ figure: fig, fullScreen: true, imageIndex: 0 })}
+                    onClick={() => {
+                      setSelectedFigure(fig);
+                      setSelectedImageIndex(0);
+                      const el = document.getElementById('sorteador-showcase');
+                      if (el) {
+                        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                      }
+                    }}
                     className="w-16 h-16 rounded-xl overflow-hidden bg-surface-container-lowest flex-shrink-0 border border-outline-variant/20 relative cursor-pointer hover:border-primary/60 transition-colors"
-                    title="Toca para ver en pantalla completa con zoom"
+                    title="Toca para cargar en el panel principal"
                   >
                     {coverImg ? (
                       <img src={coverImg} alt={fig.title} className="w-full h-full object-cover group-hover:scale-110 transition-transform" />
@@ -759,8 +799,15 @@ export function RandomPickerTool({ categories, designers }: RandomPickerToolProp
 
                   <div 
                     className="flex-1 min-w-0 cursor-pointer"
-                    onClick={() => setPreviewModalOptions({ figure: fig, fullScreen: false, imageIndex: 0 })}
-                    title="Ver detalle"
+                    onClick={() => {
+                      setSelectedFigure(fig);
+                      setSelectedImageIndex(0);
+                      const el = document.getElementById('sorteador-showcase');
+                      if (el) {
+                        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                      }
+                    }}
+                    title="Cargar en el panel principal"
                   >
                     <div className="flex items-center gap-1.5">
                       {fig.numericId && (
@@ -782,16 +829,23 @@ export function RandomPickerTool({ categories, designers }: RandomPickerToolProp
 
                   <div className="flex flex-col gap-1.5 flex-shrink-0">
                     <button
-                      onClick={() => setPreviewModalOptions({ figure: fig, fullScreen: true, imageIndex: 0 })}
-                      className="p-1.5 rounded-lg bg-surface-container hover:bg-surface-container-high hover:text-primary text-outline transition-colors"
-                      title="Pantalla completa y zoom"
+                      onClick={() => {
+                        setSelectedFigure(fig);
+                        setSelectedImageIndex(0);
+                        const el = document.getElementById('sorteador-showcase');
+                        if (el) {
+                          el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        }
+                      }}
+                      className="p-1.5 rounded-lg bg-surface-container hover:bg-primary hover:text-on-primary text-outline transition-colors cursor-pointer"
+                      title="Cargar en el panel principal para ver, descargar y compartir"
                     >
-                      <Maximize2 className="w-3.5 h-3.5" />
+                      <Eye className="w-3.5 h-3.5" />
                     </button>
                     {coverImg && (
                       <button
                         onClick={() => handleDownloadImage(coverImg, 0)}
-                        className="p-1.5 rounded-lg bg-surface-container hover:bg-primary hover:text-on-primary text-outline transition-colors"
+                        className="p-1.5 rounded-lg bg-surface-container hover:bg-primary/20 hover:text-primary text-outline transition-colors cursor-pointer"
                         title="Descargar imagen en calidad original HD"
                       >
                         <Download className="w-3.5 h-3.5" />
@@ -799,7 +853,7 @@ export function RandomPickerTool({ categories, designers }: RandomPickerToolProp
                     )}
                     <button
                       onClick={() => handleUnmarkFigure(fig.id)}
-                      className="p-1.5 rounded-lg bg-surface-container hover:bg-error/20 hover:text-error text-outline transition-colors"
+                      className="p-1.5 rounded-lg bg-surface-container hover:bg-error/20 hover:text-error text-outline transition-colors cursor-pointer"
                       title="Desmarcar figura (volver a incluir en el sorteo)"
                     >
                       <Undo2 className="w-3.5 h-3.5" />
