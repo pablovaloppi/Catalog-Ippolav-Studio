@@ -1,7 +1,8 @@
 import React, { useRef, useState, useEffect, memo } from 'react';
-import { ArrowRight, PlusCircle, Heart, Sparkles, Palette } from 'lucide-react';
-import { Product, Category } from '../types';
+import { ArrowRight, PlusCircle, Heart, Sparkles, Palette, MessageCircle } from 'lucide-react';
+import { Product, Category, SiteConfig } from '../types';
 import { getOptimizedCloudinaryUrl, getCloudinarySrcSet } from '../cloudinaryUtils';
+import { trackWhatsAppClick } from '../services/analyticsService';
 
 // Memoria global de URLs de imágenes ya cargadas durante la sesión del usuario
 const globalLoadedImages = new Set<string>();
@@ -224,6 +225,8 @@ interface CatalogProps {
   onToggleLike?: (productId: string) => void;
   favoritesOnly?: boolean;
   onClearFavoritesFilter?: () => void;
+  searchQuery?: string;
+  config?: SiteConfig | null;
 }
 
 export function Catalog({
@@ -238,6 +241,8 @@ export function Catalog({
   onToggleLike,
   favoritesOnly = false,
   onClearFavoritesFilter,
+  searchQuery = '',
+  config,
 }: CatalogProps) {
   // Punto de anticipación de carga de figuras:
   // Se activa en la 6ª figura cargada (índice 5), y luego 3 figuras antes de finalizar cada lote
@@ -247,6 +252,32 @@ export function Catalog({
 
   const triggerTargetRef = useRef<HTMLElement | null>(null);
   const bottomSentinelRef = useRef<HTMLDivElement>(null);
+
+  const isSearchActive = Boolean(searchQuery && searchQuery.trim().length > 0);
+  const cleanSearchQuery = searchQuery ? searchQuery.trim() : '';
+
+  const getSearchWhatsAppUrl = () => {
+    const rawTemplate = config?.searchWhatsAppMessageTemplate?.trim() || 
+      'Hola IPPOLAV STUDIO, busqué "{busqueda}" en el catálogo pero no encontré lo que buscaba. ¿Tienen disponibilidad o la pueden realizar a pedido?';
+    
+    const message = rawTemplate
+      .replace(/\{busqueda\}/gi, cleanSearchQuery)
+      .replace(/\{query\}/gi, cleanSearchQuery)
+      .replace(/\{searchTerm\}/gi, cleanSearchQuery)
+      .replace(/\{texto\}/gi, cleanSearchQuery);
+
+    const phone = config?.whatsapp ? config.whatsapp.replace(/[^0-9]/g, '') : '5491112345678';
+    return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
+  };
+
+  const handleSearchWhatsAppClick = () => {
+    if (cleanSearchQuery) {
+      trackWhatsAppClick({
+        id: `search_${cleanSearchQuery.toLowerCase()}`,
+        title: `Búsqueda: ${cleanSearchQuery}`,
+      });
+    }
+  };
 
   useEffect(() => {
     if (!hasMore || loadingMore || !onLoadMore) return;
@@ -372,7 +403,37 @@ export function Catalog({
         </div>
       )}
       
-      {!favoritesOnly && products.length === 0 && !loadingMore && (
+      {/* Estado vacío cuando se busca por texto */}
+      {isSearchActive && !favoritesOnly && products.length === 0 && !loadingMore && (
+        <div className="py-14 px-4 text-center max-w-lg mx-auto space-y-4 bg-surface-container-low/60 rounded-2xl border border-outline-variant/30 my-6 shadow-sm">
+          <div className="w-14 h-14 rounded-full bg-surface-container-high flex items-center justify-center mx-auto text-primary">
+            <MessageCircle className="w-6 h-6" />
+          </div>
+          <div>
+            <h3 className="font-serif text-lg font-bold text-on-surface">
+              No se encontraron figuras para «<span className="text-primary">{cleanSearchQuery}</span>»
+            </h3>
+            <p className="text-xs text-on-surface-variant mt-1.5 leading-relaxed">
+              ¿No está la que buscás? Podemos fabricarla a pedido o verificar disponibilidad en nuestro taller.
+            </p>
+          </div>
+          <div className="pt-2">
+            <a
+              href={getSearchWhatsAppUrl()}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={handleSearchWhatsAppClick}
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-all shadow-md active:scale-95 cursor-pointer"
+            >
+              <MessageCircle className="w-4 h-4 fill-white text-emerald-600" />
+              <span>Contactar por mensaje</span>
+            </a>
+          </div>
+        </div>
+      )}
+
+      {/* Estado vacío estándar sin búsqueda por texto */}
+      {!isSearchActive && !favoritesOnly && products.length === 0 && !loadingMore && (
         <div className="py-16 text-center space-y-3">
           <p className="text-on-surface-variant text-base">No se encontraron figuras con esos filtros.</p>
           {hasMore && onLoadMore && (
@@ -391,7 +452,38 @@ export function Catalog({
         <div ref={bottomSentinelRef} className="h-4 w-full pointer-events-none opacity-0" />
       )}
 
-      {!hasMore && !favoritesOnly && products.length > 0 && (
+      {/* Fin de lista en búsqueda activa */}
+      {isSearchActive && !favoritesOnly && products.length > 0 && (
+        <div className="mt-10 py-5 px-5 max-w-xl mx-auto text-center space-y-4 bg-surface-container-low/70 border border-outline-variant/30 rounded-2xl shadow-sm">
+          <div className="flex flex-wrap items-center justify-center gap-1.5 text-xs font-semibold text-on-surface">
+            <span className="text-emerald-400">✓</span>
+            <span>Has explorado todas las figuras disponibles de</span>
+            <span className="text-primary font-bold px-2 py-0.5 bg-surface-container rounded-md border border-outline-variant/30">
+              «{cleanSearchQuery}»
+            </span>
+            <span className="text-on-surface-variant font-mono">({products.length})</span>
+          </div>
+
+          <div className="pt-3 border-t border-outline-variant/20 flex flex-col sm:flex-row items-center justify-center gap-3">
+            <span className="text-xs text-on-surface-variant font-medium">
+              ¿No está la que buscás?
+            </span>
+            <a
+              href={getSearchWhatsAppUrl()}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={handleSearchWhatsAppClick}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-all shadow-md active:scale-95 cursor-pointer"
+            >
+              <MessageCircle className="w-4 h-4 fill-white text-emerald-600" />
+              <span>Contactar por mensaje</span>
+            </a>
+          </div>
+        </div>
+      )}
+
+      {/* Fin de lista catálogo general */}
+      {!isSearchActive && !hasMore && !favoritesOnly && products.length > 0 && (
         <div className="mt-8 py-4 text-center">
           <span className="text-xs text-on-surface-variant/80 font-medium tracking-wide">
             ✓ Has explorado todas las figuras disponibles ({displayTotal})

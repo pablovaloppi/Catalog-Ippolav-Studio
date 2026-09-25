@@ -9,7 +9,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import { Product, Category, Designer } from '../types';
-import { getOriginalCloudinaryUrl, downloadImageAsFile } from '../cloudinaryUtils';
+import { getOriginalCloudinaryUrl, downloadImageAsFile, shareImageFile } from '../cloudinaryUtils';
 import { getAllDescendantCategoryIds, getCategoryBreadcrumb, getCategoryHierarchyLabel } from '../categoryUtils';
 import { 
   Dices, 
@@ -29,7 +29,8 @@ import {
   Flame,
   Undo2,
   ZoomIn,
-  Maximize2
+  Maximize2,
+  Share2
 } from 'lucide-react';
 import { ProductModal } from './ProductModal';
 
@@ -182,6 +183,18 @@ export function RandomPickerTool({ categories, designers }: RandomPickerToolProp
       setDownloadSuccess(true);
       setTimeout(() => setDownloadSuccess(false), 3000);
     }
+  };
+
+  // Share image directly via Web Share API
+  const handleShareImage = async (url: string, index: number = 0) => {
+    if (!url) return;
+    const safeTitle = (selectedFigure?.title || 'figura')
+      .toLowerCase()
+      .replace(/[^a-z0-9]/gi, '_')
+      .substring(0, 40);
+    const numId = selectedFigure?.numericId ? selectedFigure.numericId.replace(/[^a-z0-9#]/gi, '') : 'fig';
+    const filename = `${numId}_${safeTitle}_original_hd_${index + 1}.jpg`;
+    await shareImageFile(url, filename, selectedFigure?.title);
   };
 
   // Unmark a specific figure (return it to the draw pool)
@@ -618,20 +631,33 @@ export function RandomPickerTool({ categories, designers }: RandomPickerToolProp
                           Obtén el archivo original de la imagen sin pérdida de compresión para compartir en redes sociales, enviar a clientes o imprimir.
                         </p>
 
-                        <button
-                          onClick={() => handleDownloadImage(currentImageUrl, selectedImageIndex)}
-                          disabled={!!downloadingImage}
-                          className="w-full flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-primary text-on-primary font-bold text-sm shadow-md hover:brightness-110 active:scale-98 transition-all disabled:opacity-50 cursor-pointer"
-                        >
-                          <Download className={`w-4 h-4 ${downloadingImage === currentImageUrl ? 'animate-bounce' : ''}`} />
-                          <span>
-                            {downloadingImage === currentImageUrl 
-                              ? 'Procesando descarga HD...' 
-                              : selectedFigure.imageUrls && selectedFigure.imageUrls.length > 1
-                              ? `Descargar Foto Actual (${selectedImageIndex + 1}/${selectedFigure.imageUrls.length}) en Máxima Calidad`
-                              : 'Descargar Imagen en Máxima Calidad (Original HD)'}
-                          </span>
-                        </button>
+                        <div className="flex flex-col sm:flex-row gap-2">
+                          <button
+                            onClick={() => handleDownloadImage(currentImageUrl, selectedImageIndex)}
+                            disabled={!!downloadingImage}
+                            className="flex-1 flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-primary text-on-primary font-bold text-sm shadow-md hover:brightness-110 active:scale-98 transition-all disabled:opacity-50 cursor-pointer"
+                          >
+                            <Download className={`w-4 h-4 ${downloadingImage === currentImageUrl ? 'animate-bounce' : ''}`} />
+                            <span>
+                              {downloadingImage === currentImageUrl 
+                                ? 'Procesando descarga HD...' 
+                                : selectedFigure.imageUrls && selectedFigure.imageUrls.length > 1
+                                ? `Descargar Foto (${selectedImageIndex + 1}/${selectedFigure.imageUrls.length})`
+                                : 'Descargar en Máxima Calidad'}
+                            </span>
+                          </button>
+
+                          {typeof navigator !== 'undefined' && !!navigator.share && (
+                            <button
+                              onClick={() => handleShareImage(currentImageUrl, selectedImageIndex)}
+                              className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-surface-container-high border border-primary/40 hover:bg-primary/20 text-on-surface font-bold text-sm transition-all active:scale-98 cursor-pointer"
+                              title="Compartir directo a Instagram Stories, WhatsApp, etc."
+                            >
+                              <Share2 className="w-4 h-4 text-primary" />
+                              <span className="hidden sm:inline">Compartir</span>
+                            </button>
+                          )}
+                        </div>
                       </div>
 
                       {/* Download all photos button if multiple */}

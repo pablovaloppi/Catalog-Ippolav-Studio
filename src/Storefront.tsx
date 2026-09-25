@@ -858,6 +858,8 @@ export function Storefront() {
             onToggleLike={handleToggleLike}
             favoritesOnly={favoritesOnly}
             onClearFavoritesFilter={() => setFavoritesOnly(false)}
+            searchQuery={searchQuery}
+            config={siteConfig}
           />
         )}
         <Franchises onSelectFranchise={setFranchiseFilter} categories={categories} />

@@ -2397,21 +2397,167 @@ function ConfigForm({ config }: { config: SiteConfig }) {
 
         <div className="w-full h-px bg-outline-variant/30 my-6"></div>
 
-        <div className="space-y-4">
-          <h3 className="text-lg font-bold text-primary">Mensaje de WhatsApp (Catálogo)</h3>
-          <div className="space-y-1">
-            <label className="text-sm font-bold text-on-surface">Plantilla de Mensaje</label>
+        {/* Sección de Plantillas de WhatsApp */}
+        <div className="space-y-6">
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-bold text-primary flex items-center gap-2">
+              <span className="text-emerald-400 font-normal">💬</span> Mensajes Automáticos de WhatsApp
+            </h3>
+            <span className="text-xs bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 px-2.5 py-1 rounded-full font-medium">
+              Dinámico con Etiquetas
+            </span>
+          </div>
+
+          <p className="text-xs text-on-surface-variant leading-relaxed">
+            Personaliza el texto predeterminado con el que se abrirá WhatsApp en el teléfono del cliente al consultar una figura o al buscar un personaje que no está disponible en el catálogo.
+          </p>
+
+          {/* 1. Mensaje para Búsqueda / Pedido Personalizado */}
+          <div className="p-4 rounded-2xl bg-surface-container/60 border border-outline-variant/30 space-y-3">
+            <div className="flex items-center justify-between">
+              <label className="text-sm font-bold text-on-surface flex items-center gap-1.5">
+                <span>🔍</span> Mensaje cuando el cliente busca un término no encontrado
+              </label>
+              <button
+                type="button"
+                onClick={() => {
+                  setFormData(prev => ({
+                    ...prev,
+                    searchWhatsAppMessageTemplate: 'Hola IPPOLAV STUDIO, busqué "{busqueda}" en su catálogo pero no encontré lo que buscaba. ¿Tienen disponibilidad o la pueden realizar a pedido?'
+                  }));
+                }}
+                className="text-[11px] text-primary hover:underline font-semibold cursor-pointer"
+              >
+                Restaurar sugerido
+              </button>
+            </div>
+
+            <textarea 
+              name="searchWhatsAppMessageTemplate" 
+              value={formData.searchWhatsAppMessageTemplate || ''} 
+              onChange={handleChange} 
+              rows={3}
+              className="w-full p-3 bg-surface-container-high border border-outline-variant/40 rounded-xl text-sm font-sans focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all"
+              placeholder='Hola IPPOLAV STUDIO, busqué "{busqueda}" en su catálogo pero no encontré lo que buscaba. ¿Tienen disponibilidad o la pueden realizar a pedido?'
+            />
+
+            {/* Inserción rápida de etiqueta */}
+            <div className="flex flex-wrap items-center gap-2 pt-1">
+              <span className="text-xs text-outline font-medium">Etiqueta dinámica:</span>
+              <button
+                type="button"
+                onClick={() => {
+                  setFormData(prev => {
+                    const current = prev.searchWhatsAppMessageTemplate || '';
+                    return {
+                      ...prev,
+                      searchWhatsAppMessageTemplate: current.includes('{busqueda}') ? current : `${current} {busqueda}`.trim()
+                    };
+                  });
+                }}
+                className="px-2.5 py-1 rounded-lg bg-primary/15 hover:bg-primary/25 border border-primary/30 text-primary text-xs font-mono font-bold transition-all cursor-pointer flex items-center gap-1"
+                title="Haz clic para insertar {busqueda}"
+              >
+                + {'{busqueda}'}
+              </button>
+              <span className="text-[11px] text-outline italic">
+                (Se reemplazará automáticamente por la palabra exacta que el usuario escribió)
+              </span>
+            </div>
+
+            {/* Vista previa en tiempo real */}
+            <div className="mt-3 p-3 rounded-xl bg-surface-container-lowest/80 border border-outline-variant/20 space-y-1">
+              <div className="text-[10px] uppercase font-bold tracking-wider text-outline">
+                Vista previa del mensaje (ejemplo buscando "Magneto"):
+              </div>
+              <div className="text-xs text-on-surface bg-[#005c4b]/30 text-emerald-200 p-2.5 rounded-lg border border-emerald-500/20 font-sans">
+                {((formData.searchWhatsAppMessageTemplate || 'Hola IPPOLAV STUDIO, busqué "{busqueda}" en su catálogo pero no encontré lo que buscaba. ¿Tienen disponibilidad o la pueden realizar a pedido?')
+                  .replace(/\{busqueda\}/gi, 'Magneto')
+                  .replace(/\{query\}/gi, 'Magneto')
+                  .replace(/\{searchTerm\}/gi, 'Magneto')
+                  .replace(/\{texto\}/gi, 'Magneto'))}
+              </div>
+            </div>
+          </div>
+
+          {/* 2. Mensaje para Consulta de Figura Individual */}
+          <div className="p-4 rounded-2xl bg-surface-container/60 border border-outline-variant/30 space-y-3">
+            <div className="flex items-center justify-between">
+              <label className="text-sm font-bold text-on-surface flex items-center gap-1.5">
+                <span>🗿</span> Mensaje al consultar una figura del catálogo
+              </label>
+              <button
+                type="button"
+                onClick={() => {
+                  setFormData(prev => ({
+                    ...prev,
+                    whatsappMessageTemplate: 'Hola IPPOLAV STUDIO, me interesa encargar la figura {figura} ({codigo}). ¿Tienen disponibilidad?'
+                  }));
+                }}
+                className="text-[11px] text-primary hover:underline font-semibold cursor-pointer"
+              >
+                Restaurar sugerido
+              </button>
+            </div>
+
             <textarea 
               name="whatsappMessageTemplate" 
-              value={formData.whatsappMessageTemplate} 
+              value={formData.whatsappMessageTemplate || ''} 
               onChange={handleChange} 
-              rows={4}
-              className="w-full p-3 bg-surface-container border border-outline-variant/30 rounded-lg text-sm"
-              placeholder="Hola, me interesa la figura {figura}."
+              rows={3}
+              className="w-full p-3 bg-surface-container-high border border-outline-variant/40 rounded-xl text-sm font-sans focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all"
+              placeholder="Hola IPPOLAV STUDIO, me interesa encargar la figura {figura} ({codigo}). ¿Tienen disponibilidad?"
             />
-            <p className="text-xs text-outline mt-1">
-              Etiquetas disponibles: <strong className="text-primary">{'{figura}'}</strong> (nombre del producto) y <strong className="text-primary">{'{codigo}'}</strong> (identificador numérico).
-            </p>
+
+            {/* Inserción rápida de etiquetas */}
+            <div className="flex flex-wrap items-center gap-2 pt-1">
+              <span className="text-xs text-outline font-medium">Etiquetas dinámicas:</span>
+              <button
+                type="button"
+                onClick={() => {
+                  setFormData(prev => {
+                    const current = prev.whatsappMessageTemplate || '';
+                    return {
+                      ...prev,
+                      whatsappMessageTemplate: current.includes('{figura}') ? current : `${current} {figura}`.trim()
+                    };
+                  });
+                }}
+                className="px-2.5 py-1 rounded-lg bg-primary/15 hover:bg-primary/25 border border-primary/30 text-primary text-xs font-mono font-bold transition-all cursor-pointer"
+                title="Haz clic para insertar {figura}"
+              >
+                + {'{figura}'}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setFormData(prev => {
+                    const current = prev.whatsappMessageTemplate || '';
+                    return {
+                      ...prev,
+                      whatsappMessageTemplate: current.includes('{codigo}') ? current : `${current} {codigo}`.trim()
+                    };
+                  });
+                }}
+                className="px-2.5 py-1 rounded-lg bg-primary/15 hover:bg-primary/25 border border-primary/30 text-primary text-xs font-mono font-bold transition-all cursor-pointer"
+                title="Haz clic para insertar {codigo}"
+              >
+                + {'{codigo}'}
+              </button>
+            </div>
+
+            {/* Vista previa en tiempo real */}
+            <div className="mt-3 p-3 rounded-xl bg-surface-container-lowest/80 border border-outline-variant/20 space-y-1">
+              <div className="text-[10px] uppercase font-bold tracking-wider text-outline">
+                Vista previa del mensaje (ejemplo figura "Goku Super Saiyan 4"):
+              </div>
+              <div className="text-xs text-on-surface bg-[#005c4b]/30 text-emerald-200 p-2.5 rounded-lg border border-emerald-500/20 font-sans">
+                {((formData.whatsappMessageTemplate || 'Hola IPPOLAV STUDIO, me interesa la figura {figura} ({codigo}).')
+                  .replace(/\{figura\}/gi, 'Goku Super Saiyan 4')
+                  .replace(/\{codigo\}/gi, '#0142')
+                  .replace(/\{code\}/gi, '#0142'))}
+              </div>
+            </div>
           </div>
         </div>
 

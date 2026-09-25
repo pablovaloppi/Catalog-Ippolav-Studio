@@ -123,18 +123,65 @@ export function getOriginalCloudinaryUrl(url: string): string {
 }
 
 /**
- * Downloads an image file to the user's browser with the maximum possible fidelity.
+ * Returns a high resolution standard JPEG image URL (forces f_jpg,q_95)
+ * to ensure 100% native compatibility with Instagram Stories, WhatsApp, and mobile gallery pickers.
+ */
+export function getStandardJpegUrl(url: string): string {
+  if (!url || typeof url !== 'string') return '';
+  if (!url.includes('res.cloudinary.com') || !url.includes('/upload/')) {
+    return url;
+  }
+
+  const uploadIndex = url.indexOf('/upload/');
+  const prefix = url.substring(0, uploadIndex + 8); // includes '/upload/'
+  const rest = url.substring(uploadIndex + 8);
+
+  const parts = rest.split('/');
+  let startIndex = 0;
+
+  while (startIndex < parts.length - 1) {
+    const segment = parts[startIndex];
+    if (/^v\d+$/.test(segment)) {
+      break;
+    }
+    if (
+      segment.includes('f_') ||
+      segment.includes('q_') ||
+      segment.includes('w_') ||
+      segment.includes('h_') ||
+      segment.includes('c_') ||
+      segment.includes('dpr_')
+    ) {
+      startIndex++;
+    } else {
+      break;
+    }
+  }
+
+  const cleanPath = parts.slice(startIndex).join('/');
+  // Force clean JPEG format with high quality 95
+  return `${prefix}f_jpg,q_95/${cleanPath}`;
+}
+
+/**
+ * Downloads an image file to the user's browser with 100% genuine JPEG formatting.
  */
 export async function downloadImageAsFile(url: string, filename: string): Promise<boolean> {
-  const originalUrl = getOriginalCloudinaryUrl(url);
+  const jpegUrl = getStandardJpegUrl(url) || url;
   try {
-    const response = await fetch(originalUrl, { mode: 'cors' });
+    const response = await fetch(jpegUrl, { mode: 'cors' });
     if (!response.ok) throw new Error(`HTTP error ${response.status}`);
-    const blob = await response.blob();
-    const objectUrl = URL.createObjectURL(blob);
+    const originalBlob = await response.blob();
+    
+    // Ensure blob is typed as image/jpeg
+    const jpegBlob = originalBlob.type === 'image/jpeg' 
+      ? originalBlob 
+      : new Blob([originalBlob], { type: 'image/jpeg' });
+
+    const objectUrl = URL.createObjectURL(jpegBlob);
     const link = document.createElement('a');
     link.href = objectUrl;
-    link.download = filename;
+    link.download = filename.endsWith('.jpg') || filename.endsWith('.jpeg') ? filename : `${filename}.jpg`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -144,10 +191,10 @@ export async function downloadImageAsFile(url: string, filename: string): Promis
     console.warn("Direct blob download failed, falling back to direct anchor download:", err);
     try {
       const link = document.createElement('a');
-      link.href = originalUrl;
+      link.href = jpegUrl;
       link.target = '_blank';
       link.rel = 'noopener noreferrer';
-      link.download = filename;
+      link.download = filename.endsWith('.jpg') || filename.endsWith('.jpeg') ? filename : `${filename}.jpg`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -156,6 +203,39 @@ export async function downloadImageAsFile(url: string, filename: string): Promis
       console.error("Download fallback failed:", fallbackErr);
       return false;
     }
+  }
+}
+
+/**
+ * Shares an image using the native Web Share API (ideal for Instagram / WhatsApp on mobile)
+ */
+export async function shareImageFile(url: string, filename: string, title?: string): Promise<boolean> {
+  if (typeof navigator === 'undefined' || !navigator.share) return false;
+  
+  const jpegUrl = getStandardJpegUrl(url) || url;
+  try {
+    const response = await fetch(jpegUrl, { mode: 'cors' });
+    if (!response.ok) throw new Error(`HTTP error ${response.status}`);
+    const blob = await response.blob();
+    const finalBlob = blob.type === 'image/jpeg' ? blob : new Blob([blob], { type: 'image/jpeg' });
+    const safeName = filename.endsWith('.jpg') ? filename : `${filename}.jpg`;
+    const file = new File([finalBlob], safeName, { type: 'image/jpeg' });
+
+    if (navigator.canShare && !navigator.canShare({ files: [file] })) {
+      return false;
+    }
+
+    await navigator.share({
+      title: title || 'Figura IPPOLAV STUDIO',
+      text: title ? `¡Mira esta figura de IPPOLAV STUDIO! - ${title}` : 'IPPOLAV STUDIO',
+      files: [file],
+    });
+    return true;
+  } catch (err: any) {
+    if (err?.name !== 'AbortError') {
+      console.warn("Native share failed:", err);
+    }
+    return false;
   }
 }
 
