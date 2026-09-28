@@ -69,7 +69,7 @@ export function getOptimizedCloudinaryUrl(
 
 export function getCloudinarySrcSet(
   url: string,
-  widths: number[] = [480, 720, 960, 1200, 1600],
+  widths: number[] = [640, 720, 960, 1200, 1600],
   quality: 'good' | 'best' = 'good'
 ): string | undefined {
   if (!url || typeof url !== 'string' || !url.includes('res.cloudinary.com') || !url.includes('/upload/')) {

@@ -112,7 +112,7 @@ const CatalogCard = memo(function CatalogCard({
   const likesCount = product.likesCount || 0;
   // Generous 800px fallback and responsive breakpoints up to 1600px ensuring sharp 2x/3x Retina rendering
   const optimizedSrc = getOptimizedCloudinaryUrl(imageUrl, 800, 'good');
-  const srcSet = getCloudinarySrcSet(imageUrl, [480, 720, 960, 1200, 1600], 'good');
+  const srcSet = getCloudinarySrcSet(imageUrl, [640, 720, 960, 1200, 1600], 'good');
 
   return (
     <article
