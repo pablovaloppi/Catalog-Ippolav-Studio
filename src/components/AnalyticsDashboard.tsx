@@ -295,7 +295,9 @@ export function AnalyticsDashboard({ allFigures = [], onSelectFigure }: Analytic
     };
   }, [dailyData, recentEvents, allFigures]);
 
-  // Limpieza inteligente del Feed de Actividad: omitir eventos de tecleo intermedios (ej: 'd', 'da' antes de 'darth')
+  // Limpieza inteligente del Feed de Actividad:
+  // 1. Omitir eventos de tecleo intermedios (ej: 'd', 'da' antes de 'darth')
+  // 2. Omitir búsquedas repetidas idénticas realizadas en un período cercano o consecutivas
   const displayEvents = useMemo(() => {
     if (!recentEvents || recentEvents.length === 0) return [];
 
@@ -303,7 +305,7 @@ export function AnalyticsDashboard({ allFigures = [], onSelectFigure }: Analytic
       .filter(e => e.type === 'search' && e.searchTerm)
       .map(e => e.searchTerm!.trim().toLowerCase());
 
-    return recentEvents.filter((evt) => {
+    const filtered = recentEvents.filter((evt) => {
       if (evt.type !== 'search' || !evt.searchTerm) return true;
       const term = evt.searchTerm.trim().toLowerCase();
       if (term.length < 2) return false;
@@ -314,6 +316,43 @@ export function AnalyticsDashboard({ allFigures = [], onSelectFigure }: Analytic
       );
       return !isSubsumedByLonger;
     });
+
+    // Deduplicación temporal en el feed: si el mismo término de búsqueda aparece repetido consecutivamente o dentro de un intervalo corto, dejamos solo 1
+    const finalEvents: typeof recentEvents = [];
+    const getTime = (t: any): number => {
+      if (!t) return 0;
+      if (typeof t.toMillis === 'function') return t.toMillis();
+      if (t instanceof Date) return t.getTime();
+      if (typeof t.seconds === 'number') return t.seconds * 1000;
+      return 0;
+    };
+
+    filtered.forEach((evt) => {
+      if (evt.type === 'search' && evt.searchTerm) {
+        const term = evt.searchTerm.trim().toLowerCase();
+        const evtTime = getTime(evt.timestamp);
+
+        // Verificar si ya existe este mismo término registrado dentro de una ventana de 15 min en la lista
+        const isDuplicateInWindow = finalEvents.some((prev) => {
+          if (prev.type !== 'search' || !prev.searchTerm) return false;
+          if (prev.searchTerm.trim().toLowerCase() !== term) return false;
+          
+          const prevTime = getTime(prev.timestamp);
+          if (evtTime && prevTime) {
+            return Math.abs(evtTime - prevTime) < 15 * 60 * 1000;
+          }
+          return true;
+        });
+
+        if (!isDuplicateInWindow) {
+          finalEvents.push(evt);
+        }
+      } else {
+        finalEvents.push(evt);
+      }
+    });
+
+    return finalEvents;
   }, [recentEvents]);
 
   return (

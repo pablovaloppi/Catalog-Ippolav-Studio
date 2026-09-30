@@ -316,12 +316,46 @@ export async function trackWhatsAppClick(
 }
 
 /**
+ * Deduplication window in milliseconds for repeated identical searches by the same user.
+ * Avoids registering the same search query multiple times if searched in a short period (15 minutes).
+ */
+const SEARCH_COOLDOWN_MS = 15 * 60 * 1000;
+
+/**
  * Tracks what search terms visitors are querying in the search bar
  */
 export async function trackSearchQuery(term: string, bypassExclusion = false): Promise<void> {
   const cleaned = term.trim().toLowerCase();
   if (!cleaned || cleaned.length < 2) return;
   if (!bypassExclusion && isAnalyticsExcluded()) return;
+
+  // Evitar contar búsquedas idénticas repetidas por el mismo usuario en un período de tiempo
+  if (typeof window !== 'undefined' && !bypassExclusion) {
+    try {
+      const storageKey = 'ippolav_recent_searches';
+      const stored = sessionStorage.getItem(storageKey);
+      const recentSearches: Record<string, number> = stored ? JSON.parse(stored) : {};
+      const now = Date.now();
+      const lastSearchTime = recentSearches[cleaned];
+
+      if (lastSearchTime && (now - lastSearchTime) < SEARCH_COOLDOWN_MS) {
+        // Ya fue contabilizado recientemente en este período de tiempo (ej. 'star wars' hace menos de 15 min)
+        return;
+      }
+
+      // Guardar timestamp de la búsqueda actual
+      recentSearches[cleaned] = now;
+      // Limpiar entradas antiguas (más de 2 horas) para mantener el almacenamiento limpio
+      Object.keys(recentSearches).forEach((key) => {
+        if (now - recentSearches[key] > 2 * 60 * 60 * 1000) {
+          delete recentSearches[key];
+        }
+      });
+      sessionStorage.setItem(storageKey, JSON.stringify(recentSearches));
+    } catch {
+      // Continuar si sessionStorage no está disponible
+    }
+  }
 
   // Track in Meta Pixel & Firebase Analytics
   trackPixelSearch(cleaned, bypassExclusion);
