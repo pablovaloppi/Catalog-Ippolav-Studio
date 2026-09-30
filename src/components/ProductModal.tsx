@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, MessageCircle, HelpCircle, View, ChevronLeft, ChevronRight, Heart, ZoomIn, ZoomOut, RotateCcw, Share2, Check } from 'lucide-react';
+import { X, MessageCircle, HelpCircle, View, ChevronLeft, ChevronRight, Heart, ZoomIn, ZoomOut, RotateCcw, Share2, Check, Instagram } from 'lucide-react';
 import { Product, SiteConfig } from '../types';
 import { getOptimizedCloudinaryUrl, getCloudinarySrcSet } from '../cloudinaryUtils';
 import { shareFigure } from '../urlUtils';
-import { trackFigureView, trackWhatsAppClick } from '../services/analyticsService';
+import { trackFigureView, trackWhatsAppClick, trackInstagramClick } from '../services/analyticsService';
 
 interface ProductModalProps {
   product: Product | null;
@@ -276,6 +276,15 @@ export function ProductModal({
   
   const whatsappNumber = config?.whatsapp || "5491100000000";
   const whatsappUrl = `https://wa.me/${whatsappNumber}?text=${whatsappMessage}`;
+
+  const getInstagramUrl = () => {
+    const rawIg = config?.instagram?.trim();
+    if (!rawIg) return 'https://www.instagram.com/ippolav.studio';
+    if (rawIg.startsWith('http://') || rawIg.startsWith('https://')) return rawIg;
+    const cleanHandle = rawIg.replace(/^@/, '').replace(/^\/+/, '');
+    return `https://www.instagram.com/${cleanHandle}`;
+  };
+  const instagramUrl = getInstagramUrl();
   
   const currentImageUrl = product.imageUrls?.[currentImageIndex] || '';
 
@@ -648,7 +657,9 @@ export function ProductModal({
         )}
 
         <div className="space-y-2.5 pt-2">
-          {product.status === 'disponible' ? (
+          {/* Botones de Consulta en Redes Sociales */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            {/* Botón WhatsApp */}
             <a
               href={whatsappUrl}
               target="_blank"
@@ -656,25 +667,26 @@ export function ProductModal({
               onClick={() => {
                 if (product) trackWhatsAppClick(product);
               }}
-              className="w-full gold-shimmer text-on-primary-fixed text-sm font-bold py-3.5 px-4 rounded-lg flex items-center justify-center gap-2 shadow-lg tracking-wider uppercase hover:brightness-110 active:scale-95 transition-all"
+              className="w-full bg-[#25D366] hover:bg-[#20ba59] active:scale-[0.98] text-white text-xs sm:text-sm font-bold py-3.5 px-4 rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-[#25D366]/20 tracking-wide uppercase hover:brightness-105 transition-all cursor-pointer"
             >
-              <MessageCircle className="w-5 h-5" />
-              <span>Quiero esta figura</span>
+              <MessageCircle className="w-4.5 h-4.5 flex-shrink-0" />
+              <span>Consultar por WhatsApp</span>
             </a>
-          ) : (
+
+            {/* Botón Instagram */}
             <a
-              href={whatsappUrl}
+              href={instagramUrl}
               target="_blank"
               rel="noopener noreferrer"
               onClick={() => {
-                if (product) trackWhatsAppClick(product);
+                if (product) trackInstagramClick(product);
               }}
-              className="w-full gold-shimmer text-on-primary-fixed text-sm font-bold py-3.5 px-4 rounded-lg flex items-center justify-center gap-2 shadow-lg tracking-wider uppercase hover:brightness-110 active:scale-95 transition-all"
+              className="w-full bg-gradient-to-r from-[#833ab4] via-[#fd1d1d] to-[#fcb045] hover:opacity-95 active:scale-[0.98] text-white text-xs sm:text-sm font-bold py-3.5 px-4 rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-pink-500/20 tracking-wide uppercase hover:brightness-105 transition-all cursor-pointer"
             >
-              <HelpCircle className="w-5 h-5" />
-              <span>Consultar disponibilidad y tiempos</span>
+              <Instagram className="w-4.5 h-4.5 flex-shrink-0" />
+              <span>Consultar por Instagram</span>
             </a>
-          )}
+          </div>
 
           <button
             type="button"

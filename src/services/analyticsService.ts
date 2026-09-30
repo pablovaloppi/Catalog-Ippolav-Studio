@@ -81,7 +81,7 @@ export interface DailyAnalyticsData {
 
 export interface AnalyticsEventItem {
   id?: string;
-  type: 'visit' | 'figure_view' | 'whatsapp_click' | 'search' | 'category_click';
+  type: 'visit' | 'figure_view' | 'whatsapp_click' | 'instagram_click' | 'search' | 'category_click';
   source: TrafficSource;
   device: DeviceType;
   figureId?: string;
@@ -312,6 +312,58 @@ export async function trackWhatsAppClick(
     });
   } catch (err) {
     console.warn('Analytics WhatsApp click error:', err);
+  }
+}
+
+/**
+ * Tracks when a visitor clicks the Instagram inquiry/contact button for a figure
+ */
+export async function trackInstagramClick(
+  figure: { id: string; title: string; price?: number },
+  bypassExclusion = false
+): Promise<void> {
+  if (!figure || !figure.id) return;
+  if (!bypassExclusion && isAnalyticsExcluded()) return;
+
+  // Track in Meta Pixel & Firebase Analytics as conversion Lead
+  trackPixelContact(figure, bypassExclusion);
+  safeLogTrackingEvent('generate_lead', {
+    item_id: figure.id,
+    item_name: figure.title,
+    channel: 'instagram',
+  }, bypassExclusion);
+
+  try {
+    const source = detectTrafficSource();
+    const device = detectDeviceType();
+    const today = getTodayKey();
+
+    const dailyRef = doc(db, 'analytics_daily', today);
+    const cleanKey = String(figure.id).replace(/[^a-zA-Z0-9_-]/g, '_');
+
+    await setDoc(dailyRef, {
+      date: today,
+      whatsappTotalClicks: increment(1),
+      whatsappClicks: {
+        [cleanKey]: {
+          id: figure.id,
+          title: figure.title,
+          count: increment(1),
+        }
+      },
+      updatedAt: serverTimestamp(),
+    }, { merge: true });
+
+    await addDoc(collection(db, 'analytics_events'), {
+      type: 'instagram_click',
+      source,
+      device,
+      figureId: figure.id,
+      figureTitle: figure.title,
+      timestamp: serverTimestamp(),
+    });
+  } catch (err) {
+    console.warn('Analytics Instagram click error:', err);
   }
 }
 

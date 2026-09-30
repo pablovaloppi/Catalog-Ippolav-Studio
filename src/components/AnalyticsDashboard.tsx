@@ -922,6 +922,9 @@ export function AnalyticsDashboard({ allFigures = [], onSelectFigure }: Analytic
                   } else if (evt.type === 'whatsapp_click') {
                     icon = <MessageCircle className="w-3.5 h-3.5 text-emerald-400" />;
                     text = `Consultó por WhatsApp por "${evt.figureTitle || 'Figura'}"`;
+                  } else if (evt.type === 'instagram_click') {
+                    icon = <Instagram className="w-3.5 h-3.5 text-pink-400" />;
+                    text = `Consultó por Instagram por "${evt.figureTitle || 'Figura'}"`;
                   } else if (evt.type === 'search') {
                     icon = <Search className="w-3.5 h-3.5 text-amber-400" />;
                     text = `Buscó "${evt.searchTerm}"`;
