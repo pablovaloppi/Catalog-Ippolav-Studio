@@ -536,13 +536,10 @@ export function Storefront() {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  // Sincronización de la URL en la barra de direcciones (/b=termino) y telemetría de búsqueda
+  // Sincronización de la URL en la barra de direcciones (/b=termino)
   useEffect(() => {
     const trimmed = debouncedSearchQuery.trim();
     if (trimmed) {
-      if (trimmed.length >= 2) {
-        trackSearchQuery(trimmed);
-      }
       const newPath = `/b=${encodeURIComponent(trimmed)}`;
       if (window.location.pathname !== newPath && !window.location.pathname.startsWith('/admin')) {
         window.history.replaceState(null, '', newPath);
@@ -570,6 +567,23 @@ export function Storefront() {
       }
     }
   }, [debouncedSearchQuery]);
+
+  // Telemetría inteligente de métricas: solo registra cuando el usuario termina de escribir (pausa de 1.5s)
+  const lastTrackedQueryRef = useRef<string>(initialUrlQuery ? initialUrlQuery.trim().toLowerCase() : '');
+  useEffect(() => {
+    const trimmed = searchQuery.trim().toLowerCase();
+    if (!trimmed || trimmed.length < 2) return;
+    if (trimmed === lastTrackedQueryRef.current) return;
+
+    const timer = setTimeout(() => {
+      if (trimmed && trimmed.length >= 2 && trimmed !== lastTrackedQueryRef.current) {
+        lastTrackedQueryRef.current = trimmed;
+        trackSearchQuery(trimmed);
+      }
+    }, 1500);
+
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
 
   // Soporte para botones Atrás/Adelante del navegador
   useEffect(() => {
@@ -671,9 +685,6 @@ export function Storefront() {
 
         if (!isCancelled) {
           setSearchResults(matched);
-          if (debouncedSearchQuery.trim().length >= 2) {
-            trackSearchQuery(debouncedSearchQuery);
-          }
         }
       } catch (err) {
         console.error("Error buscando figuras en el catálogo:", err);

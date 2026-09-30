@@ -260,8 +260,20 @@ export function AnalyticsDashboard({ allFigures = [], onSelectFigure }: Analytic
     // Ranking de figuras más consultadas por WhatsApp
     const topWhatsAppFigures = Array.from(figureWhatsAppMap.values()).sort((a, b) => b.count - a.count);
 
-    // Ranking de términos más buscados
-    const topSearches = Array.from(searchTermsMap.values()).sort((a, b) => b.count - a.count);
+    // Ranking de términos más buscados (depurando fragmentos de tipeo como 'd', 'da', 'dar' cuando existe 'darth')
+    const rawSearchList = Array.from(searchTermsMap.values()).filter(s => s.term && s.term.trim().length >= 2);
+    const allDistinctTerms = rawSearchList.map(s => s.term.trim().toLowerCase());
+
+    const topSearches = rawSearchList
+      .filter((item) => {
+        const term = item.term.trim().toLowerCase();
+        // Si hay un término más largo que comienza con este prefijo, omitir el prefijo incompleto
+        const isPrefixOfLonger = allDistinctTerms.some(
+          (other) => other !== term && other.startsWith(term) && other.length > term.length
+        );
+        return !isPrefixOfLonger;
+      })
+      .sort((a, b) => b.count - a.count);
 
     const instagramPercentage = totalViews > 0 ? Math.round((instagramViews / totalViews) * 100) : 0;
     const conversionRate = totalViews > 0 ? ((totalWhatsAppClicks / totalViews) * 100).toFixed(1) : '0.0';
@@ -282,6 +294,27 @@ export function AnalyticsDashboard({ allFigures = [], onSelectFigure }: Analytic
       conversionRate
     };
   }, [dailyData, recentEvents, allFigures]);
+
+  // Limpieza inteligente del Feed de Actividad: omitir eventos de tecleo intermedios (ej: 'd', 'da' antes de 'darth')
+  const displayEvents = useMemo(() => {
+    if (!recentEvents || recentEvents.length === 0) return [];
+
+    const searchTermsInRecent = recentEvents
+      .filter(e => e.type === 'search' && e.searchTerm)
+      .map(e => e.searchTerm!.trim().toLowerCase());
+
+    return recentEvents.filter((evt) => {
+      if (evt.type !== 'search' || !evt.searchTerm) return true;
+      const term = evt.searchTerm.trim().toLowerCase();
+      if (term.length < 2) return false;
+
+      // Si existe un término más completo en el feed que contiene/extiende este prefijo, omitir el parcial
+      const isSubsumedByLonger = searchTermsInRecent.some(
+        other => other !== term && other.startsWith(term) && other.length > term.length
+      );
+      return !isSubsumedByLonger;
+    });
+  }, [recentEvents]);
 
   return (
     <div className="space-y-8 animate-fadeIn">
@@ -834,13 +867,13 @@ export function AnalyticsDashboard({ allFigures = [], onSelectFigure }: Analytic
               </span>
             </div>
 
-            {recentEvents.length === 0 ? (
+            {displayEvents.length === 0 ? (
               <div className="py-8 text-center text-xs text-on-surface-variant">
                 Las interacciones recientes aparecerán aquí a medida que los usuarios visiten tu tienda.
               </div>
             ) : (
               <div className="divide-y divide-outline-variant/20 max-h-80 overflow-y-auto pr-1">
-                {recentEvents.map((evt) => {
+                {displayEvents.map((evt) => {
                   let icon = <Users className="w-3.5 h-3.5 text-primary" />;
                   let text = "Nueva visita a la tienda";
 
