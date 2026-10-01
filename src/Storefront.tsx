@@ -463,11 +463,17 @@ export function Storefront() {
     const searchQueryLower = searchQuery.toLowerCase();
     const hasSearchQuery = searchQuery.trim() !== '';
     return products.filter((product) => {
+      const kws = product.searchKeywords || product.keywords;
+      const kwMatch = Array.isArray(kws)
+        ? kws.some((k) => typeof k === 'string' && k.toLowerCase().includes(searchQueryLower))
+        : typeof kws === 'string' && (kws as string).toLowerCase().includes(searchQueryLower);
+
       const matchesSearch =
         !hasSearchQuery ||
         product.title.toLowerCase().includes(searchQueryLower) ||
         (product.numericId && product.numericId.toLowerCase().includes(searchQueryLower)) ||
-        (categorySearchMap.get(product.franchiseId) || '').includes(searchQueryLower);
+        (categorySearchMap.get(product.franchiseId) || '').includes(searchQueryLower) ||
+        kwMatch;
         
       const matchesStatus = statusFilter === 'all' || product.status === statusFilter;
       
@@ -639,10 +645,16 @@ export function Storefront() {
 
         const matched = (allFigures || []).filter((product) => {
           const catNames = categorySearchMap.get(product.franchiseId) || '';
+          const kws = product.searchKeywords || product.keywords;
+          const kwMatch = Array.isArray(kws)
+            ? kws.some((k) => typeof k === 'string' && k.toLowerCase().includes(trimmed))
+            : typeof kws === 'string' && (kws as string).toLowerCase().includes(trimmed);
+
           const matchesSearch =
             product.title.toLowerCase().includes(trimmed) ||
             (product.numericId && product.numericId.toLowerCase().includes(trimmed)) ||
-            catNames.includes(trimmed);
+            catNames.includes(trimmed) ||
+            kwMatch;
 
           const matchesStatus = statusFilter === 'all' || product.status === statusFilter;
           const matchesFranchise = !allowedFranchiseIds || allowedFranchiseIds.has(product.franchiseId);

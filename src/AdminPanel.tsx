@@ -366,10 +366,15 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
 
       // 3. Filtrado por búsqueda en tiempo real
       if (trimmedSearch) {
-        matched = matched.filter(fig => 
-          (fig.title && fig.title.toLowerCase().includes(trimmedSearch)) ||
-          (fig.numericId && fig.numericId.toLowerCase().includes(trimmedSearch))
-        );
+        matched = matched.filter(fig => {
+          const titleMatch = Boolean(fig.title && fig.title.toLowerCase().includes(trimmedSearch));
+          const idMatch = Boolean(fig.numericId && fig.numericId.toLowerCase().includes(trimmedSearch));
+          const kws = fig.searchKeywords || fig.keywords;
+          const kwMatch = Array.isArray(kws)
+            ? kws.some(k => typeof k === 'string' && k.toLowerCase().includes(trimmedSearch))
+            : typeof kws === 'string' && (kws as string).toLowerCase().includes(trimmedSearch);
+          return titleMatch || idMatch || kwMatch;
+        });
       }
 
       // 4. Ordenamiento consistente
@@ -1798,6 +1803,13 @@ function FigureForm({ figure, categories, designers, onBack, orderCount, config 
     badge: '',
     whatsappMessage: ''
   });
+  const [keywordsInput, setKeywordsInput] = useState<string>(() => {
+    if (!figure) return '';
+    const kws = figure.searchKeywords || figure.keywords;
+    if (Array.isArray(kws)) return kws.join(', ');
+    if (typeof kws === 'string') return kws;
+    return '';
+  });
   const [loading, setLoading] = useState(false);
 
   // Pre-calcular de forma asíncrona el identificador correlativo en segundo plano mientras el usuario llena el formulario
@@ -2028,6 +2040,11 @@ function FigureForm({ figure, categories, designers, onBack, orderCount, config 
         finalNumericId = await getNextFigureNumericId();
       }
 
+      const parsedKeywords = keywordsInput
+        .split(',')
+        .map(k => k.trim())
+        .filter(k => k.length > 0);
+
       const payload = {
         numericId: finalNumericId,
         title: formData.title || '',
@@ -2041,6 +2058,8 @@ function FigureForm({ figure, categories, designers, onBack, orderCount, config 
         description: formData.description || '',
         badge: formData.badge || '',
         whatsappMessage: formData.whatsappMessage || '',
+        searchKeywords: parsedKeywords,
+        keywords: parsedKeywords,
       };
 
       if (figure?.id) {
@@ -2195,6 +2214,26 @@ function FigureForm({ figure, categories, designers, onBack, orderCount, config 
             </label>
             <textarea name="description" value={formData.description} onChange={handleChange} rows={2} className="w-full bg-surface-container border border-outline-variant/40 rounded p-2 text-sm focus:border-primary outline-none" />
           </div>
+          <div className="space-y-1.5 md:col-span-2 pt-4 border-t border-outline-variant/20">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold text-primary uppercase">
+                Palabras clave de búsqueda (Sinónimos / Tags alternativos)
+              </label>
+              <span className="text-[10px] text-outline font-medium">Separadas por coma</span>
+            </div>
+            <input
+              type="text"
+              name="searchKeywords"
+              value={keywordsInput}
+              onChange={(e) => setKeywordsInput(e.target.value)}
+              placeholder="Ej: peter parker, hombre araña, spidey, marvel, vengadores"
+              className="w-full bg-surface-container border border-outline-variant/40 rounded p-2.5 text-sm focus:border-primary outline-none font-medium placeholder:text-outline/40"
+            />
+            <p className="text-[11px] text-on-surface-variant leading-relaxed">
+              Escribe nombres alternativos, sinónimos o apodos separados por coma. Los usuarios encontrarán esta figura cuando busquen cualquiera de estos términos en la tienda.
+            </p>
+          </div>
+
           <div className="space-y-1 md:col-span-2 pt-4 border-t border-outline-variant/20">
             <label className="text-xs font-bold text-on-surface-variant uppercase">Mensaje WhatsApp Pre-Cargado (Opcional)</label>
             <textarea name="whatsappMessage" value={formData.whatsappMessage} onChange={handleChange} rows={3} className="w-full bg-surface-container border border-outline-variant/40 rounded p-2 text-sm focus:border-primary outline-none" />

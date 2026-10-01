@@ -12,6 +12,8 @@ export interface Product {
   description?: string;
   badge?: string;
   whatsappMessage?: string;
+  searchKeywords?: string[];
+  keywords?: string[];
   order?: number;
   likesCount?: number;
   selectedInRandomDraw?: boolean;
