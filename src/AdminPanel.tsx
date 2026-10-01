@@ -23,7 +23,7 @@ import {
 } from 'firebase/firestore';
 import { Product, Category, Designer, SiteConfig } from './types';
 import { products as initialProducts } from './data';
-import { Plus, ChevronUp, ChevronDown, Trash2, Edit2, LogOut, ImagePlus, UserCircle, Settings, Hash, Sparkles, Eye, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Heart, CornerDownRight, FolderTree, Dices, TrendingUp } from 'lucide-react';
+import { Plus, ChevronUp, ChevronDown, Trash2, Edit2, LogOut, ImagePlus, UserCircle, Settings, Hash, Sparkles, Eye, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Heart, CornerDownRight, FolderTree, Dices, TrendingUp, Search } from 'lucide-react';
 import { ProductModal } from './components/ProductModal';
 import { 
   getCategoryAncestors, 
@@ -1675,41 +1675,11 @@ function CategoryForm({
   );
 }
 
-// Función optimizada para calcular el siguiente identificador numérico sin descargar toda la base de datos
+// Función confiable y precisa para calcular el siguiente identificador numérico correlativo (ej: #046 -> #047)
 export async function getNextFigureNumericId(): Promise<string> {
   try {
-    let candidates: Product[] = [];
-
-    // 1. Obtener las figuras más recientes por 'order' desc (solo un lote pequeño de 15 documentos)
-    try {
-      const qOrder = query(collection(db, 'figures'), orderBy('order', 'desc'), limit(15));
-      const snapOrder = await getDocs(qOrder);
-      snapOrder.forEach(d => candidates.push({ id: d.id, ...d.data() } as Product));
-    } catch (e) {
-      console.warn("Consulta por 'order' desc no disponible, intentando alternativa:", e);
-    }
-
-    // 2. Obtener los identificadores alfanuméricos más altos (solo 10 documentos)
-    try {
-      const qId = query(collection(db, 'figures'), orderBy('numericId', 'desc'), limit(10));
-      const snapId = await getDocs(qId);
-      snapId.forEach(d => {
-        if (!candidates.some(c => c.id === d.id)) {
-          candidates.push({ id: d.id, ...d.data() } as Product);
-        }
-      });
-    } catch (e) {
-      console.warn("Consulta por 'numericId' desc no disponible:", e);
-    }
-
-    // 3. Estrategia de reserva ligera en caso de que falten índices: solo 20 documentos
-    if (candidates.length === 0) {
-      const fallbackQ = query(collection(db, 'figures'), limit(20));
-      const snapFallback = await getDocs(fallbackQ);
-      snapFallback.forEach(d => candidates.push({ id: d.id, ...d.data() } as Product));
-    }
-
-    if (candidates.length === 0) {
+    const snap = await getDocs(collection(db, 'figures'));
+    if (snap.empty) {
       return '#001';
     }
 
@@ -1717,9 +1687,11 @@ export async function getNextFigureNumericId(): Promise<string> {
     let detectedDigits = 3;
     let maxNumber = 0;
 
-    candidates.forEach(fig => {
-      if (fig.numericId) {
-        const parsed = parseNumericId(fig.numericId);
+    snap.forEach((d) => {
+      const data = d.data();
+      const numId = data?.numericId;
+      if (numId && typeof numId === 'string') {
+        const parsed = parseNumericId(numId);
         if (parsed) {
           if (parsed.num > maxNumber) {
             maxNumber = parsed.num;
@@ -1734,34 +1706,7 @@ export async function getNextFigureNumericId(): Promise<string> {
       }
     });
 
-    // Ordenar figuras candidatas por fecha o orden de creación (más reciente primero)
-    const sortedByCreation = [...candidates].sort((a, b) => {
-      const timeA = (a.createdAt as any)?.toMillis ? (a.createdAt as any).toMillis() : ((a.createdAt as any)?.seconds ? (a.createdAt as any).seconds * 1000 : 0);
-      const timeB = (b.createdAt as any)?.toMillis ? (b.createdAt as any).toMillis() : ((b.createdAt as any)?.seconds ? (b.createdAt as any).seconds * 1000 : 0);
-      if (timeA !== timeB) return timeB - timeA;
-      return (b.order ?? 0) - (a.order ?? 0);
-    });
-
-    // Encontrar la última figura creada con identificador
-    const lastCreatedFig = sortedByCreation.find(f => {
-      if (!f.numericId) return false;
-      return parseNumericId(f.numericId) !== null;
-    });
-
-    let nextNum = 1;
-    if (lastCreatedFig && lastCreatedFig.numericId) {
-      const parsedLast = parseNumericId(lastCreatedFig.numericId);
-      if (parsedLast) {
-        detectedPrefix = parsedLast.prefix || detectedPrefix;
-        detectedDigits = Math.max(detectedDigits, parsedLast.digits);
-        nextNum = Math.max(parsedLast.num + 1, maxNumber + 1);
-      } else {
-        nextNum = maxNumber + 1;
-      }
-    } else if (maxNumber > 0) {
-      nextNum = maxNumber + 1;
-    }
-
+    const nextNum = maxNumber + 1;
     const padded = String(nextNum).padStart(Math.max(3, detectedDigits), '0');
     return `${detectedPrefix}${padded}`;
   } catch (err) {
@@ -2214,12 +2159,13 @@ function FigureForm({ figure, categories, designers, onBack, orderCount, config 
             </label>
             <textarea name="description" value={formData.description} onChange={handleChange} rows={2} className="w-full bg-surface-container border border-outline-variant/40 rounded p-2 text-sm focus:border-primary outline-none" />
           </div>
-          <div className="space-y-1.5 md:col-span-2 pt-4 border-t border-outline-variant/20">
+          <div className="space-y-2 md:col-span-2 pt-4 border-t border-outline-variant/20 bg-surface-container/30 p-3 rounded-lg border border-primary/20">
             <div className="flex items-center justify-between">
-              <label className="text-xs font-bold text-primary uppercase">
+              <label className="text-xs font-bold text-primary uppercase flex items-center gap-1.5">
+                <Search className="w-3.5 h-3.5" />
                 Palabras clave de búsqueda (Sinónimos / Tags alternativos)
               </label>
-              <span className="text-[10px] text-outline font-medium">Separadas por coma</span>
+              <span className="text-[10px] text-primary/80 font-medium">Separar por comas</span>
             </div>
             <input
               type="text"
@@ -2229,6 +2175,15 @@ function FigureForm({ figure, categories, designers, onBack, orderCount, config 
               placeholder="Ej: peter parker, hombre araña, spidey, marvel, vengadores"
               className="w-full bg-surface-container border border-outline-variant/40 rounded p-2.5 text-sm focus:border-primary outline-none font-medium placeholder:text-outline/40"
             />
+            {keywordsInput.split(',').map(k => k.trim()).filter(Boolean).length > 0 && (
+              <div className="flex flex-wrap gap-1.5 pt-1">
+                {keywordsInput.split(',').map(k => k.trim()).filter(Boolean).map((kw, idx) => (
+                  <span key={idx} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-primary/10 text-primary border border-primary/30">
+                    #{kw}
+                  </span>
+                ))}
+              </div>
+            )}
             <p className="text-[11px] text-on-surface-variant leading-relaxed">
               Escribe nombres alternativos, sinónimos o apodos separados por coma. Los usuarios encontrarán esta figura cuando busquen cualquiera de estos términos en la tienda.
             </p>

@@ -460,29 +460,33 @@ export function Storefront() {
   }, [categories]);
 
   const filteredProducts = useMemo(() => {
-    const searchQueryLower = searchQuery.toLowerCase();
-    const hasSearchQuery = searchQuery.trim() !== '';
-    return products.filter((product) => {
-      const kws = product.searchKeywords || product.keywords;
-      const kwMatch = Array.isArray(kws)
-        ? kws.some((k) => typeof k === 'string' && k.toLowerCase().includes(searchQueryLower))
-        : typeof kws === 'string' && (kws as string).toLowerCase().includes(searchQueryLower);
+    const normalize = (str: string) => str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+    const queryNorm = normalize(searchQuery.trim());
+    const hasSearchQuery = queryNorm.length > 0;
 
-      const matchesSearch =
-        !hasSearchQuery ||
-        product.title.toLowerCase().includes(searchQueryLower) ||
-        (product.numericId && product.numericId.toLowerCase().includes(searchQueryLower)) ||
-        (categorySearchMap.get(product.franchiseId) || '').includes(searchQueryLower) ||
-        kwMatch;
+    return products.filter((product) => {
+      if (hasSearchQuery) {
+        const kws = product.searchKeywords || product.keywords;
+        const kwMatch = Array.isArray(kws)
+          ? kws.some((k) => typeof k === 'string' && normalize(k).includes(queryNorm))
+          : typeof kws === 'string' && normalize(kws as string).includes(queryNorm);
+
+        const titleMatch = normalize(product.title || '').includes(queryNorm);
+        const idMatch = product.numericId ? normalize(product.numericId).includes(queryNorm) : false;
+        const catMatch = normalize(categorySearchMap.get(product.franchiseId) || '').includes(queryNorm);
+        const descMatch = product.description ? normalize(product.description).includes(queryNorm) : false;
+
+        if (!titleMatch && !idMatch && !catMatch && !descMatch && !kwMatch) {
+          return false;
+        }
+      }
         
       const matchesStatus = statusFilter === 'all' || product.status === statusFilter;
-      
       const matchesFranchise = !allowedFranchiseIds || allowedFranchiseIds.has(product.franchiseId);
-
       const matchesFinish = finishFilter === 'all' || product.finish === finishFilter;
       const matchesScale = scaleFilter === 'all' || (Array.isArray(product.scale) && product.scale.includes(scaleFilter));
 
-      return matchesSearch && matchesStatus && matchesFranchise && matchesFinish && matchesScale;
+      return matchesStatus && matchesFranchise && matchesFinish && matchesScale;
     });
   }, [searchQuery, statusFilter, allowedFranchiseIds, finishFilter, scaleFilter, products, categorySearchMap]);
 
