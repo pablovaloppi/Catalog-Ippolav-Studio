@@ -31,7 +31,7 @@ export function ProductModal({
   const [currentImageIndex, setCurrentImageIndex] = useState(initialImageIndex);
   const [isFullScreen, setIsFullScreen] = useState(initialFullScreen);
   const [shareStatus, setShareStatus] = useState<'idle' | 'copied' | 'shared'>('idle');
-  const [instagramCopied, setInstagramCopied] = useState(false);
+  const [instagramCountdown, setInstagramCountdown] = useState<number | null>(null);
   const startFullScreenRef = useRef(initialFullScreen);
   
   // Seguimiento de telemetría de visualización de figura
@@ -300,13 +300,29 @@ export function ProductModal({
     try {
       if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(baseMessage);
-        setInstagramCopied(true);
-        setTimeout(() => setInstagramCopied(false), 3500);
       }
     } catch {
       // Fallback
     }
+    setInstagramCountdown(5);
   };
+
+  // Temporizador de 5 segundos para redirigir a Instagram
+  useEffect(() => {
+    if (instagramCountdown === null) return;
+
+    if (instagramCountdown > 0) {
+      const timer = setTimeout(() => {
+        setInstagramCountdown(prev => (prev !== null && prev > 1 ? prev - 1 : 0));
+      }, 1000);
+      return () => clearTimeout(timer);
+    }
+
+    if (instagramCountdown === 0) {
+      window.open(instagramUrl, '_blank', 'noopener,noreferrer');
+      setInstagramCountdown(null);
+    }
+  }, [instagramCountdown, instagramUrl]);
   
   const currentImageUrl = product.imageUrls?.[currentImageIndex] || '';
 
@@ -696,24 +712,15 @@ export function ProductModal({
             </a>
 
             {/* Botón Instagram */}
-            <a
-              href={instagramUrl}
-              target="_blank"
-              rel="noopener noreferrer"
+            <button
+              type="button"
               onClick={handleInstagramClick}
               className="w-full bg-gradient-to-r from-[#833ab4] via-[#fd1d1d] to-[#fcb045] hover:opacity-95 active:scale-[0.98] text-white text-xs sm:text-sm font-bold py-3.5 px-4 rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-pink-500/20 tracking-wide uppercase hover:brightness-105 transition-all cursor-pointer"
             >
               <Instagram className="w-4.5 h-4.5 flex-shrink-0" />
               <span>Consultar por Instagram</span>
-            </a>
+            </button>
           </div>
-
-          {instagramCopied && (
-            <div className="flex items-center gap-2 p-2.5 rounded-lg bg-pink-950/70 border border-pink-500/40 text-pink-200 text-xs animate-in fade-in slide-in-from-top-1">
-              <Check className="w-4 h-4 text-pink-400 shrink-0" />
-              <span>¡Mensaje copiado! Se abrió Instagram Direct con el texto listo para enviar.</span>
-            </div>
-          )}
 
           <button
             type="button"
@@ -738,6 +745,81 @@ export function ProductModal({
           </button>
         </div>
       </div>
+
+      {/* Modal / Diálogo de cuenta regresiva de 5 segundos para Instagram */}
+      {instagramCountdown !== null && (
+        <div 
+          className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200"
+          onClick={() => setInstagramCountdown(null)}
+        >
+          <div 
+            className="bg-surface-container border border-pink-500/40 rounded-2xl p-6 max-w-sm w-full shadow-2xl space-y-4 text-center relative overflow-hidden animate-in zoom-in-95 duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Gradient top bar */}
+            <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-[#833ab4] via-[#fd1d1d] to-[#fcb045]" />
+            
+            <div className="w-14 h-14 mx-auto rounded-full bg-gradient-to-tr from-[#833ab4] via-[#fd1d1d] to-[#fcb045] flex items-center justify-center text-white shadow-lg shadow-pink-500/30">
+              <Check className="w-7 h-7 stroke-[3]" />
+            </div>
+
+            <div className="space-y-1.5">
+              <h3 className="text-base font-bold text-on-surface">
+                El mensaje se copió
+              </h3>
+              <p className="text-xs font-semibold text-pink-300">
+                Pegalo en el mensaje de Instagram
+              </p>
+            </div>
+
+            {/* Vista previa del mensaje */}
+            <div className="p-3 bg-surface-container-lowest rounded-xl border border-outline-variant/30 text-left text-xs text-on-surface-variant font-mono leading-relaxed max-h-24 overflow-y-auto">
+              "{baseMessage}"
+            </div>
+
+            {/* Contador de 5 segundos */}
+            <div className="space-y-2 pt-1">
+              <div className="flex items-center justify-between text-xs font-semibold text-outline">
+                <span className="flex items-center gap-1.5 text-on-surface text-[11px]">
+                  <Instagram className="w-3.5 h-3.5 text-pink-400 animate-pulse" />
+                  Redirigiendo a Instagram...
+                </span>
+                <span className="font-mono text-pink-400 font-bold text-sm">
+                  {instagramCountdown}s
+                </span>
+              </div>
+              <div className="w-full bg-surface-container-high h-2 rounded-full overflow-hidden">
+                <div 
+                  className="h-full bg-gradient-to-r from-[#833ab4] via-[#fd1d1d] to-[#fcb045] transition-all duration-1000 ease-linear rounded-full"
+                  style={{ width: `${Math.max(5, ((5 - (instagramCountdown || 0)) / 5) * 100)}%` }}
+                />
+              </div>
+            </div>
+
+            {/* Botones de acción rápida */}
+            <div className="flex gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  window.open(instagramUrl, '_blank', 'noopener,noreferrer');
+                  setInstagramCountdown(null);
+                }}
+                className="flex-1 bg-gradient-to-r from-[#833ab4] via-[#fd1d1d] to-[#fcb045] hover:opacity-95 text-white text-xs font-bold py-3 px-3 rounded-xl flex items-center justify-center gap-1.5 shadow-md shadow-pink-500/20 active:scale-95 transition-all cursor-pointer"
+              >
+                <span>Ir a Instagram ya</span>
+                <Instagram className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setInstagramCountdown(null)}
+                className="px-3 py-3 rounded-xl border border-outline-variant/40 bg-surface-container-low hover:bg-surface-container-high text-xs font-semibold text-on-surface-variant hover:text-on-surface transition-all cursor-pointer"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Full screen image overlay con Zoom por Pinch/Doble-Toque y Desplazamiento (Pan) */}
       {isFullScreen && (
