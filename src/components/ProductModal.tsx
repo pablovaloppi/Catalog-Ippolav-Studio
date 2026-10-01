@@ -31,6 +31,7 @@ export function ProductModal({
   const [currentImageIndex, setCurrentImageIndex] = useState(initialImageIndex);
   const [isFullScreen, setIsFullScreen] = useState(initialFullScreen);
   const [shareStatus, setShareStatus] = useState<'idle' | 'copied' | 'shared'>('idle');
+  const [instagramCopied, setInstagramCopied] = useState(false);
   const startFullScreenRef = useRef(initialFullScreen);
   
   // Seguimiento de telemetría de visualización de figura
@@ -278,13 +279,34 @@ export function ProductModal({
   const whatsappUrl = `https://wa.me/${whatsappNumber}?text=${whatsappMessage}`;
 
   const getInstagramUrl = () => {
-    const rawIg = config?.instagram?.trim();
-    if (!rawIg) return 'https://www.instagram.com/ippolav.studio';
-    if (rawIg.startsWith('http://') || rawIg.startsWith('https://')) return rawIg;
-    const cleanHandle = rawIg.replace(/^@/, '').replace(/^\/+/, '');
-    return `https://www.instagram.com/${cleanHandle}`;
+    const rawIg = config?.instagram?.trim() || 'ippolav.studio';
+    const cleanHandle = rawIg
+      .replace(/^https?:\/\//i, '')
+      .replace(/^(www\.)?instagram\.com\//i, '')
+      .replace(/^direct\/t\//i, '')
+      .replace(/^m\//i, '')
+      .replace(/^@/, '')
+      .replace(/\/.*$/, '')
+      .trim() || 'ippolav.studio';
+    
+    return `https://ig.me/m/${cleanHandle}?text=${whatsappMessage}`;
   };
   const instagramUrl = getInstagramUrl();
+
+  const handleInstagramClick = async () => {
+    if (product) {
+      trackInstagramClick(product);
+    }
+    try {
+      if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(baseMessage);
+        setInstagramCopied(true);
+        setTimeout(() => setInstagramCopied(false), 3500);
+      }
+    } catch {
+      // Fallback
+    }
+  };
   
   const currentImageUrl = product.imageUrls?.[currentImageIndex] || '';
 
@@ -678,15 +700,20 @@ export function ProductModal({
               href={instagramUrl}
               target="_blank"
               rel="noopener noreferrer"
-              onClick={() => {
-                if (product) trackInstagramClick(product);
-              }}
+              onClick={handleInstagramClick}
               className="w-full bg-gradient-to-r from-[#833ab4] via-[#fd1d1d] to-[#fcb045] hover:opacity-95 active:scale-[0.98] text-white text-xs sm:text-sm font-bold py-3.5 px-4 rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-pink-500/20 tracking-wide uppercase hover:brightness-105 transition-all cursor-pointer"
             >
               <Instagram className="w-4.5 h-4.5 flex-shrink-0" />
               <span>Consultar por Instagram</span>
             </a>
           </div>
+
+          {instagramCopied && (
+            <div className="flex items-center gap-2 p-2.5 rounded-lg bg-pink-950/70 border border-pink-500/40 text-pink-200 text-xs animate-in fade-in slide-in-from-top-1">
+              <Check className="w-4 h-4 text-pink-400 shrink-0" />
+              <span>¡Mensaje copiado! Se abrió Instagram Direct con el texto listo para enviar.</span>
+            </div>
+          )}
 
           <button
             type="button"
