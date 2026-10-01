@@ -54,6 +54,63 @@ export function AnalyticsDashboard({ allFigures = [], onSelectFigure }: Analytic
     return isAnalyticsExcluded();
   });
 
+  // Mapa para resolver el número identificador (#001, etc.) de las figuras
+  const [figuresLookup, setFiguresLookup] = useState<Map<string, { title: string; numericId: string }>>(() => {
+    const map = new Map<string, { title: string; numericId: string }>();
+    allFigures.forEach((f) => {
+      if (f.id) {
+        map.set(f.id, { title: f.title, numericId: f.numericId || '' });
+      }
+    });
+    return map;
+  });
+
+  useEffect(() => {
+    if (allFigures.length > 0) {
+      setFiguresLookup((prev) => {
+        const next = new Map(prev);
+        allFigures.forEach((f) => {
+          if (f.id) {
+            next.set(f.id, { title: f.title, numericId: f.numericId || '' });
+          }
+        });
+        return next;
+      });
+    }
+  }, [allFigures]);
+
+  // Cargar figuras de Firestore si faltan en el lookup map
+  useEffect(() => {
+    let isMounted = true;
+    async function loadMissingFigures() {
+      try {
+        const missingIds = recentEvents
+          .map(e => e.figureId)
+          .filter((id): id is string => Boolean(id && !figuresLookup.has(id)));
+
+        if (missingIds.length > 0 || figuresLookup.size === 0) {
+          const { getDocs, collection } = await import('firebase/firestore');
+          const { db } = await import('../firebase');
+          const snap = await getDocs(collection(db, 'figures'));
+          if (isMounted && !snap.empty) {
+            setFiguresLookup((prev) => {
+              const next = new Map(prev);
+              snap.forEach((d) => {
+                const data = d.data();
+                next.set(d.id, { title: data.title || '', numericId: data.numericId || '' });
+              });
+              return next;
+            });
+          }
+        }
+      } catch (e) {
+        console.warn('Error loading figures lookup for analytics:', e);
+      }
+    }
+    loadMissingFigures();
+    return () => { isMounted = false; };
+  }, [recentEvents, figuresLookup.size]);
+
   const toggleExclusion = (newVal: boolean) => {
     setAnalyticsExclusion(newVal);
     setIsExcluded(newVal);
@@ -867,6 +924,8 @@ export function AnalyticsDashboard({ allFigures = [], onSelectFigure }: Analytic
                 <div className="space-y-2.5 max-h-72 overflow-y-auto pr-1">
                   {aggregated.topViewedFigures.slice(0, 7).map((fig, idx) => {
                     const matchedFigure = allFigures.find(f => f.id === fig.id);
+                    const numId = matchedFigure?.numericId || figuresLookup.get(fig.id)?.numericId || '';
+                    const formattedNumId = numId ? (numId.startsWith('#') ? numId : `#${numId}`) : '';
                     const maxCount = aggregated.topViewedFigures[0]?.count || 1;
                     const percent = Math.round((fig.count / maxCount) * 100);
 
@@ -891,7 +950,14 @@ export function AnalyticsDashboard({ allFigures = [], onSelectFigure }: Analytic
                             </div>
                           )}
                           <div className="min-w-0 flex-1">
-                            <h4 className="text-xs font-semibold text-on-surface truncate">{fig.title}</h4>
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <h4 className="text-xs font-semibold text-on-surface truncate">{fig.title}</h4>
+                              {formattedNumId && (
+                                <span className="text-[10px] font-mono font-bold text-primary bg-primary/10 px-1.5 py-0.2 rounded shrink-0 border border-primary/20">
+                                  {formattedNumId}
+                                </span>
+                              )}
+                            </div>
                             <div className="w-full bg-surface-container-lowest h-1.5 rounded-full mt-1.5 overflow-hidden">
                               <div className="bg-primary h-full rounded-full" style={{ width: `${percent}%` }} />
                             </div>
@@ -930,21 +996,32 @@ export function AnalyticsDashboard({ allFigures = [], onSelectFigure }: Analytic
                 </div>
               ) : (
                 <div className="space-y-2">
-                  {aggregated.topWhatsAppFigures.slice(0, 5).map((fig, idx) => (
-                    <div 
-                      key={fig.id}
-                      className="flex items-center justify-between p-2.5 rounded-lg bg-surface-container border border-outline-variant/20 hover:border-emerald-500/40 transition-colors"
-                    >
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <span className="text-xs font-bold font-mono text-emerald-400">#{idx + 1}</span>
-                        <span className="text-xs font-semibold text-on-surface truncate">{fig.title}</span>
+                  {aggregated.topWhatsAppFigures.slice(0, 5).map((fig, idx) => {
+                    const matchedFigure = allFigures.find(f => f.id === fig.id);
+                    const numId = matchedFigure?.numericId || figuresLookup.get(fig.id)?.numericId || '';
+                    const formattedNumId = numId ? (numId.startsWith('#') ? numId : `#${numId}`) : '';
+
+                    return (
+                      <div 
+                        key={fig.id}
+                        className="flex items-center justify-between p-2.5 rounded-lg bg-surface-container border border-outline-variant/20 hover:border-emerald-500/40 transition-colors"
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <span className="text-xs font-bold font-mono text-emerald-400">#{idx + 1}</span>
+                          <span className="text-xs font-semibold text-on-surface truncate">{fig.title}</span>
+                          {formattedNumId && (
+                            <span className="text-[10px] font-mono font-bold text-emerald-400 bg-emerald-950/60 px-1.5 py-0.2 rounded shrink-0 border border-emerald-500/30">
+                              {formattedNumId}
+                            </span>
+                          )}
+                        </div>
+                        <span className="px-2.5 py-0.5 rounded-full bg-emerald-950/70 border border-emerald-500/50 text-emerald-300 text-xs font-bold font-mono shrink-0 flex items-center gap-1">
+                          <MessageCircle className="w-3 h-3" />
+                          {fig.count} contactos
+                        </span>
                       </div>
-                      <span className="px-2.5 py-0.5 rounded-full bg-emerald-950/70 border border-emerald-500/50 text-emerald-300 text-xs font-bold font-mono shrink-0 flex items-center gap-1">
-                        <MessageCircle className="w-3 h-3" />
-                        {fig.count} contactos
-                      </span>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -1021,18 +1098,29 @@ export function AnalyticsDashboard({ allFigures = [], onSelectFigure }: Analytic
                         const evtDate = getEventDate(evt.timestamp);
                         const timeStr = formatEventTime(evtDate);
 
+                        // Obtener número identificador (#001, etc.)
+                        const rawNumId = evt.figureNumericId || (evt.figureId ? figuresLookup.get(evt.figureId)?.numericId : '') || '';
+                        const formattedNumId = rawNumId ? (rawNumId.startsWith('#') ? rawNumId : `#${rawNumId}`) : '';
+                        const figTitle = evt.figureTitle || (evt.figureId ? figuresLookup.get(evt.figureId)?.title : '') || 'Figura';
+
                         let icon = <Users className="w-3.5 h-3.5 text-primary" />;
                         let text = "Nueva visita a la tienda";
 
                         if (evt.type === 'figure_view') {
                           icon = <Eye className="w-3.5 h-3.5 text-sky-400" />;
-                          text = `Vio la figura "${evt.figureTitle || 'Detalle'}"`;
+                          text = formattedNumId 
+                            ? `Vio la figura "${figTitle}" ${formattedNumId}`
+                            : `Vio la figura "${figTitle}"`;
                         } else if (evt.type === 'whatsapp_click') {
                           icon = <MessageCircle className="w-3.5 h-3.5 text-emerald-400" />;
-                          text = `Consultó por WhatsApp por "${evt.figureTitle || 'Figura'}"`;
+                          text = formattedNumId 
+                            ? `Consultó por WhatsApp por "${figTitle}" ${formattedNumId}`
+                            : `Consultó por WhatsApp por "${figTitle}"`;
                         } else if (evt.type === 'instagram_click') {
                           icon = <Instagram className="w-3.5 h-3.5 text-pink-400" />;
-                          text = `Consultó por Instagram por "${evt.figureTitle || 'Figura'}"`;
+                          text = formattedNumId 
+                            ? `Consultó por Instagram por "${figTitle}" ${formattedNumId}`
+                            : `Consultó por Instagram por "${figTitle}"`;
                         } else if (evt.type === 'search') {
                           icon = <Search className="w-3.5 h-3.5 text-amber-400" />;
                           text = `Buscó "${evt.searchTerm}"`;

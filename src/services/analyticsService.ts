@@ -86,6 +86,7 @@ export interface AnalyticsEventItem {
   device: DeviceType;
   figureId?: string;
   figureTitle?: string;
+  figureNumericId?: string;
   searchTerm?: string;
   categoryName?: string;
   timestamp: Timestamp | Date;
@@ -215,7 +216,7 @@ export async function trackPageView(metaPixelId?: string, bypassExclusion = fals
  * Tracks when a visitor opens and views a figure's detail modal
  */
 export async function trackFigureView(
-  figure: { id: string; title: string; franchiseId?: string },
+  figure: { id: string; title: string; franchiseId?: string; numericId?: string },
   bypassExclusion = false
 ): Promise<void> {
   if (!figure || !figure.id) return;
@@ -244,6 +245,7 @@ export async function trackFigureView(
         [cleanKey]: {
           id: figure.id,
           title: figure.title,
+          numericId: figure.numericId || '',
           count: increment(1),
         }
       },
@@ -256,6 +258,7 @@ export async function trackFigureView(
       device,
       figureId: figure.id,
       figureTitle: figure.title,
+      figureNumericId: figure.numericId || '',
       timestamp: serverTimestamp(),
     });
   } catch (err) {
@@ -267,7 +270,7 @@ export async function trackFigureView(
  * Tracks when a visitor clicks the WhatsApp inquiry/buy button for a figure
  */
 export async function trackWhatsAppClick(
-  figure: { id: string; title: string; price?: number },
+  figure: { id: string; title: string; price?: number; numericId?: string },
   bypassExclusion = false
 ): Promise<void> {
   if (!figure || !figure.id) return;
@@ -296,6 +299,7 @@ export async function trackWhatsAppClick(
         [cleanKey]: {
           id: figure.id,
           title: figure.title,
+          numericId: figure.numericId || '',
           count: increment(1),
         }
       },
@@ -308,6 +312,7 @@ export async function trackWhatsAppClick(
       device,
       figureId: figure.id,
       figureTitle: figure.title,
+      figureNumericId: figure.numericId || '',
       timestamp: serverTimestamp(),
     });
   } catch (err) {
@@ -319,7 +324,7 @@ export async function trackWhatsAppClick(
  * Tracks when a visitor clicks the Instagram inquiry/contact button for a figure
  */
 export async function trackInstagramClick(
-  figure: { id: string; title: string; price?: number },
+  figure: { id: string; title: string; price?: number; numericId?: string },
   bypassExclusion = false
 ): Promise<void> {
   if (!figure || !figure.id) return;
@@ -348,6 +353,7 @@ export async function trackInstagramClick(
         [cleanKey]: {
           id: figure.id,
           title: figure.title,
+          numericId: figure.numericId || '',
           count: increment(1),
         }
       },
@@ -360,6 +366,7 @@ export async function trackInstagramClick(
       device,
       figureId: figure.id,
       figureTitle: figure.title,
+      figureNumericId: figure.numericId || '',
       timestamp: serverTimestamp(),
     });
   } catch (err) {
