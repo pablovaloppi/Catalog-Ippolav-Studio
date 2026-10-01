@@ -291,6 +291,8 @@ export function ProductModal({
       .trim() || 'ippolav.studio';
   };
   const instagramHandle = getInstagramHandle();
+  // Enlace universal oficial de Meta para abrir directamente el chat / conversación privada
+  const instagramDmUrl = `https://ig.me/m/${instagramHandle}`;
 
   const copyTextToClipboard = async (text: string) => {
     try {
@@ -332,23 +334,11 @@ export function ProductModal({
     const isMobile = typeof navigator !== 'undefined' && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
     
     if (isMobile) {
-      // 1. Esquema nativo de Instagram para abrir la App instalada donde el usuario ya está logueado
-      const nativeAppUri = `instagram://user?username=${instagramHandle}`;
-      // 2. Link universal oficial de Meta / Instagram
-      const universalAppUri = `https://instagram.com/_u/${instagramHandle}`;
-      
-      // Intentar abrir la app nativa
-      window.location.href = nativeAppUri;
-
-      // Si no abre la app en 1.2 segundos (por si no la tiene instalada), redirigir al link universal
-      setTimeout(() => {
-        if (!document.hidden && !(document as any).webkitHidden) {
-          window.location.href = universalAppUri;
-        }
-      }, 1200);
+      // ig.me/m/username es el enlace universal oficial de Meta que abre la conversación directa en la App de Instagram
+      window.location.href = instagramDmUrl;
     } else {
       // En computadoras de escritorio, abrir web en nueva pestaña
-      window.open(`https://www.instagram.com/${instagramHandle}/`, '_blank', 'noopener,noreferrer');
+      window.open(instagramDmUrl, '_blank', 'noopener,noreferrer');
     }
   };
 
@@ -366,7 +356,7 @@ export function ProductModal({
     if (instagramCountdown === 0) {
       redirectToInstagram();
     }
-  }, [instagramCountdown, instagramHandle]);
+  }, [instagramCountdown, instagramDmUrl]);
   
   const currentImageUrl = product.imageUrls?.[currentImageIndex] || '';
 
@@ -842,14 +832,17 @@ export function ProductModal({
 
             {/* Botones de acción rápida */}
             <div className="flex flex-col gap-2 pt-1">
-              <button
-                type="button"
-                onClick={redirectToInstagram}
-                className="w-full bg-gradient-to-r from-[#833ab4] via-[#fd1d1d] to-[#fcb045] hover:opacity-95 text-white text-xs font-bold py-3 px-3 rounded-xl flex items-center justify-center gap-2 shadow-md shadow-pink-500/25 active:scale-95 transition-all cursor-pointer uppercase tracking-wider"
+              <a
+                href={instagramDmUrl}
+                onClick={(e) => {
+                  e.preventDefault();
+                  redirectToInstagram();
+                }}
+                className="w-full bg-gradient-to-r from-[#833ab4] via-[#fd1d1d] to-[#fcb045] hover:opacity-95 text-white text-xs font-bold py-3.5 px-3 rounded-xl flex items-center justify-center gap-2 shadow-md shadow-pink-500/25 active:scale-95 transition-all cursor-pointer uppercase tracking-wider text-center"
               >
-                <span>Abrir App de Instagram ya</span>
+                <span>Abrir chat de Instagram</span>
                 <Instagram className="w-4 h-4" />
-              </button>
+              </a>
               <button
                 type="button"
                 onClick={() => setInstagramCountdown(null)}
