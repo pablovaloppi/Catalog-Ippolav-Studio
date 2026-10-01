@@ -94,6 +94,18 @@ function AdminPanelContent() {
 
 const globalAdminLoadedImages = new Set<string>();
 
+// Función para extraer el prefijo, número y longitud de dígitos de un identificador como "#045" o "FIG-010"
+export function parseNumericId(idString: string | undefined | null): { prefix: string; num: number; digits: number } | null {
+  if (!idString || typeof idString !== 'string') return null;
+  const trimmed = idString.trim();
+  const match = trimmed.match(/^([^0-9]*)(\d+)$/);
+  if (!match) return null;
+  const prefix = match[1];
+  const digits = match[2].length;
+  const num = parseInt(match[2], 10);
+  return isNaN(num) ? null : { prefix, num, digits };
+}
+
 function AdminFigureThumbnail({ src, alt }: { src?: string; alt: string }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [shouldLoad, setShouldLoad] = useState(() => (src ? globalAdminLoadedImages.has(src) : false));
@@ -320,7 +332,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
     }
   };
 
-  // Carga paginada optimizada de figuras: solo carga las figuras de la página actual y las va cargando al cambiar de página
+  // Carga confiable y optimizada de figuras para el panel de administración
   const loadFigures = useCallback(async (
     page: number, 
     pageSize: number, 
@@ -335,196 +347,74 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
         ? []
         : [catFilter, ...getAllDescendantCategoryIds(catFilter, categories)];
 
-      // CASO 1: Búsqueda activa por texto (subcadena en título o identificador)
-      if (trimmedSearch) {
-        const cacheKey = `${catFilter}_${trimmedSearch}_${sortBy}`;
-        let matched: Product[] = [];
-
-        if (searchCacheRef.current && searchCacheRef.current.key === cacheKey) {
-          matched = searchCacheRef.current.items;
-        } else {
-          let allFetched: Product[] = [];
-          if (allAdminFiguresCacheRef.current) {
-            allFetched = allAdminFiguresCacheRef.current;
-          } else {
-            const baseQ = collection(db, 'figures');
-            const snap = await getDocs(baseQ);
-            allFetched = [];
-            snap.forEach(d => allFetched.push({ id: d.id, ...d.data() } as Product));
-            allAdminFiguresCacheRef.current = allFetched;
-          }
-
-          if (catFilter === 'all') {
-            matched = allFetched;
-          } else {
-            matched = allFetched.filter(fig => matchingCatIds.includes(fig.franchiseId));
-          }
-
-          matched = matched.filter(fig => 
-            fig.title.toLowerCase().includes(trimmedSearch) ||
-            (fig.numericId && fig.numericId.toLowerCase().includes(trimmedSearch))
-          );
-
-          matched.sort((a, b) => {
-            if (sortBy === 'name-asc') return a.title.localeCompare(b.title, 'es', { sensitivity: 'base' });
-            if (sortBy === 'name-desc') return b.title.localeCompare(a.title, 'es', { sensitivity: 'base' });
-            if (sortBy === 'id-asc') {
-              const parsedA = parseNumericId(a.numericId);
-              const parsedB = parseNumericId(b.numericId);
-              if (parsedA && parsedB) return parsedA.num - parsedB.num;
-              if (parsedA) return -1;
-              if (parsedB) return 1;
-              return (a.numericId || '').localeCompare(b.numericId || '');
-            }
-            if (sortBy === 'id-desc') {
-              const parsedA = parseNumericId(a.numericId);
-              const parsedB = parseNumericId(b.numericId);
-              if (parsedA && parsedB) return parsedB.num - parsedA.num;
-              if (parsedA) return 1;
-              if (parsedB) return -1;
-              return (b.numericId || '').localeCompare(a.numericId || '');
-            }
-            if (sortBy === 'recent') return (b.order ?? 0) - (a.order ?? 0);
-            if (sortBy === 'oldest') return (a.order ?? 0) - (b.order ?? 0);
-            return (a.order ?? 0) - (b.order ?? 0);
-          });
-
-          searchCacheRef.current = { key: cacheKey, items: matched };
-        }
-
-        setTotalAdminFigures(matched.length);
-        const startIndex = (page - 1) * pageSize;
-        setFigures(matched.slice(startIndex, startIndex + pageSize));
-        setFiguresLoading(false);
-        return;
-      }
-
-      // CASO 2: Sin búsqueda activa -> Paginación pura por página (solo descarga el lote de la página)
-      // Si la página ya se descargó previamente en esta sesión, servirla de inmediato desde memoria (0ms)
-      if (pageCacheRef.current.has(page)) {
-        setFigures(pageCacheRef.current.get(page)!);
-        setFiguresLoading(false);
-        return;
-      }
-
-      // Conteo total rápido vía getCountFromServer sin descargar figuras ni imágenes
-      const countQ = catFilter === 'all'
-        ? collection(db, 'figures')
-        : (matchingCatIds.length === 1
-            ? query(collection(db, 'figures'), where('franchiseId', '==', catFilter))
-            : query(collection(db, 'figures'), where('franchiseId', 'in', matchingCatIds.slice(0, 30))));
-
-      const countSnap = await getCountFromServer(countQ);
-      const totalCount = countSnap.data().count;
-      setTotalAdminFigures(totalCount);
-
-      if (totalCount === 0) {
-        setFigures([]);
-        setFiguresLoading(false);
-        return;
-      }
-
-      const { field: sortField, direction: sortDirection } = getFirestoreSortParams(sortBy);
-      const cursor = pageCursorsRef.current.get(page);
-
-      try {
-        if (page === 1 || !cursor) {
-          // Carga de la primera página (o salto no secuencial): limitando estrictamente la cantidad
-          const fetchLimit = cursor ? pageSize : Math.max(pageSize, page * pageSize);
-          const baseQ = catFilter === 'all'
-            ? query(collection(db, 'figures'), orderBy(sortField, sortDirection), limit(fetchLimit))
-            : (matchingCatIds.length === 1
-                ? query(collection(db, 'figures'), where('franchiseId', '==', catFilter), orderBy(sortField, sortDirection), limit(fetchLimit))
-                : query(collection(db, 'figures'), where('franchiseId', 'in', matchingCatIds.slice(0, 30)), orderBy(sortField, sortDirection), limit(fetchLimit)));
-
-          const snap = await getDocs(baseQ);
-          const allDocs = snap.docs;
-
-          for (let p = 1; p <= Math.ceil(allDocs.length / pageSize); p++) {
-            const lastDocOfPage = allDocs[Math.min(p * pageSize - 1, allDocs.length - 1)];
-            if (lastDocOfPage) {
-              pageCursorsRef.current.set(p + 1, lastDocOfPage);
-            }
-            const sliceStart = (p - 1) * pageSize;
-            const sliceEnd = Math.min(p * pageSize, allDocs.length);
-            const pageData = allDocs.slice(sliceStart, sliceEnd).map(d => ({ id: d.id, ...d.data() } as Product));
-            pageCacheRef.current.set(p, pageData);
-          }
-
-          const startIndex = (page - 1) * pageSize;
-          const pageDocs = allDocs.slice(startIndex, startIndex + pageSize);
-          setFigures(pageDocs.map(d => ({ id: d.id, ...d.data() } as Product)));
-        } else {
-          // Navegación secuencial por cursor: solo descarga exactamente las figuras de la página solicitada
-          const baseQ = catFilter === 'all'
-            ? query(collection(db, 'figures'), orderBy(sortField, sortDirection), startAfter(cursor), limit(pageSize))
-            : (matchingCatIds.length === 1
-                ? query(collection(db, 'figures'), where('franchiseId', '==', catFilter), orderBy(sortField, sortDirection), startAfter(cursor), limit(pageSize))
-                : query(collection(db, 'figures'), where('franchiseId', 'in', matchingCatIds.slice(0, 30)), orderBy(sortField, sortDirection), startAfter(cursor), limit(pageSize)));
-
-          const snap = await getDocs(baseQ);
-          const docs = snap.docs;
-          if (docs.length > 0) {
-            pageCursorsRef.current.set(page + 1, docs[docs.length - 1]);
-          }
-          const pageData = docs.map(d => ({ id: d.id, ...d.data() } as Product));
-          pageCacheRef.current.set(page, pageData);
-          setFigures(pageData);
-        }
-      } catch (directQueryError: any) {
-        // En caso de que se filtre por categoría y Firestore requiera un índice compuesto no creado aún
-        console.warn("Consulta paginada directa con Firestore falló, usando estrategia de reserva con caché:", directQueryError);
-
-        const fallbackQ = catFilter === 'all'
-          ? collection(db, 'figures')
-          : (matchingCatIds.length === 1
-              ? query(collection(db, 'figures'), where('franchiseId', '==', catFilter))
-              : query(collection(db, 'figures'), where('franchiseId', 'in', matchingCatIds.slice(0, 30))));
-
-        const snap = await getDocs(fallbackQ);
-        const allFetched: Product[] = [];
+      // 1. Obtener todas las figuras (desde caché en memoria si existe o directo de Firestore)
+      let allFetched: Product[] = [];
+      if (allAdminFiguresCacheRef.current && allAdminFiguresCacheRef.current.length > 0) {
+        allFetched = allAdminFiguresCacheRef.current;
+      } else {
+        const snap = await getDocs(collection(db, 'figures'));
+        allFetched = [];
         snap.forEach(d => allFetched.push({ id: d.id, ...d.data() } as Product));
-
-        let matched = allFetched;
-        if (catFilter !== 'all' && matchingCatIds.length > 30) {
-          matched = matched.filter(fig => matchingCatIds.includes(fig.franchiseId));
-        }
-
-        matched.sort((a, b) => {
-          if (sortBy === 'name-asc') return a.title.localeCompare(b.title, 'es', { sensitivity: 'base' });
-          if (sortBy === 'name-desc') return b.title.localeCompare(a.title, 'es', { sensitivity: 'base' });
-          if (sortBy === 'id-asc') {
-            const parsedA = parseNumericId(a.numericId);
-            const parsedB = parseNumericId(b.numericId);
-            if (parsedA && parsedB) return parsedA.num - parsedB.num;
-            if (parsedA) return -1;
-            if (parsedB) return 1;
-            return (a.numericId || '').localeCompare(b.numericId || '');
-          }
-          if (sortBy === 'id-desc') {
-            const parsedA = parseNumericId(a.numericId);
-            const parsedB = parseNumericId(b.numericId);
-            if (parsedA && parsedB) return parsedB.num - parsedA.num;
-            if (parsedA) return 1;
-            if (parsedB) return -1;
-            return (b.numericId || '').localeCompare(a.numericId || '');
-          }
-          if (sortBy === 'recent') return (b.order ?? 0) - (a.order ?? 0);
-          if (sortBy === 'oldest') return (a.order ?? 0) - (b.order ?? 0);
-          return (a.order ?? 0) - (b.order ?? 0);
-        });
-
-        // Guardar todas las páginas en caché para que las siguientes páginas no vuelvan a descargar nada
-        for (let p = 1; p <= Math.ceil(matched.length / pageSize); p++) {
-          const sliceStart = (p - 1) * pageSize;
-          const sliceEnd = Math.min(p * pageSize, matched.length);
-          pageCacheRef.current.set(p, matched.slice(sliceStart, sliceEnd));
-        }
-
-        setTotalAdminFigures(matched.length);
-        const startIndex = (page - 1) * pageSize;
-        setFigures(matched.slice(startIndex, startIndex + pageSize));
+        allAdminFiguresCacheRef.current = allFetched;
       }
+
+      // 2. Filtrado por categoría y subcategorías
+      let matched = allFetched;
+      if (catFilter !== 'all' && matchingCatIds.length > 0) {
+        matched = matched.filter(fig => matchingCatIds.includes(fig.franchiseId));
+      }
+
+      // 3. Filtrado por búsqueda en tiempo real
+      if (trimmedSearch) {
+        matched = matched.filter(fig => 
+          (fig.title && fig.title.toLowerCase().includes(trimmedSearch)) ||
+          (fig.numericId && fig.numericId.toLowerCase().includes(trimmedSearch))
+        );
+      }
+
+      // 4. Ordenamiento consistente
+      matched = [...matched].sort((a, b) => {
+        if (sortBy === 'name-asc') return (a.title || '').localeCompare(b.title || '', 'es', { sensitivity: 'base' });
+        if (sortBy === 'name-desc') return (b.title || '').localeCompare(a.title || '', 'es', { sensitivity: 'base' });
+        if (sortBy === 'id-asc') {
+          const parsedA = parseNumericId(a.numericId);
+          const parsedB = parseNumericId(b.numericId);
+          if (parsedA && parsedB) return parsedA.num - parsedB.num;
+          if (parsedA) return -1;
+          if (parsedB) return 1;
+          return (a.numericId || '').localeCompare(b.numericId || '');
+        }
+        if (sortBy === 'id-desc') {
+          const parsedA = parseNumericId(a.numericId);
+          const parsedB = parseNumericId(b.numericId);
+          if (parsedA && parsedB) return parsedB.num - parsedA.num;
+          if (parsedA) return 1;
+          if (parsedB) return -1;
+          return (b.numericId || '').localeCompare(a.numericId || '');
+        }
+        if (sortBy === 'recent') {
+          if (typeof b.order === 'number' && typeof a.order === 'number') return b.order - a.order;
+          return (b.title || '').localeCompare(a.title || '');
+        }
+        if (sortBy === 'oldest') {
+          if (typeof a.order === 'number' && typeof b.order === 'number') return a.order - b.order;
+          return (a.title || '').localeCompare(b.title || '');
+        }
+        // Default: por orden ascendente si existe, o por numericId, o por título
+        if (typeof a.order === 'number' && typeof b.order === 'number') return a.order - b.order;
+        if (typeof a.order === 'number') return -1;
+        if (typeof b.order === 'number') return 1;
+        const parsedA = parseNumericId(a.numericId);
+        const parsedB = parseNumericId(b.numericId);
+        if (parsedA && parsedB) return parsedA.num - parsedB.num;
+        return (a.title || '').localeCompare(b.title || '', 'es', { sensitivity: 'base' });
+      });
+
+      // 5. Total de figuras coincidentes y paginación
+      setTotalAdminFigures(matched.length);
+      const startIndex = (page - 1) * pageSize;
+      const pageSlice = matched.slice(startIndex, startIndex + pageSize);
+      setFigures(pageSlice);
     } catch (error) {
       console.error("Error al cargar figuras en el panel de administración:", error);
     } finally {
@@ -568,10 +458,10 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
     setShowAutoIdModal(true);
     setLoadingAutoIdFigures(true);
     try {
-      const q = query(collection(db, 'figures'), orderBy('order', 'asc'));
-      const snap = await getDocs(q);
+      const snap = await getDocs(collection(db, 'figures'));
       const data: Product[] = [];
       snap.forEach(d => data.push({ id: d.id, ...d.data() } as Product));
+      data.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
       setAutoIdFigures(data);
     } catch (err) {
       console.error("Error cargando figuras para asignación automática:", err);
@@ -1778,18 +1668,6 @@ function CategoryForm({
       </form>
     </div>
   );
-}
-
-// Función para extraer el prefijo, número y longitud de dígitos de un identificador como "#045" o "FIG-010"
-export function parseNumericId(idString: string | undefined | null): { prefix: string; num: number; digits: number } | null {
-  if (!idString || typeof idString !== 'string') return null;
-  const trimmed = idString.trim();
-  const match = trimmed.match(/^([^0-9]*)(\d+)$/);
-  if (!match) return null;
-  const prefix = match[1];
-  const digits = match[2].length;
-  const num = parseInt(match[2], 10);
-  return isNaN(num) ? null : { prefix, num, digits };
 }
 
 // Función optimizada para calcular el siguiente identificador numérico sin descargar toda la base de datos
