@@ -278,21 +278,19 @@ export function ProductModal({
   const whatsappNumber = config?.whatsapp || "5491100000000";
   const whatsappUrl = `https://wa.me/${whatsappNumber}?text=${whatsappMessage}`;
 
-  const getInstagramUrl = () => {
+  const getInstagramHandle = () => {
     const rawIg = config?.instagram?.trim() || 'ippolav.studio';
-    const cleanHandle = rawIg
+    return rawIg
       .replace(/^https?:\/\//i, '')
       .replace(/^(www\.)?instagram\.com\//i, '')
       .replace(/^direct\/t\//i, '')
       .replace(/^m\//i, '')
+      .replace(/^_u\//i, '')
       .replace(/^@/, '')
       .replace(/\/.*$/, '')
       .trim() || 'ippolav.studio';
-    
-    // Meta official direct message deep link (sin query params que rompen ig.me)
-    return `https://ig.me/m/${cleanHandle}`;
   };
-  const instagramUrl = getInstagramUrl();
+  const instagramHandle = getInstagramHandle();
 
   const copyTextToClipboard = async (text: string) => {
     try {
@@ -330,12 +328,28 @@ export function ProductModal({
   };
 
   const redirectToInstagram = () => {
-    try {
-      window.open(instagramUrl, '_blank', 'noopener,noreferrer');
-    } catch {
-      window.location.href = instagramUrl;
-    }
     setInstagramCountdown(null);
+    const isMobile = typeof navigator !== 'undefined' && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+    
+    if (isMobile) {
+      // 1. Esquema nativo de Instagram para abrir la App instalada donde el usuario ya está logueado
+      const nativeAppUri = `instagram://user?username=${instagramHandle}`;
+      // 2. Link universal oficial de Meta / Instagram
+      const universalAppUri = `https://instagram.com/_u/${instagramHandle}`;
+      
+      // Intentar abrir la app nativa
+      window.location.href = nativeAppUri;
+
+      // Si no abre la app en 1.2 segundos (por si no la tiene instalada), redirigir al link universal
+      setTimeout(() => {
+        if (!document.hidden && !(document as any).webkitHidden) {
+          window.location.href = universalAppUri;
+        }
+      }, 1200);
+    } else {
+      // En computadoras de escritorio, abrir web en nueva pestaña
+      window.open(`https://www.instagram.com/${instagramHandle}/`, '_blank', 'noopener,noreferrer');
+    }
   };
 
   // Temporizador de 5 segundos para redirigir a Instagram
@@ -352,7 +366,7 @@ export function ProductModal({
     if (instagramCountdown === 0) {
       redirectToInstagram();
     }
-  }, [instagramCountdown, instagramUrl]);
+  }, [instagramCountdown, instagramHandle]);
   
   const currentImageUrl = product.imageUrls?.[currentImageIndex] || '';
 
@@ -812,7 +826,7 @@ export function ProductModal({
               <div className="flex items-center justify-between text-xs font-semibold text-outline">
                 <span className="flex items-center gap-1.5 text-on-surface text-[11px]">
                   <Instagram className="w-3.5 h-3.5 text-pink-400 animate-pulse" />
-                  Yendo al chat en...
+                  Abriendo App de Instagram en...
                 </span>
                 <span className="font-mono text-pink-400 font-bold text-sm bg-pink-950/60 border border-pink-500/30 px-2 py-0.5 rounded-md">
                   {instagramCountdown}s
@@ -833,7 +847,7 @@ export function ProductModal({
                 onClick={redirectToInstagram}
                 className="w-full bg-gradient-to-r from-[#833ab4] via-[#fd1d1d] to-[#fcb045] hover:opacity-95 text-white text-xs font-bold py-3 px-3 rounded-xl flex items-center justify-center gap-2 shadow-md shadow-pink-500/25 active:scale-95 transition-all cursor-pointer uppercase tracking-wider"
               >
-                <span>Ir al mensaje de Instagram</span>
+                <span>Abrir App de Instagram ya</span>
                 <Instagram className="w-4 h-4" />
               </button>
               <button
