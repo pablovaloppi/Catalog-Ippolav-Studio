@@ -64,7 +64,7 @@ export function AnalyticsDashboard({ allFigures = [], onSelectFigure }: Analytic
     try {
       const [analytics, events] = await Promise.all([
         fetchDailyAnalytics(days),
-        fetchRecentEvents(25)
+        fetchRecentEvents(80)
       ]);
       setDailyData(analytics);
       setRecentEvents(events);
@@ -354,6 +354,94 @@ export function AnalyticsDashboard({ allFigures = [], onSelectFigure }: Analytic
 
     return finalEvents;
   }, [recentEvents]);
+
+  const getEventDate = (t: any): Date | null => {
+    if (!t) return null;
+    if (typeof t.toDate === 'function') return t.toDate();
+    if (t instanceof Date) return t;
+    if (typeof t.toMillis === 'function') return new Date(t.toMillis());
+    if (typeof t.seconds === 'number') return new Date(t.seconds * 1000);
+    if (typeof t === 'string' || typeof t === 'number') {
+      const d = new Date(t);
+      return isNaN(d.getTime()) ? null : d;
+    }
+    return null;
+  };
+
+  const formatEventTime = (date: Date | null): string => {
+    if (!date) return '--:--';
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+  };
+
+  const getDayHeaderLabel = (date: Date | null, dayKey: string): { label: string; isToday: boolean; isYesterday: boolean } => {
+    if (!date) {
+      return { label: dayKey || 'Consultas anteriores', isToday: false, isYesterday: false };
+    }
+    
+    const now = new Date();
+    const todayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    
+    const yesterday = new Date(now);
+    yesterday.setDate(now.getDate() - 1);
+    const yesterdayKey = `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, '0')}-${String(yesterday.getDate()).padStart(2, '0')}`;
+
+    const isToday = dayKey === todayKey;
+    const isYesterday = dayKey === yesterdayKey;
+
+    const dateOptions: Intl.DateTimeFormatOptions = { 
+      weekday: 'long', 
+      day: 'numeric', 
+      month: 'long' 
+    };
+    
+    const formattedDate = date.toLocaleDateString('es-AR', dateOptions);
+    const capitalized = formattedDate.charAt(0).toUpperCase() + formattedDate.slice(1);
+
+    if (isToday) {
+      return { label: `Hoy • ${capitalized}`, isToday: true, isYesterday: false };
+    }
+    if (isYesterday) {
+      return { label: `Ayer • ${capitalized}`, isToday: false, isYesterday: true };
+    }
+    return { label: capitalized, isToday: false, isYesterday: false };
+  };
+
+  // Agrupación del feed por días para separar consultas cronológicamente en el scroll
+  const groupedEvents = useMemo(() => {
+    if (!displayEvents || displayEvents.length === 0) return [];
+
+    const groupsMap = new Map<string, {
+      dayKey: string;
+      sampleDate: Date | null;
+      events: AnalyticsEventItem[];
+    }>();
+
+    displayEvents.forEach((evt) => {
+      const d = getEventDate(evt.timestamp);
+      let dayKey = 'sin_fecha';
+      if (d) {
+        dayKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      }
+      const current = groupsMap.get(dayKey) || {
+        dayKey,
+        sampleDate: d,
+        events: []
+      };
+      current.events.push(evt);
+      groupsMap.set(dayKey, current);
+    });
+
+    return Array.from(groupsMap.values()).map((g) => {
+      const { label, isToday, isYesterday } = getDayHeaderLabel(g.sampleDate, g.dayKey);
+      return {
+        dayKey: g.dayKey,
+        dayLabel: label,
+        isToday,
+        isYesterday,
+        events: g.events
+      };
+    });
+  }, [displayEvents]);
 
   return (
     <div className="space-y-8 animate-fadeIn">
@@ -906,59 +994,87 @@ export function AnalyticsDashboard({ allFigures = [], onSelectFigure }: Analytic
               </span>
             </div>
 
-            {displayEvents.length === 0 ? (
+            {groupedEvents.length === 0 ? (
               <div className="py-8 text-center text-xs text-on-surface-variant">
                 Las interacciones recientes aparecerán aquí a medida que los usuarios visiten tu tienda.
               </div>
             ) : (
-              <div className="divide-y divide-outline-variant/20 max-h-80 overflow-y-auto pr-1">
-                {displayEvents.map((evt) => {
-                  let icon = <Users className="w-3.5 h-3.5 text-primary" />;
-                  let text = "Nueva visita a la tienda";
-
-                  if (evt.type === 'figure_view') {
-                    icon = <Eye className="w-3.5 h-3.5 text-sky-400" />;
-                    text = `Vio la figura "${evt.figureTitle || 'Detalle'}"`;
-                  } else if (evt.type === 'whatsapp_click') {
-                    icon = <MessageCircle className="w-3.5 h-3.5 text-emerald-400" />;
-                    text = `Consultó por WhatsApp por "${evt.figureTitle || 'Figura'}"`;
-                  } else if (evt.type === 'instagram_click') {
-                    icon = <Instagram className="w-3.5 h-3.5 text-pink-400" />;
-                    text = `Consultó por Instagram por "${evt.figureTitle || 'Figura'}"`;
-                  } else if (evt.type === 'search') {
-                    icon = <Search className="w-3.5 h-3.5 text-amber-400" />;
-                    text = `Buscó "${evt.searchTerm}"`;
-                  }
-
-                  let sourceBadge = 'Enlace directo';
-                  let sourceClass = 'bg-surface-container text-on-surface-variant border-outline-variant/30';
-                  if (evt.source === 'instagram') {
-                    sourceBadge = 'Instagram';
-                    sourceClass = 'bg-pink-950/50 text-pink-300 border-pink-500/40';
-                  } else if (evt.source === 'whatsapp') {
-                    sourceBadge = 'WhatsApp';
-                    sourceClass = 'bg-emerald-950/50 text-emerald-300 border-emerald-500/40';
-                  }
-
-                  return (
-                    <div key={evt.id || Math.random().toString()} className="py-2.5 flex items-center justify-between gap-3 text-xs">
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <div className="w-7 h-7 rounded-full bg-surface-container flex items-center justify-center shrink-0 border border-outline-variant/20">
-                          {icon}
-                        </div>
-                        <span className="font-medium text-on-surface truncate">{text}</span>
-                      </div>
-                      <div className="flex items-center gap-2 shrink-0">
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-semibold border ${sourceClass}`}>
-                          {sourceBadge}
-                        </span>
-                        <span className="text-[10px] text-on-surface-variant flex items-center gap-1 font-mono">
-                          {evt.device === 'mobile' ? <Smartphone className="w-3 h-3 text-emerald-400" /> : <Monitor className="w-3 h-3 text-sky-400" />}
+              <div className="max-h-96 overflow-y-auto pr-1 space-y-4">
+                {groupedEvents.map((group) => (
+                  <div key={group.dayKey} className="space-y-2">
+                    {/* Separador de Día */}
+                    <div className="sticky top-0 z-10 flex items-center justify-between py-1.5 px-3 rounded-lg bg-surface-container/95 border border-outline-variant/40 backdrop-blur-md shadow-sm">
+                      <div className="flex items-center gap-2">
+                        <Calendar className={`w-3.5 h-3.5 ${group.isToday ? 'text-primary' : group.isYesterday ? 'text-amber-400' : 'text-on-surface-variant'}`} />
+                        <span className={`text-xs font-bold ${group.isToday ? 'text-primary' : 'text-on-surface'}`}>
+                          {group.dayLabel}
                         </span>
                       </div>
+                      <span className="text-[10px] font-semibold font-mono px-2 py-0.5 rounded-full bg-surface-container-high text-on-surface-variant border border-outline-variant/30">
+                        {group.events.length} {group.events.length === 1 ? 'evento' : 'eventos'}
+                      </span>
                     </div>
-                  );
-                })}
+
+                    {/* Lista de eventos del día */}
+                    <div className="bg-surface-container/30 rounded-xl border border-outline-variant/20 divide-y divide-outline-variant/20 overflow-hidden">
+                      {group.events.map((evt) => {
+                        const evtDate = getEventDate(evt.timestamp);
+                        const timeStr = formatEventTime(evtDate);
+
+                        let icon = <Users className="w-3.5 h-3.5 text-primary" />;
+                        let text = "Nueva visita a la tienda";
+
+                        if (evt.type === 'figure_view') {
+                          icon = <Eye className="w-3.5 h-3.5 text-sky-400" />;
+                          text = `Vio la figura "${evt.figureTitle || 'Detalle'}"`;
+                        } else if (evt.type === 'whatsapp_click') {
+                          icon = <MessageCircle className="w-3.5 h-3.5 text-emerald-400" />;
+                          text = `Consultó por WhatsApp por "${evt.figureTitle || 'Figura'}"`;
+                        } else if (evt.type === 'instagram_click') {
+                          icon = <Instagram className="w-3.5 h-3.5 text-pink-400" />;
+                          text = `Consultó por Instagram por "${evt.figureTitle || 'Figura'}"`;
+                        } else if (evt.type === 'search') {
+                          icon = <Search className="w-3.5 h-3.5 text-amber-400" />;
+                          text = `Buscó "${evt.searchTerm}"`;
+                        }
+
+                        let sourceBadge = 'Enlace directo';
+                        let sourceClass = 'bg-surface-container text-on-surface-variant border-outline-variant/30';
+                        if (evt.source === 'instagram') {
+                          sourceBadge = 'Instagram';
+                          sourceClass = 'bg-pink-950/50 text-pink-300 border-pink-500/40';
+                        } else if (evt.source === 'whatsapp') {
+                          sourceBadge = 'WhatsApp';
+                          sourceClass = 'bg-emerald-950/50 text-emerald-300 border-emerald-500/40';
+                        }
+
+                        return (
+                          <div key={evt.id || Math.random().toString()} className="p-2.5 flex items-center justify-between gap-3 text-xs hover:bg-surface-container-high/40 transition-colors">
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              {/* Hora al comienzo de cada actividad */}
+                              <span className="px-2 py-0.5 rounded-md bg-surface-container-high/90 border border-outline-variant/40 font-mono font-bold text-[11px] text-on-surface shrink-0 shadow-xs">
+                                {timeStr}
+                              </span>
+
+                              <div className="w-7 h-7 rounded-full bg-surface-container flex items-center justify-center shrink-0 border border-outline-variant/20">
+                                {icon}
+                              </div>
+                              <span className="font-medium text-on-surface truncate">{text}</span>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                              <span className={`px-2 py-0.5 rounded text-[10px] font-semibold border ${sourceClass}`}>
+                                {sourceBadge}
+                              </span>
+                              <span className="text-[10px] text-on-surface-variant flex items-center gap-1 font-mono">
+                                {evt.device === 'mobile' ? <Smartphone className="w-3 h-3 text-emerald-400" /> : <Monitor className="w-3 h-3 text-sky-400" />}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
           </div>

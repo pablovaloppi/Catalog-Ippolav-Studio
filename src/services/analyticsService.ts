@@ -483,7 +483,7 @@ export async function fetchDailyAnalytics(daysCount: number = 30): Promise<Daily
 /**
  * Fetches recent live events log for the live activity feed
  */
-export async function fetchRecentEvents(limitCount: number = 25): Promise<AnalyticsEventItem[]> {
+export async function fetchRecentEvents(limitCount: number = 80): Promise<AnalyticsEventItem[]> {
   try {
     const q = query(
       collection(db, 'analytics_events'),
