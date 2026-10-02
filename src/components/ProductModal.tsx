@@ -31,6 +31,7 @@ export function ProductModal({
   const [currentImageIndex, setCurrentImageIndex] = useState(initialImageIndex);
   const [isFullScreen, setIsFullScreen] = useState(initialFullScreen);
   const [shareStatus, setShareStatus] = useState<'idle' | 'copied' | 'shared'>('idle');
+  const [igStatus, setIgStatus] = useState<'idle' | 'copied'>('idle');
   const startFullScreenRef = useRef(initialFullScreen);
   
   // Seguimiento de telemetría de visualización de figura
@@ -292,49 +293,89 @@ export function ProductModal({
   };
   const instagramHandle = getInstagramHandle();
   // Enlace universal oficial de Meta para abrir directamente el chat / conversación privada
-  const instagramDmUrl = `https://ig.me/m/${instagramHandle}`;
+  const instagramDmUrl = `https://ig.me/m/${instagramHandle}?text=${whatsappMessage}`;
 
-  const copyTextToClipboard = async (text: string) => {
+  const copyTextToClipboard = async (text: string): Promise<boolean> => {
+    let copied = false;
+
+    // 1. Intentar copia moderna con navigator.clipboard en el contexto inmediato del click
     try {
       if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(text);
-        return true;
+        copied = true;
       }
-    } catch {
-      // Intentar fallback
+    } catch (e) {
+      console.warn('Fallo navigator.clipboard.writeText, probando fallback execCommand:', e);
     }
-    try {
-      const textArea = document.createElement('textarea');
-      textArea.value = text;
-      textArea.style.position = 'fixed';
-      textArea.style.left = '-9999px';
-      textArea.style.top = '-9999px';
-      textArea.style.opacity = '0';
-      document.body.appendChild(textArea);
-      textArea.focus();
-      textArea.select();
-      const success = document.execCommand('copy');
-      document.body.removeChild(textArea);
-      return success;
-    } catch {
-      return false;
+
+    // 2. Fallback robusto con textarea para iOS Safari y navegadores web
+    if (!copied) {
+      try {
+        const textArea = document.createElement('textarea');
+        textArea.value = text;
+        textArea.setAttribute('readonly', '');
+        textArea.style.position = 'fixed';
+        textArea.style.top = '0';
+        textArea.style.left = '0';
+        textArea.style.width = '2em';
+        textArea.style.height = '2em';
+        textArea.style.padding = '0';
+        textArea.style.border = 'none';
+        textArea.style.outline = 'none';
+        textArea.style.boxShadow = 'none';
+        textArea.style.background = 'transparent';
+        textArea.style.opacity = '0.01';
+        document.body.appendChild(textArea);
+
+        if (navigator.userAgent.match(/ipad|ipod|iphone/i)) {
+          const range = document.createRange();
+          range.selectNodeContents(textArea);
+          const selection = window.getSelection();
+          if (selection) {
+            selection.removeAllRanges();
+            selection.addRange(range);
+          }
+          textArea.setSelectionRange(0, 999999);
+        } else {
+          textArea.focus();
+          textArea.select();
+        }
+
+        copied = document.execCommand('copy');
+        document.body.removeChild(textArea);
+      } catch (err) {
+        console.warn('Error en copyTextToClipboard execCommand:', err);
+      }
     }
+
+    return copied;
   };
 
   const handleInstagramClick = async (e?: React.MouseEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
     if (product) {
       trackInstagramClick(product);
     }
-    // Copia directamente el mensaje formateado de la figura al portapapeles
+
+    // 1. Copiar primero el mensaje al portapapeles de inmediato antes de que el navegador pierda foco
     await copyTextToClipboard(baseMessage);
+    setIgStatus('copied');
+    setTimeout(() => {
+      setIgStatus('idle');
+    }, 3000);
 
     const isMobile = typeof navigator !== 'undefined' && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+    const targetUrl = instagramDmUrl;
+
     if (isMobile) {
-      // ig.me/m/username es el enlace universal oficial de Meta que abre directamente el chat privado en la App de Instagram
-      window.location.href = instagramDmUrl;
+      // En dispositivos móviles, redirección directa a la app/chat de Instagram
+      window.location.href = targetUrl;
     } else {
-      // En computadoras de escritorio, abrir web de Instagram en nueva pestaña
-      window.open(instagramDmUrl, '_blank', 'noopener,noreferrer');
+      // En computadoras de escritorio, abrir chat directo en nueva pestaña
+      window.open(targetUrl, '_blank', 'noopener,noreferrer');
     }
   };
   
@@ -726,16 +767,24 @@ export function ProductModal({
             </a>
 
             {/* Botón Instagram */}
-            <a
-              href={instagramDmUrl}
-              target="_blank"
-              rel="noopener noreferrer"
+            <button
+              type="button"
               onClick={handleInstagramClick}
               className="w-full bg-gradient-to-r from-[#833ab4] via-[#fd1d1d] to-[#fcb045] hover:opacity-95 active:scale-[0.98] text-white text-xs sm:text-sm font-bold py-3.5 px-4 rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-pink-500/20 tracking-wide uppercase hover:brightness-105 transition-all cursor-pointer"
+              title="Consultar por Instagram (copia el mensaje y abre el chat directo)"
             >
-              <Instagram className="w-4.5 h-4.5 flex-shrink-0" />
-              <span>Consultar por Instagram</span>
-            </a>
+              {igStatus === 'copied' ? (
+                <>
+                  <Check className="w-4.5 h-4.5 flex-shrink-0 text-white" />
+                  <span>¡Mensaje copiado! Abriendo Instagram...</span>
+                </>
+              ) : (
+                <>
+                  <Instagram className="w-4.5 h-4.5 flex-shrink-0" />
+                  <span>Consultar por Instagram</span>
+                </>
+              )}
+            </button>
           </div>
 
           <button
