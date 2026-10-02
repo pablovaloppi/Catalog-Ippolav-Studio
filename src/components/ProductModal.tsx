@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { X, MessageCircle, HelpCircle, View, ChevronLeft, ChevronRight, Heart, ZoomIn, ZoomOut, RotateCcw, Share2, Check, Instagram } from 'lucide-react';
 import { Product, SiteConfig } from '../types';
 import { getOptimizedCloudinaryUrl, getCloudinarySrcSet } from '../cloudinaryUtils';
-import { shareFigure } from '../urlUtils';
+import { shareFigure, getShareableFigureUrl } from '../urlUtils';
 import { trackFigureView, trackWhatsAppClick, trackInstagramClick } from '../services/analyticsService';
 
 interface ProductModalProps {
@@ -270,10 +270,32 @@ export function ProductModal({
     }
   };
 
-  const baseMessage = config?.whatsappMessageTemplate 
-    ? config.whatsappMessageTemplate.replace('{figura}', product.title).replace('{codigo}', product.numericId || '') 
-    : `Hola IPPOLAV STUDIO, me interesa encargar la figura ${product.title}${product.numericId ? ` (${product.numericId})` : ''}. ¿Tienen disponibilidad?`;
+  const figureLink = getShareableFigureUrl(product, true);
 
+  const formatFigureInquiryMessage = (template?: string) => {
+    const rawTemplate = template?.trim();
+    if (!rawTemplate) {
+      return `Hola IPPOLAV STUDIO, me interesa encargar la figura ${product.title}${product.numericId ? ` (${product.numericId})` : ''}. ¿Tienen disponibilidad?\n\nVer figura: ${figureLink}`;
+    }
+
+    let msg = rawTemplate
+      .replace(/\{figura\}/gi, product.title)
+      .replace(/\{codigo\}/gi, product.numericId || '')
+      .replace(/\{code\}/gi, product.numericId || '');
+
+    if (/\{link\}|\{enlace\}|\{url\}/i.test(msg)) {
+      msg = msg
+        .replace(/\{link\}/gi, figureLink)
+        .replace(/\{enlace\}/gi, figureLink)
+        .replace(/\{url\}/gi, figureLink);
+    } else {
+      msg = `${msg}\n\nVer figura: ${figureLink}`;
+    }
+
+    return msg;
+  };
+
+  const baseMessage = formatFigureInquiryMessage(config?.whatsappMessageTemplate);
   const whatsappMessage = encodeURIComponent(baseMessage);
   
   const whatsappNumber = config?.whatsapp || "5491100000000";

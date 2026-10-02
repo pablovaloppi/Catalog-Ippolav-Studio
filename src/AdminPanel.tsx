@@ -2363,7 +2363,7 @@ function ConfigForm({ config }: { config: SiteConfig }) {
                 onClick={() => {
                   setFormData(prev => ({
                     ...prev,
-                    whatsappMessageTemplate: 'Hola IPPOLAV STUDIO, me interesa encargar la figura {figura} ({codigo}). ¿Tienen disponibilidad?'
+                    whatsappMessageTemplate: 'Hola IPPOLAV STUDIO, me interesa encargar la figura {figura} ({codigo}). ¿Tienen disponibilidad?\n\nVer figura: {link}'
                   }));
                 }}
                 className="text-[11px] text-primary hover:underline font-semibold cursor-pointer"
@@ -2378,7 +2378,7 @@ function ConfigForm({ config }: { config: SiteConfig }) {
               onChange={handleChange} 
               rows={3}
               className="w-full p-3 bg-surface-container-high border border-outline-variant/40 rounded-xl text-sm font-sans focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all"
-              placeholder="Hola IPPOLAV STUDIO, me interesa encargar la figura {figura} ({codigo}). ¿Tienen disponibilidad?"
+              placeholder="Hola IPPOLAV STUDIO, me interesa encargar la figura {figura} ({codigo}). ¿Tienen disponibilidad?&#10;&#10;Ver figura: {link}"
             />
 
             {/* Inserción rápida de etiquetas */}
@@ -2416,6 +2416,22 @@ function ConfigForm({ config }: { config: SiteConfig }) {
               >
                 + {'{codigo}'}
               </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setFormData(prev => {
+                    const current = prev.whatsappMessageTemplate || '';
+                    return {
+                      ...prev,
+                      whatsappMessageTemplate: current.includes('{link}') ? current : `${current}\n\nVer figura: {link}`.trim()
+                    };
+                  });
+                }}
+                className="px-2.5 py-1 rounded-lg bg-primary/15 hover:bg-primary/25 border border-primary/30 text-primary text-xs font-mono font-bold transition-all cursor-pointer"
+                title="Haz clic para insertar {link} (Enlace directo a la figura)"
+              >
+                + {'{link}'}
+              </button>
             </div>
 
             {/* Vista previa en tiempo real */}
@@ -2423,11 +2439,21 @@ function ConfigForm({ config }: { config: SiteConfig }) {
               <div className="text-[10px] uppercase font-bold tracking-wider text-outline">
                 Vista previa del mensaje (ejemplo figura "Goku Super Saiyan 4"):
               </div>
-              <div className="text-xs text-on-surface bg-[#005c4b]/30 text-emerald-200 p-2.5 rounded-lg border border-emerald-500/20 font-sans">
-                {((formData.whatsappMessageTemplate || 'Hola IPPOLAV STUDIO, me interesa la figura {figura} ({codigo}).')
-                  .replace(/\{figura\}/gi, 'Goku Super Saiyan 4')
-                  .replace(/\{codigo\}/gi, '#0142')
-                  .replace(/\{code\}/gi, '#0142'))}
+              <div className="text-xs text-on-surface bg-[#005c4b]/30 text-emerald-200 p-2.5 rounded-lg border border-emerald-500/20 font-sans whitespace-pre-line">
+                {(() => {
+                  const tpl = formData.whatsappMessageTemplate || 'Hola IPPOLAV STUDIO, me interesa encargar la figura {figura} ({codigo}). ¿Tienen disponibilidad?\n\nVer figura: {link}';
+                  let preview = tpl
+                    .replace(/\{figura\}/gi, 'Goku Super Saiyan 4')
+                    .replace(/\{codigo\}/gi, '#0142')
+                    .replace(/\{code\}/gi, '#0142')
+                    .replace(/\{link\}/gi, 'https://tu-tienda.com/?figura=goku-ssj4')
+                    .replace(/\{enlace\}/gi, 'https://tu-tienda.com/?figura=goku-ssj4')
+                    .replace(/\{url\}/gi, 'https://tu-tienda.com/?figura=goku-ssj4');
+                  if (!preview.includes('https://tu-tienda.com/?figura=')) {
+                    preview += '\n\nVer figura: https://tu-tienda.com/?figura=goku-ssj4';
+                  }
+                  return preview;
+                })()}
               </div>
             </div>
           </div>
