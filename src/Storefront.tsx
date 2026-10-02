@@ -368,22 +368,39 @@ export function Storefront() {
     };
   }, []);
 
-  // Carga y apertura automática de figura si se ingresa mediante un enlace directo compartido (?figura=id)
+  // Carga y apertura automática de figura si se ingresa mediante un enlace directo compartido (?figura=id, /figura=id, #figura=id)
   useEffect(() => {
-    const directFigureId = extractFigureIdFromLocation();
-    if (!directFigureId) return;
-
     let isCancelled = false;
 
-    async function loadDirectFigure() {
-      // 1. Revisar si la figura ya se encuentra en las figuras iniciales
-      const localFig = initialProducts.find((p) => p.id === directFigureId);
+    async function checkAndLoadDirectFigure() {
+      const directFigureId = extractFigureIdFromLocation();
+      if (!directFigureId) return;
+
+      const cleanDirectId = directFigureId.trim().toLowerCase();
+
+      // 1. Revisar si la figura ya se encuentra en las figuras iniciales locales
+      const localFig = initialProducts.find((p) => 
+        p.id.toLowerCase() === cleanDirectId || 
+        (p.numericId && p.numericId.toLowerCase() === cleanDirectId) ||
+        (p.numericId && p.numericId.toLowerCase().replace(/^#/, '') === cleanDirectId.replace(/^#/, ''))
+      );
       if (localFig) {
         setSelectedProduct(localFig);
         return;
       }
 
-      // 2. Si no, consultar directamente en Firestore
+      // 2. Revisar si ya está en las figuras cargadas en memoria en products
+      const loadedFig = products.find((p) => 
+        p.id.toLowerCase() === cleanDirectId || 
+        (p.numericId && p.numericId.toLowerCase() === cleanDirectId) ||
+        (p.numericId && p.numericId.toLowerCase().replace(/^#/, '') === cleanDirectId.replace(/^#/, ''))
+      );
+      if (loadedFig) {
+        setSelectedProduct(loadedFig);
+        return;
+      }
+
+      // 3. Consultar directamente en Firestore (por Doc ID, numericId o título)
       try {
         const { fetchFigureById } = await import('./services/firestoreService');
         const figure = await fetchFigureById(directFigureId);
@@ -395,12 +412,21 @@ export function Storefront() {
       }
     }
 
-    loadDirectFigure();
+    checkAndLoadDirectFigure();
+
+    // Reaccionar si el usuario navega con atrás/adelante o pega un link en el hash
+    const handlePopState = () => {
+      checkAndLoadDirectFigure();
+    };
+    window.addEventListener('popstate', handlePopState);
+    window.addEventListener('hashchange', handlePopState);
 
     return () => {
       isCancelled = true;
+      window.removeEventListener('popstate', handlePopState);
+      window.removeEventListener('hashchange', handlePopState);
     };
-  }, []);
+  }, [products]);
 
   // Carga de siguientes lotes continuos anticipados por el scroll
   const loadMore = useCallback(async () => {
@@ -808,6 +834,26 @@ export function Storefront() {
     }
   }, []);
 
+  const handleCloseProductModal = useCallback(() => {
+    setSelectedProduct(null);
+    if (typeof window !== 'undefined') {
+      const searchParams = new URLSearchParams(window.location.search);
+      let changed = false;
+      for (const key of ['figura', 'f', 'figure', 'p', 'id', 'fig', 'producto', 'item']) {
+        if (searchParams.has(key)) {
+          searchParams.delete(key);
+          changed = true;
+        }
+      }
+      if (changed || window.location.pathname.match(/^\/(?:figura|f|figure|producto|p)[=/]/i)) {
+        const remainingQuery = searchParams.toString();
+        const base = window.location.pathname.startsWith('/b=') ? window.location.pathname : '/';
+        const newUrl = remainingQuery ? `${base}?${remainingQuery}` : base;
+        window.history.replaceState(null, '', newUrl);
+      }
+    }
+  }, []);
+
   const isSearchActive = searchQuery.trim() !== '';
   const isSearchBusy = isSearchActive && (isSearchingStore || searchQuery !== debouncedSearchQuery);
   const showStoreLoader = favoritesOnly ? isLoadingFavorites : (loading || isSearchBusy);
@@ -906,7 +952,7 @@ export function Storefront() {
             product={selectedProduct} 
             categoryName={getCategoryBreadcrumb(selectedProduct.franchiseId, categories)}
             designerName={selectedProduct.designerId ? designers.find(d => d.id === selectedProduct.designerId)?.name : undefined}
-            onClose={() => setSelectedProduct(null)} 
+            onClose={handleCloseProductModal} 
             config={siteConfig}
             isLiked={likedFigureIds.has(selectedProduct.id)}
             onToggleLike={handleToggleLike}

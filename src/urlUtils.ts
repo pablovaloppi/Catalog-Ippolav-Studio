@@ -7,10 +7,10 @@
 export function extractFigureIdFromLocation(): string {
   if (typeof window === 'undefined') return '';
 
-  // 1. Check search params (?figura=id, ?f=id, ?fig=id, ?p=id, ?id=id)
+  // 1. Check search params (?figura=id, ?f=id, ?fig=id, ?p=id, ?figId=id, ?figure=id, ?id=id, ?producto=id, ?item=id)
   try {
     const searchParams = new URLSearchParams(window.location.search);
-    for (const key of ['figura', 'f', 'fig', 'p', 'figId', 'figure', 'id']) {
+    for (const key of ['figura', 'f', 'fig', 'p', 'figId', 'figure', 'id', 'producto', 'item']) {
       const val = searchParams.get(key);
       if (val && val.trim()) {
         return decodeURIComponent(val).trim();
@@ -20,20 +20,44 @@ export function extractFigureIdFromLocation(): string {
     console.warn('Error extracting figure ID from search params:', e);
   }
 
-  // 2. Check hash (#figura=id or #/figura/id)
+  // 2. Check pathname (/figura=id, /figura/id, /f=id, /f/id, /p=id, /p/id, /producto/id)
+  try {
+    const path = window.location.pathname;
+    if (path && !path.startsWith('/admin')) {
+      // Pattern: /figura=123 or /f=123 or /producto=123
+      const equalsMatch = path.match(/^\/(?:figura|f|figure|producto|p)=([^/?#]+)/i);
+      if (equalsMatch && equalsMatch[1]) {
+        return decodeURIComponent(equalsMatch[1]).trim();
+      }
+
+      // Pattern: /figura/123 or /f/123 or /producto/123
+      const slashMatch = path.match(/^\/(?:figura|f|figure|producto|p)\/([^/?#]+)/i);
+      if (slashMatch && slashMatch[1]) {
+        return decodeURIComponent(slashMatch[1]).trim();
+      }
+    }
+  } catch (e) {
+    console.warn('Error extracting figure ID from pathname:', e);
+  }
+
+  // 3. Check hash (#figura=id or #/figura/id or #f=id or #/f/id)
   try {
     const rawHash = window.location.hash.replace(/^#\/?/, '');
     if (rawHash) {
       const hashParams = new URLSearchParams(rawHash.startsWith('?') ? rawHash.slice(1) : rawHash);
-      for (const key of ['figura', 'f', 'fig', 'p', 'figure', 'id']) {
+      for (const key of ['figura', 'f', 'fig', 'p', 'figure', 'id', 'producto', 'item']) {
         const val = hashParams.get(key);
         if (val && val.trim()) {
           return decodeURIComponent(val).trim();
         }
       }
-      const match = rawHash.match(/^(?:figura|f|figure)=([^&]+)/i);
+      const match = rawHash.match(/^(?:figura|f|figure|producto|p)=([^&]+)/i);
       if (match && match[1]) {
         return decodeURIComponent(match[1]).trim();
+      }
+      const slashMatch = rawHash.match(/^(?:figura|f|figure|producto|p)\/([^&]+)/i);
+      if (slashMatch && slashMatch[1]) {
+        return decodeURIComponent(slashMatch[1]).trim();
       }
     }
   } catch (e) {

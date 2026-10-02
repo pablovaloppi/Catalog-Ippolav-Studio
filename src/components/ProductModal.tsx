@@ -157,10 +157,11 @@ export function ProductModal({
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
 
-    // Insertar estado de la figura en el historial
-    window.history.pushState({ modal: 'product-modal', productId: product.id }, '');
+    // Insertar estado de la figura en el historial y sincronizar URL con ?figura=id
+    const figureUrl = `?figura=${encodeURIComponent(product.id)}`;
+    window.history.pushState({ modal: 'product-modal', productId: product.id }, '', figureUrl);
     if (initialFullScreen) {
-      window.history.pushState({ modal: 'image-zoom', productId: product.id }, '');
+      window.history.pushState({ modal: 'image-zoom', productId: product.id }, '', figureUrl);
     }
 
     const handlePopState = () => {

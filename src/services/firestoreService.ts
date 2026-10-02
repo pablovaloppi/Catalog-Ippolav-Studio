@@ -152,16 +152,63 @@ export async function fetchTotalFiguresCount(): Promise<number | null> {
 }
 
 export async function fetchFigureById(figureId: string): Promise<Product | null> {
+  if (!figureId) return null;
+  const cleanId = figureId.trim();
+
+  // 1. Buscar por Document ID directo de Firestore
   try {
-    const figSnap = await getDoc(doc(db, 'figures', figureId));
+    const figSnap = await getDoc(doc(db, 'figures', cleanId));
     if (figSnap.exists()) {
       return { id: figSnap.id, ...figSnap.data() } as Product;
     }
-    return null;
+  } catch (err) {
+    // Si contiene caracteres no válidos para doc ID, continuar con query
+  }
+
+  // 2. Buscar por numericId (#001, 001, etc.)
+  try {
+    const withHash = cleanId.startsWith('#') ? cleanId : `#${cleanId}`;
+    const withoutHash = cleanId.replace(/^#/, '');
+
+    const qNumeric = query(
+      collection(db, 'figures'),
+      where('numericId', 'in', [cleanId, withHash, withoutHash]),
+      limit(1)
+    );
+    const snapNumeric = await getDocs(qNumeric);
+    if (!snapNumeric.empty) {
+      const docSnap = snapNumeric.docs[0];
+      return { id: docSnap.id, ...docSnap.data() } as Product;
+    }
+  } catch (err) {
+    // Continuar con fallback completo
+  }
+
+  // 3. Fallback: buscar en el catálogo completo por id, numericId o título coincidente
+  try {
+    const snapAll = await getDocs(collection(db, 'figures'));
+    const cleanLower = cleanId.toLowerCase();
+    const docFound = snapAll.docs.find((d) => {
+      if (d.id === cleanId) return true;
+      const data = d.data();
+      const numId = (data.numericId || '').toString().toLowerCase();
+      if (numId === cleanLower || numId === `#${cleanLower}` || numId.replace(/^#/, '') === cleanLower.replace(/^#/, '')) {
+        return true;
+      }
+      if (data.title && data.title.toLowerCase().trim() === cleanLower) {
+        return true;
+      }
+      return false;
+    });
+
+    if (docFound) {
+      return { id: docFound.id, ...docFound.data() } as Product;
+    }
   } catch (err) {
     console.warn("No se pudo obtener la figura por ID:", err);
-    return null;
   }
+
+  return null;
 }
 
 export async function fetchFiguresByIds(figureIds: string[]): Promise<Product[]> {
