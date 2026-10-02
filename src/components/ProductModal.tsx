@@ -31,7 +31,7 @@ export function ProductModal({
   const [currentImageIndex, setCurrentImageIndex] = useState(initialImageIndex);
   const [isFullScreen, setIsFullScreen] = useState(initialFullScreen);
   const [shareStatus, setShareStatus] = useState<'idle' | 'copied' | 'shared'>('idle');
-  const [igStatus, setIgStatus] = useState<'idle' | 'copied'>('idle');
+  const [instagramCountdown, setInstagramCountdown] = useState<number | null>(null);
   const startFullScreenRef = useRef(initialFullScreen);
   
   // Seguimiento de telemetría de visualización de figura
@@ -293,91 +293,71 @@ export function ProductModal({
   };
   const instagramHandle = getInstagramHandle();
   // Enlace universal oficial de Meta para abrir directamente el chat / conversación privada
-  const instagramDmUrl = `https://ig.me/m/${instagramHandle}?text=${whatsappMessage}`;
+  const instagramDmUrl = `https://ig.me/m/${instagramHandle}`;
 
-  const copyTextToClipboard = async (text: string): Promise<boolean> => {
-    let copied = false;
-
-    // 1. Intentar copia moderna con navigator.clipboard en el contexto inmediato del click
+  const copyTextToClipboard = async (text: string) => {
     try {
       if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(text);
-        copied = true;
+        return true;
       }
-    } catch (e) {
-      console.warn('Fallo navigator.clipboard.writeText, probando fallback execCommand:', e);
+    } catch {
+      // Intentar fallback
     }
-
-    // 2. Fallback robusto con textarea para iOS Safari y navegadores web
-    if (!copied) {
-      try {
-        const textArea = document.createElement('textarea');
-        textArea.value = text;
-        textArea.setAttribute('readonly', '');
-        textArea.style.position = 'fixed';
-        textArea.style.top = '0';
-        textArea.style.left = '0';
-        textArea.style.width = '2em';
-        textArea.style.height = '2em';
-        textArea.style.padding = '0';
-        textArea.style.border = 'none';
-        textArea.style.outline = 'none';
-        textArea.style.boxShadow = 'none';
-        textArea.style.background = 'transparent';
-        textArea.style.opacity = '0.01';
-        document.body.appendChild(textArea);
-
-        if (navigator.userAgent.match(/ipad|ipod|iphone/i)) {
-          const range = document.createRange();
-          range.selectNodeContents(textArea);
-          const selection = window.getSelection();
-          if (selection) {
-            selection.removeAllRanges();
-            selection.addRange(range);
-          }
-          textArea.setSelectionRange(0, 999999);
-        } else {
-          textArea.focus();
-          textArea.select();
-        }
-
-        copied = document.execCommand('copy');
-        document.body.removeChild(textArea);
-      } catch (err) {
-        console.warn('Error en copyTextToClipboard execCommand:', err);
-      }
+    try {
+      const textArea = document.createElement('textarea');
+      textArea.value = text;
+      textArea.style.position = 'fixed';
+      textArea.style.left = '-9999px';
+      textArea.style.top = '-9999px';
+      textArea.style.opacity = '0';
+      document.body.appendChild(textArea);
+      textArea.focus();
+      textArea.select();
+      const success = document.execCommand('copy');
+      document.body.removeChild(textArea);
+      return success;
+    } catch {
+      return false;
     }
-
-    return copied;
   };
 
-  const handleInstagramClick = async (e?: React.MouseEvent) => {
-    if (e) {
-      e.preventDefault();
-      e.stopPropagation();
-    }
+  const handleInstagramClick = async () => {
     if (product) {
       trackInstagramClick(product);
     }
-
-    // 1. Copiar primero el mensaje al portapapeles de inmediato antes de que el navegador pierda foco
     await copyTextToClipboard(baseMessage);
-    setIgStatus('copied');
-    setTimeout(() => {
-      setIgStatus('idle');
-    }, 3000);
+    setInstagramCountdown(5);
+  };
 
+  const redirectToInstagram = () => {
+    setInstagramCountdown(null);
     const isMobile = typeof navigator !== 'undefined' && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-    const targetUrl = instagramDmUrl;
-
+    
     if (isMobile) {
-      // En dispositivos móviles, redirección directa a la app/chat de Instagram
-      window.location.href = targetUrl;
+      // ig.me/m/username es el enlace universal oficial de Meta que abre la conversación directa en la App de Instagram
+      window.location.href = instagramDmUrl;
     } else {
-      // En computadoras de escritorio, abrir chat directo en nueva pestaña
-      window.open(targetUrl, '_blank', 'noopener,noreferrer');
+      // En computadoras de escritorio, abrir web en nueva pestaña
+      window.open(instagramDmUrl, '_blank', 'noopener,noreferrer');
     }
   };
+
+  // Temporizador de 5 segundos para redirigir a Instagram
+  useEffect(() => {
+    if (instagramCountdown === null) return;
+
+    if (instagramCountdown > 0) {
+      const timer = setTimeout(() => {
+        setInstagramCountdown(prev => (prev !== null && prev > 1 ? prev - 1 : 0));
+      }, 1000);
+      return () => clearTimeout(timer);
+    }
+
+    if (instagramCountdown === 0) {
+      redirectToInstagram();
+    }
+  }, [instagramCountdown, instagramDmUrl]);
   
   const currentImageUrl = product.imageUrls?.[currentImageIndex] || '';
 
@@ -771,19 +751,9 @@ export function ProductModal({
               type="button"
               onClick={handleInstagramClick}
               className="w-full bg-gradient-to-r from-[#833ab4] via-[#fd1d1d] to-[#fcb045] hover:opacity-95 active:scale-[0.98] text-white text-xs sm:text-sm font-bold py-3.5 px-4 rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-pink-500/20 tracking-wide uppercase hover:brightness-105 transition-all cursor-pointer"
-              title="Consultar por Instagram (copia el mensaje y abre el chat directo)"
             >
-              {igStatus === 'copied' ? (
-                <>
-                  <Check className="w-4.5 h-4.5 flex-shrink-0 text-white" />
-                  <span>¡Mensaje copiado! Abriendo Instagram...</span>
-                </>
-              ) : (
-                <>
-                  <Instagram className="w-4.5 h-4.5 flex-shrink-0" />
-                  <span>Consultar por Instagram</span>
-                </>
-              )}
+              <Instagram className="w-4.5 h-4.5 flex-shrink-0" />
+              <span>Consultar por Instagram</span>
             </button>
           </div>
 
@@ -810,6 +780,81 @@ export function ProductModal({
           </button>
         </div>
       </div>
+
+      {/* Modal / Diálogo de cuenta regresiva de 5 segundos para Instagram */}
+      {instagramCountdown !== null && (
+        <div 
+          className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-200"
+          onClick={() => setInstagramCountdown(null)}
+        >
+          <div 
+            className="bg-surface-container-low border border-pink-500/40 rounded-2xl p-6 max-w-sm w-full shadow-2xl space-y-4 text-center relative overflow-hidden animate-in zoom-in-95 duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Gradient top bar */}
+            <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-[#833ab4] via-[#fd1d1d] to-[#fcb045]" />
+            
+            <div className="w-14 h-14 mx-auto rounded-full bg-gradient-to-tr from-[#833ab4] via-[#fd1d1d] to-[#fcb045] flex items-center justify-center text-white shadow-lg shadow-pink-500/30">
+              <Check className="w-7 h-7 stroke-[3]" />
+            </div>
+
+            <div className="space-y-1.5">
+              <h3 className="text-lg font-bold text-on-surface">
+                ¡El mensaje se copió!
+              </h3>
+              <p className="text-xs font-semibold text-pink-300">
+                Pegalo en el mensaje de Instagram
+              </p>
+            </div>
+
+            {/* Vista previa del mensaje */}
+            <div className="p-3 bg-surface-container-lowest rounded-xl border border-outline-variant/40 text-left text-xs text-on-surface-variant font-mono leading-relaxed max-h-24 overflow-y-auto select-all">
+              "{baseMessage}"
+            </div>
+
+            {/* Contador de 5 segundos */}
+            <div className="space-y-2 pt-1">
+              <div className="flex items-center justify-between text-xs font-semibold text-outline">
+                <span className="flex items-center gap-1.5 text-on-surface text-[11px]">
+                  <Instagram className="w-3.5 h-3.5 text-pink-400 animate-pulse" />
+                  Abriendo App de Instagram en...
+                </span>
+                <span className="font-mono text-pink-400 font-bold text-sm bg-pink-950/60 border border-pink-500/30 px-2 py-0.5 rounded-md">
+                  {instagramCountdown}s
+                </span>
+              </div>
+              <div className="w-full bg-surface-container-high h-2.5 rounded-full overflow-hidden p-0.5 border border-outline-variant/30">
+                <div 
+                  className="h-full bg-gradient-to-r from-[#833ab4] via-[#fd1d1d] to-[#fcb045] transition-all duration-1000 ease-linear rounded-full"
+                  style={{ width: `${Math.max(10, ((5 - (instagramCountdown || 0)) / 5) * 100)}%` }}
+                />
+              </div>
+            </div>
+
+            {/* Botones de acción rápida */}
+            <div className="flex flex-col gap-2 pt-1">
+              <a
+                href={instagramDmUrl}
+                onClick={(e) => {
+                  e.preventDefault();
+                  redirectToInstagram();
+                }}
+                className="w-full bg-gradient-to-r from-[#833ab4] via-[#fd1d1d] to-[#fcb045] hover:opacity-95 text-white text-xs font-bold py-3.5 px-3 rounded-xl flex items-center justify-center gap-2 shadow-md shadow-pink-500/25 active:scale-95 transition-all cursor-pointer uppercase tracking-wider text-center"
+              >
+                <span>Abrir chat de Instagram</span>
+                <Instagram className="w-4 h-4" />
+              </a>
+              <button
+                type="button"
+                onClick={() => setInstagramCountdown(null)}
+                className="w-full py-2.5 rounded-xl border border-outline-variant/40 bg-surface-container hover:bg-surface-container-high text-xs font-semibold text-on-surface-variant hover:text-on-surface transition-all cursor-pointer"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Full screen image overlay con Zoom por Pinch/Doble-Toque y Desplazamiento (Pan) */}
       {isFullScreen && (
