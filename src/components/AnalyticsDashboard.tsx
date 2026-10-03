@@ -131,29 +131,53 @@ export function AnalyticsDashboard({
   };
 
   const handleOpenFigure = async (figureId?: string, numericId?: string, title?: string) => {
-    const searchTarget = figureId || numericId || '';
-    if (!searchTarget && !title) return;
+    let found: Product | null = null;
 
-    // 1. Buscar primero en las figuras en memoria
-    let found = allFigures.find(f => 
-      (figureId && f.id === figureId) ||
-      (numericId && f.numericId && f.numericId.replace(/^#/, '') === numericId.replace(/^#/, '')) ||
-      (title && f.title.toLowerCase() === title.toLowerCase())
-    );
+    // 1. Prioridad 1: Buscar por ID exacto de documento en allFigures
+    if (figureId) {
+      found = allFigures.find(f => f.id === figureId) || null;
+    }
 
-    // 2. Si no se encuentra en memoria, cargar directamente desde Firestore
-    if (!found && searchTarget) {
-      setLoadingFigureId(searchTarget);
-      try {
-        const { fetchFigureById } = await import('../services/firestoreService');
-        const loaded = await fetchFigureById(searchTarget);
-        if (loaded) {
-          found = loaded;
+    // 2. Prioridad 2: Buscar por numericId exacto o valor numérico en allFigures
+    if (!found && numericId) {
+      const targetDigits = parseInt(numericId.replace(/[^0-9]/g, ''), 10);
+      found = allFigures.find(f => {
+        if (!f.numericId) return false;
+        if (f.numericId.trim().toLowerCase() === numericId.trim().toLowerCase()) return true;
+        if (!isNaN(targetDigits)) {
+          const fDigits = parseInt(f.numericId.replace(/[^0-9]/g, ''), 10);
+          return fDigits === targetDigits;
         }
-      } catch (err) {
-        console.warn('Error fetching figure for analytics preview:', err);
-      } finally {
-        setLoadingFigureId(null);
+        return false;
+      }) || null;
+    }
+
+    // 3. Prioridad 3: Buscar por título exacto en allFigures
+    if (!found && title && title !== 'Figura') {
+      found = allFigures.find(f => f.title.trim().toLowerCase() === title.trim().toLowerCase()) || null;
+    }
+
+    // 4. Si aún no se encontró en memoria, consultar directamente en Firestore
+    if (!found) {
+      const searchTarget = figureId || numericId || title || '';
+      if (searchTarget) {
+        setLoadingFigureId(searchTarget);
+        try {
+          const { fetchFigureById } = await import('../services/firestoreService');
+          if (figureId) {
+            found = await fetchFigureById(figureId);
+          }
+          if (!found && numericId) {
+            found = await fetchFigureById(numericId);
+          }
+          if (!found && title && title !== 'Figura') {
+            found = await fetchFigureById(title);
+          }
+        } catch (err) {
+          console.warn('Error fetching figure for analytics preview:', err);
+        } finally {
+          setLoadingFigureId(null);
+        }
       }
     }
 
@@ -1164,10 +1188,11 @@ export function AnalyticsDashboard({
                         const evtDate = getEventDate(evt.timestamp);
                         const timeStr = formatEventTime(evtDate);
 
-                        // Obtener número identificador (#001, etc.)
-                        const rawNumId = evt.figureNumericId || (evt.figureId ? figuresLookup.get(evt.figureId)?.numericId : '') || '';
+                        // Obtener datos actuales de la figura por su ID exacto de Firestore
+                        const lookupData = evt.figureId ? figuresLookup.get(evt.figureId) : undefined;
+                        const figTitle = lookupData?.title || evt.figureTitle || 'Figura';
+                        const rawNumId = lookupData?.numericId || evt.figureNumericId || '';
                         const formattedNumId = rawNumId ? (rawNumId.startsWith('#') ? rawNumId : `#${rawNumId}`) : '';
-                        const figTitle = evt.figureTitle || (evt.figureId ? figuresLookup.get(evt.figureId)?.title : '') || 'Figura';
 
                         const isFigureEvent = evt.type === 'figure_view' || evt.type === 'whatsapp_click' || evt.type === 'instagram_click';
                         const isLoadingThis = loadingFigureId === (evt.figureId || rawNumId || figTitle);

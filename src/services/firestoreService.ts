@@ -165,14 +165,29 @@ export async function fetchFigureById(figureId: string): Promise<Product | null>
     // Si contiene caracteres no válidos para doc ID, continuar con query
   }
 
-  // 2. Buscar por numericId (#001, 001, etc.)
-  try {
-    const withHash = cleanId.startsWith('#') ? cleanId : `#${cleanId}`;
-    const withoutHash = cleanId.replace(/^#/, '');
+  // 2. Generar variaciones numéricas posibles (#134, 134, #0134, 0134, #00134)
+  const numOnly = cleanId.replace(/[^0-9]/g, '');
+  const targetNumber = numOnly ? parseInt(numOnly, 10) : NaN;
+  const variations: string[] = [cleanId];
 
+  if (!isNaN(targetNumber)) {
+    variations.push(
+      String(targetNumber),
+      `#${targetNumber}`,
+      String(targetNumber).padStart(3, '0'),
+      `#${String(targetNumber).padStart(3, '0')}`,
+      String(targetNumber).padStart(4, '0'),
+      `#${String(targetNumber).padStart(4, '0')}`
+    );
+  }
+
+  const uniqueVariations = Array.from(new Set(variations));
+
+  // 3. Buscar por numericId en Firestore usando las variaciones
+  try {
     const qNumeric = query(
       collection(db, 'figures'),
-      where('numericId', 'in', [cleanId, withHash, withoutHash]),
+      where('numericId', 'in', uniqueVariations.slice(0, 10)),
       limit(1)
     );
     const snapNumeric = await getDocs(qNumeric);
@@ -184,22 +199,38 @@ export async function fetchFigureById(figureId: string): Promise<Product | null>
     // Continuar con fallback completo
   }
 
-  // 3. Fallback: buscar en el catálogo completo por id, numericId o título coincidente
+  // 4. Fallback: buscar en el catálogo completo por id, valor numérico o título coincidente
   try {
     const snapAll = await getDocs(collection(db, 'figures'));
     const cleanLower = cleanId.toLowerCase();
-    const docFound = snapAll.docs.find((d) => {
+    
+    // Primero buscar coincidencia exacta por numericId o ID
+    let docFound = snapAll.docs.find((d) => {
       if (d.id === cleanId) return true;
       const data = d.data();
-      const numId = (data.numericId || '').toString().toLowerCase();
-      if (numId === cleanLower || numId === `#${cleanLower}` || numId.replace(/^#/, '') === cleanLower.replace(/^#/, '')) {
+      const numId = (data.numericId || '').toString().trim().toLowerCase();
+      if (numId && uniqueVariations.some(v => v.toLowerCase() === numId)) {
         return true;
       }
-      if (data.title && data.title.toLowerCase().trim() === cleanLower) {
-        return true;
+      if (!isNaN(targetNumber) && numId) {
+        const docNumOnly = numId.replace(/[^0-9]/g, '');
+        if (docNumOnly && parseInt(docNumOnly, 10) === targetNumber) {
+          return true;
+        }
       }
       return false;
     });
+
+    // Si no se encontró por ID o número, buscar por título
+    if (!docFound) {
+      docFound = snapAll.docs.find((d) => {
+        const data = d.data();
+        if (data.title && data.title.toLowerCase().trim() === cleanLower) {
+          return true;
+        }
+        return false;
+      });
+    }
 
     if (docFound) {
       return { id: docFound.id, ...docFound.data() } as Product;
