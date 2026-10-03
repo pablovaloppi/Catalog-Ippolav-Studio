@@ -23,7 +23,7 @@ import {
 } from 'firebase/firestore';
 import { Product, Category, Designer, SiteConfig } from './types';
 import { products as initialProducts } from './data';
-import { Plus, ChevronUp, ChevronDown, Trash2, Edit2, LogOut, ImagePlus, UserCircle, Settings, Hash, Sparkles, Eye, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Heart, CornerDownRight, FolderTree, Dices, TrendingUp, Search } from 'lucide-react';
+import { Plus, ChevronUp, ChevronDown, Trash2, Edit2, LogOut, ImagePlus, UserCircle, Settings, Hash, Sparkles, Eye, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Heart, CornerDownRight, FolderTree, Dices, TrendingUp, Search, Send } from 'lucide-react';
 import { ProductModal } from './components/ProductModal';
 import { 
   getCategoryAncestors, 
@@ -39,6 +39,7 @@ import {
 import { ImageMigrationTool } from './components/ImageMigrationTool';
 import { RandomPickerTool } from './components/RandomPickerTool';
 import { AnalyticsDashboard } from './components/AnalyticsDashboard';
+import { TelegramGroupsManager } from './components/TelegramGroupsManager';
 
 // ... other imports ...
 
@@ -194,8 +195,8 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   });
   const [initialLoading, setInitialLoading] = useState(true);
   
-  // views: figures-list, figure-form, categories-list, category-form, designers-list, designer-form, config, migration, random-picker
-  const [view, setView] = useState<'figures-list' | 'figure-form' | 'categories-list' | 'category-form' | 'designers-list' | 'designer-form' | 'config' | 'migration' | 'random-picker'>('figures-list');
+  // views: figures-list, figure-form, categories-list, category-form, designers-list, designer-form, config, migration, random-picker, analytics, telegram
+  const [view, setView] = useState<'figures-list' | 'figure-form' | 'categories-list' | 'category-form' | 'designers-list' | 'designer-form' | 'config' | 'migration' | 'random-picker' | 'analytics' | 'telegram'>('figures-list');
   const [editingFigure, setEditingFigure] = useState<Product | null>(null);
   const [previewingFigure, setPreviewingFigure] = useState<Product | null>(null);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
@@ -760,6 +761,12 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                 className={`text-sm font-semibold whitespace-nowrap transition-colors flex items-center gap-1.5 ${view === 'random-picker' ? 'text-primary' : 'text-on-surface-variant hover:text-on-surface'}`}
               >
                 <Dices className="w-4 h-4 text-primary" /> Sorteo Aleatorio
+              </button>
+              <button 
+                onClick={() => { setView('telegram'); }} 
+                className={`text-sm font-semibold whitespace-nowrap transition-colors flex items-center gap-1.5 ${view === 'telegram' ? 'text-[#229ED9]' : 'text-on-surface-variant hover:text-on-surface'}`}
+              >
+                <Send className="w-4 h-4 text-[#229ED9] -rotate-45" /> Telegram
               </button>
               <button 
                 onClick={() => { setView('config'); }} 
@@ -1441,6 +1448,8 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
             categories={categories}
             designers={designers}
           />
+        ) : view === 'telegram' ? (
+          <TelegramGroupsManager />
         ) : view === 'config' ? (
           <ConfigForm config={siteConfig} />
         ) : view === 'migration' ? (

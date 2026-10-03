@@ -101,5 +101,9 @@ service cloud.firestore {
       allow create: if isValidId(eventId) && incoming().type is string;
       allow update, delete: if isAdmin();
     }
+
+    match /telegram_groups/{groupId} {
+      allow read, create, update, delete: if isAdmin() && isValidId(groupId);
+    }
   }
 }

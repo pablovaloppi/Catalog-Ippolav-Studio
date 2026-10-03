@@ -51,3 +51,11 @@ export interface SiteConfig {
   googleAnalyticsId?: string;
 }
 
+export interface TelegramGroup {
+  id: string;
+  name: string;
+  lastUpdatedAt?: any;
+  createdAt?: any;
+  order?: number;
+}
+

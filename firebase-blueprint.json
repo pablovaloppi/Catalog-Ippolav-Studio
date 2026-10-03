@@ -121,6 +121,18 @@
         "timestamp": { "type": "timestamp" }
       },
       "required": ["type", "timestamp"]
+    },
+    "telegramGroup": {
+      "title": "TelegramGroup",
+      "description": "Telegram group for community sharing and tracking",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "maxLength": 200 },
+        "lastUpdatedAt": { "type": "timestamp" },
+        "createdAt": { "type": "timestamp" },
+        "order": { "type": "number" }
+      },
+      "required": ["name"]
     }
   },
   "firestore": {
@@ -151,6 +163,10 @@
     "analytics_events/{eventId}": {
       "schema": "analyticsEvent",
       "description": "Stores recent visitor interaction events."
+    },
+    "telegram_groups/{groupId}": {
+      "schema": "telegramGroup",
+      "description": "Stores Telegram groups and their last updated dates."
     }
   }
 }
