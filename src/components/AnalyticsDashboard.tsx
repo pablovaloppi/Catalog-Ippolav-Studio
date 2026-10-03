@@ -33,16 +33,28 @@ import {
   Check,
   ShieldCheck,
   ShieldAlert,
-  Info
+  Info,
+  ExternalLink,
+  Loader2
 } from 'lucide-react';
-import { Product } from '../types';
+import { Product, SiteConfig, Category, Designer } from '../types';
+import { ProductModal } from './ProductModal';
 
 interface AnalyticsDashboardProps {
   allFigures?: Product[];
   onSelectFigure?: (figure: Product) => void;
+  config?: SiteConfig | null;
+  categories?: Category[];
+  designers?: Designer[];
 }
 
-export function AnalyticsDashboard({ allFigures = [], onSelectFigure }: AnalyticsDashboardProps) {
+export function AnalyticsDashboard({ 
+  allFigures = [], 
+  onSelectFigure,
+  config,
+  categories = [],
+  designers = []
+}: AnalyticsDashboardProps) {
   const [daysRange, setDaysRange] = useState<number>(7);
   const [loading, setLoading] = useState(true);
   const [dailyData, setDailyData] = useState<DailyAnalyticsData[]>([]);
@@ -50,6 +62,8 @@ export function AnalyticsDashboard({ allFigures = [], onSelectFigure }: Analytic
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isSimulating, setIsSimulating] = useState(false);
   const [testSuccess, setTestSuccess] = useState(false);
+  const [localPreviewFigure, setLocalPreviewFigure] = useState<Product | null>(null);
+  const [loadingFigureId, setLoadingFigureId] = useState<string | null>(null);
   const [isExcluded, setIsExcluded] = useState<boolean>(() => {
     return isAnalyticsExcluded();
   });
@@ -114,6 +128,42 @@ export function AnalyticsDashboard({ allFigures = [], onSelectFigure }: Analytic
   const toggleExclusion = (newVal: boolean) => {
     setAnalyticsExclusion(newVal);
     setIsExcluded(newVal);
+  };
+
+  const handleOpenFigure = async (figureId?: string, numericId?: string, title?: string) => {
+    const searchTarget = figureId || numericId || '';
+    if (!searchTarget && !title) return;
+
+    // 1. Buscar primero en las figuras en memoria
+    let found = allFigures.find(f => 
+      (figureId && f.id === figureId) ||
+      (numericId && f.numericId && f.numericId.replace(/^#/, '') === numericId.replace(/^#/, '')) ||
+      (title && f.title.toLowerCase() === title.toLowerCase())
+    );
+
+    // 2. Si no se encuentra en memoria, cargar directamente desde Firestore
+    if (!found && searchTarget) {
+      setLoadingFigureId(searchTarget);
+      try {
+        const { fetchFigureById } = await import('../services/firestoreService');
+        const loaded = await fetchFigureById(searchTarget);
+        if (loaded) {
+          found = loaded;
+        }
+      } catch (err) {
+        console.warn('Error fetching figure for analytics preview:', err);
+      } finally {
+        setLoadingFigureId(null);
+      }
+    }
+
+    if (found) {
+      if (onSelectFigure) {
+        onSelectFigure(found);
+      } else {
+        setLocalPreviewFigure(found);
+      }
+    }
   };
 
   const loadData = useCallback(async (days: number) => {
@@ -928,21 +978,24 @@ export function AnalyticsDashboard({ allFigures = [], onSelectFigure }: Analytic
                     const formattedNumId = numId ? (numId.startsWith('#') ? numId : `#${numId}`) : '';
                     const maxCount = aggregated.topViewedFigures[0]?.count || 1;
                     const percent = Math.round((fig.count / maxCount) * 100);
+                    const isLoadingThis = loadingFigureId === (fig.id || numId);
 
                     return (
                       <div 
                         key={fig.id}
-                        className="flex items-center justify-between gap-3 p-2.5 rounded-lg bg-surface-container border border-outline-variant/20 hover:border-primary/40 transition-colors"
+                        onClick={() => handleOpenFigure(fig.id, numId, fig.title)}
+                        className="flex items-center justify-between gap-3 p-2.5 rounded-lg bg-surface-container border border-outline-variant/20 hover:border-primary/50 hover:bg-surface-container-high transition-all cursor-pointer group/item shadow-xs active:scale-[0.99]"
+                        title={`Clic para abrir ficha de ${fig.title}`}
                       >
                         <div className="flex items-center gap-3 min-w-0 flex-1">
-                          <span className="text-xs font-bold font-mono w-5 text-on-surface-variant text-center">
+                          <span className="text-xs font-bold font-mono w-5 text-on-surface-variant text-center group-hover/item:text-primary">
                             #{idx + 1}
                           </span>
                           {matchedFigure?.imageUrls?.[0] ? (
                             <img 
                               src={matchedFigure.imageUrls[0]} 
                               alt={fig.title} 
-                              className="w-10 h-10 object-cover rounded bg-surface-container-lowest shrink-0 border border-outline-variant/30" 
+                              className="w-10 h-10 object-cover rounded bg-surface-container-lowest shrink-0 border border-outline-variant/30 group-hover/item:scale-105 transition-transform" 
                             />
                           ) : (
                             <div className="w-10 h-10 rounded bg-surface-container-lowest flex items-center justify-center shrink-0 border border-outline-variant/30 text-on-surface-variant text-xs">
@@ -951,11 +1004,16 @@ export function AnalyticsDashboard({ allFigures = [], onSelectFigure }: Analytic
                           )}
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-1.5 min-w-0">
-                              <h4 className="text-xs font-semibold text-on-surface truncate">{fig.title}</h4>
+                              <h4 className="text-xs font-semibold text-on-surface truncate group-hover/item:text-primary transition-colors">
+                                {fig.title}
+                              </h4>
                               {formattedNumId && (
                                 <span className="text-[10px] font-mono font-bold text-primary bg-primary/10 px-1.5 py-0.2 rounded shrink-0 border border-primary/20">
                                   {formattedNumId}
                                 </span>
+                              )}
+                              {isLoadingThis && (
+                                <Loader2 className="w-3 h-3 animate-spin text-primary shrink-0" />
                               )}
                             </div>
                             <div className="w-full bg-surface-container-lowest h-1.5 rounded-full mt-1.5 overflow-hidden">
@@ -965,7 +1023,7 @@ export function AnalyticsDashboard({ allFigures = [], onSelectFigure }: Analytic
                         </div>
 
                         <div className="flex items-center gap-2 shrink-0">
-                          <span className="px-2.5 py-1 rounded-full bg-surface-container-high border border-outline-variant/30 text-xs font-bold font-mono text-primary flex items-center gap-1">
+                          <span className="px-2.5 py-1 rounded-full bg-surface-container-high border border-outline-variant/30 text-xs font-bold font-mono text-primary flex items-center gap-1 group-hover/item:border-primary/40">
                             <Eye className="w-3 h-3" />
                             {fig.count}
                           </span>
@@ -1000,22 +1058,30 @@ export function AnalyticsDashboard({ allFigures = [], onSelectFigure }: Analytic
                     const matchedFigure = allFigures.find(f => f.id === fig.id);
                     const numId = matchedFigure?.numericId || figuresLookup.get(fig.id)?.numericId || '';
                     const formattedNumId = numId ? (numId.startsWith('#') ? numId : `#${numId}`) : '';
+                    const isLoadingThis = loadingFigureId === (fig.id || numId);
 
                     return (
                       <div 
                         key={fig.id}
-                        className="flex items-center justify-between p-2.5 rounded-lg bg-surface-container border border-outline-variant/20 hover:border-emerald-500/40 transition-colors"
+                        onClick={() => handleOpenFigure(fig.id, numId, fig.title)}
+                        className="flex items-center justify-between p-2.5 rounded-lg bg-surface-container border border-outline-variant/20 hover:border-emerald-500/50 hover:bg-surface-container-high transition-all cursor-pointer group/item shadow-xs active:scale-[0.99]"
+                        title={`Clic para abrir ficha de ${fig.title}`}
                       >
                         <div className="flex items-center gap-2.5 min-w-0">
                           <span className="text-xs font-bold font-mono text-emerald-400">#{idx + 1}</span>
-                          <span className="text-xs font-semibold text-on-surface truncate">{fig.title}</span>
+                          <span className="text-xs font-semibold text-on-surface truncate group-hover/item:text-emerald-300 transition-colors">
+                            {fig.title}
+                          </span>
                           {formattedNumId && (
                             <span className="text-[10px] font-mono font-bold text-emerald-400 bg-emerald-950/60 px-1.5 py-0.2 rounded shrink-0 border border-emerald-500/30">
                               {formattedNumId}
                             </span>
                           )}
+                          {isLoadingThis && (
+                            <Loader2 className="w-3 h-3 animate-spin text-emerald-400 shrink-0" />
+                          )}
                         </div>
-                        <span className="px-2.5 py-0.5 rounded-full bg-emerald-950/70 border border-emerald-500/50 text-emerald-300 text-xs font-bold font-mono shrink-0 flex items-center gap-1">
+                        <span className="px-2.5 py-0.5 rounded-full bg-emerald-950/70 border border-emerald-500/50 text-emerald-300 text-xs font-bold font-mono shrink-0 flex items-center gap-1 group-hover/item:border-emerald-400">
                           <MessageCircle className="w-3 h-3" />
                           {fig.count} contactos
                         </span>
@@ -1103,27 +1169,23 @@ export function AnalyticsDashboard({ allFigures = [], onSelectFigure }: Analytic
                         const formattedNumId = rawNumId ? (rawNumId.startsWith('#') ? rawNumId : `#${rawNumId}`) : '';
                         const figTitle = evt.figureTitle || (evt.figureId ? figuresLookup.get(evt.figureId)?.title : '') || 'Figura';
 
+                        const isFigureEvent = evt.type === 'figure_view' || evt.type === 'whatsapp_click' || evt.type === 'instagram_click';
+                        const isLoadingThis = loadingFigureId === (evt.figureId || rawNumId || figTitle);
+
                         let icon = <Users className="w-3.5 h-3.5 text-primary" />;
-                        let text = "Nueva visita a la tienda";
+                        let actionPrefix = "Nueva visita a la tienda";
 
                         if (evt.type === 'figure_view') {
                           icon = <Eye className="w-3.5 h-3.5 text-sky-400" />;
-                          text = formattedNumId 
-                            ? `Vio la figura "${figTitle}" ${formattedNumId}`
-                            : `Vio la figura "${figTitle}"`;
+                          actionPrefix = "Vio la figura";
                         } else if (evt.type === 'whatsapp_click') {
                           icon = <MessageCircle className="w-3.5 h-3.5 text-emerald-400" />;
-                          text = formattedNumId 
-                            ? `Consultó por WhatsApp por "${figTitle}" ${formattedNumId}`
-                            : `Consultó por WhatsApp por "${figTitle}"`;
+                          actionPrefix = "Consultó por WhatsApp por";
                         } else if (evt.type === 'instagram_click') {
                           icon = <Instagram className="w-3.5 h-3.5 text-pink-400" />;
-                          text = formattedNumId 
-                            ? `Consultó por Instagram por "${figTitle}" ${formattedNumId}`
-                            : `Consultó por Instagram por "${figTitle}"`;
+                          actionPrefix = "Consultó por Instagram por";
                         } else if (evt.type === 'search') {
                           icon = <Search className="w-3.5 h-3.5 text-amber-400" />;
-                          text = `Buscó "${evt.searchTerm}"`;
                         }
 
                         let sourceBadge = 'Enlace directo';
@@ -1147,7 +1209,46 @@ export function AnalyticsDashboard({ allFigures = [], onSelectFigure }: Analytic
                               <div className="w-7 h-7 rounded-full bg-surface-container flex items-center justify-center shrink-0 border border-outline-variant/20">
                                 {icon}
                               </div>
-                              <span className="font-medium text-on-surface truncate">{text}</span>
+
+                              {isFigureEvent ? (
+                                <div className="flex items-center gap-1.5 flex-wrap font-medium text-on-surface min-w-0">
+                                  <span className="text-on-surface-variant">{actionPrefix}</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenFigure(evt.figureId, rawNumId, figTitle)}
+                                    className="font-semibold text-on-surface hover:text-primary transition-colors cursor-pointer text-left truncate max-w-[200px] sm:max-w-[320px]"
+                                    title={`Ver figura "${figTitle}"`}
+                                  >
+                                    &ldquo;{figTitle}&rdquo;
+                                  </button>
+                                  {formattedNumId && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleOpenFigure(evt.figureId, rawNumId, figTitle)}
+                                      disabled={isLoadingThis}
+                                      className="inline-flex items-center gap-1 font-mono font-bold text-[11px] text-primary hover:text-primary-light bg-primary/10 hover:bg-primary/20 px-1.5 py-0.2 rounded border border-primary/30 hover:border-primary/50 transition-all cursor-pointer underline hover:no-underline active:scale-95 group/num shrink-0"
+                                      title={`Abrir ventana de la figura ${formattedNumId}`}
+                                    >
+                                      {isLoadingThis ? (
+                                        <Loader2 className="w-2.5 h-2.5 animate-spin text-primary" />
+                                      ) : (
+                                        <>
+                                          <span>{formattedNumId}</span>
+                                          <ExternalLink className="w-2.5 h-2.5 opacity-70 group-hover/num:opacity-100" />
+                                        </>
+                                      )}
+                                    </button>
+                                  )}
+                                </div>
+                              ) : evt.type === 'search' ? (
+                                <span className="font-medium text-on-surface truncate">
+                                  Buscó &ldquo;{evt.searchTerm}&rdquo;
+                                </span>
+                              ) : (
+                                <span className="font-medium text-on-surface truncate">
+                                  {actionPrefix}
+                                </span>
+                              )}
                             </div>
                             <div className="flex items-center gap-2 shrink-0">
                               <span className={`px-2 py-0.5 rounded text-[10px] font-semibold border ${sourceClass}`}>
@@ -1167,6 +1268,17 @@ export function AnalyticsDashboard({ allFigures = [], onSelectFigure }: Analytic
             )}
           </div>
         </>
+      )}
+
+      {/* Modal de Vista Previa local si no se pasó onSelectFigure */}
+      {localPreviewFigure && !onSelectFigure && (
+        <ProductModal 
+          product={localPreviewFigure} 
+          categoryName={categories.find(c => c.id === localPreviewFigure.franchiseId)?.name}
+          designerName={designers.find(d => d.id === localPreviewFigure.designerId)?.name}
+          onClose={() => setLocalPreviewFigure(null)}
+          config={config}
+        />
       )}
     </div>
   );

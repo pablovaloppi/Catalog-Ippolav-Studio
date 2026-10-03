@@ -1431,6 +1431,10 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
         ) : view === 'analytics' ? (
           <AnalyticsDashboard 
             allFigures={allAdminFiguresCacheRef.current || figures} 
+            onSelectFigure={(fig) => setPreviewingFigure(fig)}
+            config={siteConfig}
+            categories={categories}
+            designers={designers}
           />
         ) : view === 'random-picker' ? (
           <RandomPickerTool 
