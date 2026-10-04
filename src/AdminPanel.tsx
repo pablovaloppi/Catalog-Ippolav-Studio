@@ -40,6 +40,7 @@ import { ImageMigrationTool } from './components/ImageMigrationTool';
 import { RandomPickerTool } from './components/RandomPickerTool';
 import { AnalyticsDashboard } from './components/AnalyticsDashboard';
 import { TelegramGroupsManager } from './components/TelegramGroupsManager';
+import { formatScale } from './scaleUtils';
 
 // ... other imports ...
 
@@ -1908,13 +1909,17 @@ function FigureForm({ figure, categories, designers, onBack, orderCount, config 
     setFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
   };
 
-  const handleScaleToggle = (option: string) => {
+  const handleScaleToggle = (optionId: string) => {
     setFormData(prev => {
       const currentScales = prev.scale || [];
-      if (currentScales.includes(option)) {
-        return { ...prev, scale: currentScales.filter(s => s !== option) };
+      const isSelected = currentScales.some(s => s === optionId || formatScale(s) === formatScale(optionId));
+      if (isSelected) {
+        return { 
+          ...prev, 
+          scale: currentScales.filter(s => s !== optionId && formatScale(s) !== formatScale(optionId)) 
+        };
       } else {
-        return { ...prev, scale: [...currentScales, option] };
+        return { ...prev, scale: [...currentScales, optionId] };
       }
     });
   };
@@ -2044,7 +2049,14 @@ function FigureForm({ figure, categories, designers, onBack, orderCount, config 
     }
   };
 
-  const scaleOptions = ['1:8', '1:6', '1:4', '1:2', '1:1', 'Chibi'];
+  const scaleOptions = [
+    { id: '1:8', label: '1:8 (20cm)' },
+    { id: '1:6', label: '1:6 (30cm)' },
+    { id: '1:4', label: '1:4 (45cm)' },
+    { id: '1:2', label: '1:2 (90cm)' },
+    { id: '1:1', label: '1:1 (180cm)' },
+    { id: 'Chibi', label: 'Chibi' },
+  ];
 
   return (
     <div className="max-w-3xl mx-auto space-y-6">
@@ -2149,12 +2161,15 @@ function FigureForm({ figure, categories, designers, onBack, orderCount, config 
           <div className="space-y-1 pt-4 border-t border-outline-variant/20">
             <label className="text-xs font-bold text-on-surface-variant uppercase mb-2 block">Escala</label>
             <div className="flex flex-wrap gap-2">
-              {scaleOptions.map(opt => (
-                <label key={opt} className={`cursor-pointer px-3 py-1.5 rounded text-sm font-semibold border transition-all ${formData.scale?.includes(opt) ? 'bg-primary/10 border-primary text-primary' : 'bg-surface-container border-outline-variant/40 text-on-surface-variant hover:border-outline'}`}>
-                   <input type="checkbox" className="hidden" checked={formData.scale?.includes(opt) || false} onChange={() => handleScaleToggle(opt)} />
-                   {opt}
-                </label>
-              ))}
+              {scaleOptions.map(opt => {
+                const isChecked = formData.scale?.some(s => s === opt.id || formatScale(s) === opt.label) || false;
+                return (
+                  <label key={opt.id} className={`cursor-pointer px-3 py-1.5 rounded text-sm font-semibold border transition-all ${isChecked ? 'bg-primary/10 border-primary text-primary' : 'bg-surface-container border-outline-variant/40 text-on-surface-variant hover:border-outline'}`}>
+                     <input type="checkbox" className="hidden" checked={isChecked} onChange={() => handleScaleToggle(opt.id)} />
+                     {opt.label}
+                  </label>
+                );
+              })}
             </div>
           </div>
           <div className="space-y-1">

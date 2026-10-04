@@ -206,10 +206,27 @@ export function FilterSection({
           <div 
             className={
               isSticky
-                ? "fixed top-16 left-0 right-0 z-40 bg-surface/95 backdrop-blur-md border-b border-outline-variant/30 shadow-md px-5 md:px-12 py-2.5 transition-all duration-200"
+                ? "fixed top-16 left-0 right-0 z-40 bg-surface/95 backdrop-blur-md border-b border-primary/40 shadow-xl px-4 sm:px-5 md:px-12 py-2.5 transition-all duration-200"
                 : "relative"
             }
           >
+            {!isSticky && (
+              <div className="flex items-center justify-between pb-2.5 px-1">
+                <div className="flex items-center gap-2">
+                  <span className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-primary bg-primary/15 border border-primary/40 px-3 py-1 rounded-full shadow-sm">
+                    <Sparkles className="w-3.5 h-3.5 text-primary animate-pulse" />
+                    Buscador de Figuras
+                  </span>
+                  <span className="text-xs text-on-surface-variant font-medium hidden sm:inline">
+                    Encontrá cualquier pieza al instante
+                  </span>
+                </div>
+                <span className="text-[11px] text-primary/90 font-mono hidden md:inline font-semibold">
+                  {searchQuery ? `Resultados para: "${searchQuery}"` : 'Busca por nombre, franquicia o código (#001)'}
+                </span>
+              </div>
+            )}
+
             <form 
               onSubmit={(e) => {
                 e.preventDefault();
@@ -217,18 +234,28 @@ export function FilterSection({
                 const inputEl = e.currentTarget.querySelector('input');
                 if (inputEl) inputEl.blur();
               }}
-              className={isSticky ? "max-w-4xl mx-auto relative flex items-center" : "relative flex items-center"}
+              className={`relative flex items-center w-full transition-all duration-300 rounded-2xl border-2 ${
+                isSticky ? 'max-w-4xl mx-auto' : ''
+              } ${
+                searchQuery
+                  ? 'border-primary shadow-[0_0_25px_rgba(229,184,105,0.3)] bg-surface-container-high'
+                  : 'border-primary/70 hover:border-primary shadow-[0_0_20px_rgba(229,184,105,0.18)] hover:shadow-[0_0_25px_rgba(229,184,105,0.28)] focus-within:border-primary focus-within:shadow-[0_0_30px_rgba(229,184,105,0.4)] bg-gradient-to-r from-surface-container-high via-[#1d1b22] to-surface-container-high'
+              }`}
             >
+              {/* Ícono de lupa con badge dorado de alto impacto */}
               <button
                 type="submit"
                 onClick={scrollToCatalogStart}
                 aria-label="Buscar en el catálogo"
                 title="Buscar e ir al inicio del catálogo"
-                className="absolute left-2.5 p-1.5 rounded-lg text-on-surface-variant hover:text-primary hover:bg-surface-container-high transition-colors z-10"
+                className="pl-3 sm:pl-3.5 pr-2 py-2.5 flex items-center justify-center text-primary transition-transform active:scale-90"
               >
-                <Search className="w-5 h-5" />
+                <div className="p-2 rounded-xl bg-primary/20 border border-primary/40 text-primary flex items-center justify-center shadow-inner">
+                  <Search className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />
+                </div>
               </button>
 
+              {/* Campo de texto de búsqueda de alto contraste y legibilidad */}
               <input
                 type="search"
                 enterKeyHint="search"
@@ -240,53 +267,58 @@ export function FilterSection({
                     e.currentTarget.blur();
                   }
                 }}
-                className={`w-full pl-12 pr-28 ${
-                  isSticky ? 'py-2.5 bg-surface-container shadow-sm' : 'py-3.5 bg-surface-container-low shadow-inner'
-                } border border-outline-variant/40 rounded-xl text-on-surface placeholder:text-outline focus:border-primary focus:ring-1 focus:ring-primary text-sm transition-all outline-none`}
-                placeholder="Buscar personaje o franquicia... (ej: Batman, Dragon Ball, Marvel)"
+                className={`w-full py-3 sm:py-3.5 pr-2 pl-1 bg-transparent text-white font-medium text-sm sm:text-base placeholder:text-stone-300 sm:placeholder:text-stone-300 placeholder:font-normal outline-none transition-all`}
+                placeholder="Buscar personaje o franquicia... (ej: Batman, Goku, Marvel, #001)"
               />
-              {searchQuery && (
-                <div className="absolute right-2.5 flex items-center gap-1 z-10">
-                  <button
-                    type="submit"
-                    onClick={scrollToCatalogStart}
-                    className="px-2.5 py-1 rounded-lg bg-primary text-on-primary-fixed text-xs font-bold hover:brightness-110 active:scale-95 transition-all shadow-sm flex items-center gap-1"
-                    title="Buscar e ir al inicio de los resultados"
-                  >
-                    <span>Buscar</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      const success = await copySearchLinkToClipboard(searchQuery);
-                      if (success) {
-                        setIsLinkCopied(true);
-                        setTimeout(() => setIsLinkCopied(false), 2200);
-                      }
-                    }}
-                    className="p-1.5 rounded-lg text-outline hover:text-primary hover:bg-surface-container-high transition-colors relative"
-                    title="Copiar enlace directo para enviar por WhatsApp o Instagram"
-                  >
-                    {isLinkCopied ? <Check className="w-4 h-4 text-emerald-400" /> : <Link2 className="w-4 h-4" />}
-                    {isLinkCopied && (
-                      <span className="absolute -top-8 right-0 bg-surface-container-highest text-on-surface text-[10px] font-semibold px-2 py-0.5 rounded shadow-lg whitespace-nowrap border border-outline-variant/50 animate-in fade-in duration-150">
-                        ¡Link copiado!
-                      </span>
-                    )}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSearchQuery('');
-                      scrollToCatalogStart();
-                    }}
-                    className="p-1.5 rounded-lg text-outline hover:text-on-surface hover:bg-surface-container-high transition-colors"
-                    title="Limpiar búsqueda"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                </div>
-              )}
+
+              {/* Botones de acción derecha (Buscar permanente + Limpiar/Copiar si hay texto) */}
+              <div className="pr-2 sm:pr-2.5 flex items-center gap-1.5 flex-shrink-0">
+                {searchQuery && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const success = await copySearchLinkToClipboard(searchQuery);
+                        if (success) {
+                          setIsLinkCopied(true);
+                          setTimeout(() => setIsLinkCopied(false), 2200);
+                        }
+                      }}
+                      className="p-2 rounded-xl text-on-surface-variant hover:text-primary hover:bg-surface-container-highest transition-colors relative"
+                      title="Copiar enlace directo de esta búsqueda"
+                    >
+                      {isLinkCopied ? <Check className="w-4 h-4 text-emerald-400" /> : <Link2 className="w-4 h-4" />}
+                      {isLinkCopied && (
+                        <span className="absolute -top-9 right-0 bg-surface-container-highest text-on-surface text-[10px] font-semibold px-2.5 py-1 rounded shadow-xl whitespace-nowrap border border-outline-variant/50 animate-in fade-in duration-150">
+                          ¡Link copiado!
+                        </span>
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSearchQuery('');
+                        scrollToCatalogStart();
+                      }}
+                      className="p-2 rounded-xl text-on-surface-variant hover:text-white hover:bg-surface-container-highest transition-colors"
+                      title="Limpiar búsqueda"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </>
+                )}
+
+                {/* Botón Buscar llamativo con brillo dorado permanente */}
+                <button
+                  type="submit"
+                  onClick={scrollToCatalogStart}
+                  className="px-3.5 sm:px-5 py-2 sm:py-2.5 rounded-xl gold-shimmer text-on-primary-fixed text-xs sm:text-sm font-bold shadow-lg shadow-primary/25 hover:brightness-110 active:scale-95 transition-all flex items-center gap-1.5 cursor-pointer"
+                  title="Buscar en el catálogo"
+                >
+                  <Search className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                  <span className="tracking-wide uppercase">Buscar</span>
+                </button>
+              </div>
             </form>
           </div>
         </div>

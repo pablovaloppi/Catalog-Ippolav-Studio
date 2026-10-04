@@ -1,4 +1,4 @@
-import { Menu, Palette, Heart } from 'lucide-react';
+import { Menu, Palette, Heart, Search } from 'lucide-react';
 
 interface HeaderProps {
   onOpenDrawer: () => void;
@@ -62,6 +62,28 @@ export function Header({
       </nav>
 
       <div className="flex items-center gap-2">
+        <a
+          href="#filter-section"
+          onClick={(e) => {
+            e.preventDefault();
+            const filterEl = document.getElementById('filter-section');
+            if (filterEl) {
+              filterEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+            setTimeout(() => {
+              const searchInput = document.querySelector('input[type="search"]') as HTMLInputElement;
+              if (searchInput) {
+                searchInput.focus();
+              }
+            }, 300);
+          }}
+          className="flex px-2.5 sm:px-3 py-1.5 rounded-lg border border-primary/40 bg-surface-container-low text-primary hover:bg-primary/20 text-xs font-semibold tracking-wider transition-all duration-200 active:scale-95 items-center gap-1.5 shadow-sm"
+          title="Buscar figuras en el catálogo"
+        >
+          <Search className="w-4 h-4 text-primary" />
+          <span className="hidden xs:inline sm:inline">Buscar</span>
+        </a>
+
         {onOpenFavorites && (
           <button
             type="button"

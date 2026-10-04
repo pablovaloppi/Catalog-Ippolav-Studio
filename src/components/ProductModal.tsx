@@ -4,6 +4,7 @@ import { Product, SiteConfig } from '../types';
 import { getOptimizedCloudinaryUrl, getCloudinarySrcSet } from '../cloudinaryUtils';
 import { shareFigure, getShareableFigureUrl } from '../urlUtils';
 import { trackFigureView, trackWhatsAppClick, trackInstagramClick } from '../services/analyticsService';
+import { formatScalesList } from '../scaleUtils';
 
 interface ProductModalProps {
   product: Product | null;
@@ -747,7 +748,7 @@ export function ProductModal({
         <div className="grid grid-cols-2 gap-3 p-3.5 bg-surface-container rounded-lg border border-outline-variant/30">
           <div>
             <span className="text-[10px] font-bold text-outline uppercase block">Escala</span>
-            <span className="text-xs font-semibold text-on-surface">{product.scale?.join(', ')}</span>
+            <span className="text-xs font-semibold text-on-surface">{formatScalesList(product.scale)}</span>
           </div>
           <div>
             <span className="text-[10px] font-bold text-outline uppercase block">Material</span>
