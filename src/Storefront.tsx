@@ -632,17 +632,35 @@ export function Storefront() {
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
 
-  // Si se ingresó directamente con un enlace tipo /b=spiderman, deslizar hacia el catálogo
+  // Desplazamiento automático inicial al entrar a la web hacia el Catálogo de Colección
   useEffect(() => {
-    if (initialUrlQuery) {
-      const timer = setTimeout(() => {
-        const target = document.getElementById('filter-section') || document.getElementById('catalogo');
-        if (target) {
-          target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }
-      }, 350);
-      return () => clearTimeout(timer);
+    // Si la URL tiene un ancla específica diferente (ej: #contacto, #franquicias, #proceso), respetarla
+    const currentHash = typeof window !== 'undefined' ? window.location.hash : '';
+    if (currentHash && currentHash !== '#catalogo' && currentHash !== '#filter-section' && currentHash !== '#inicio') {
+      return;
     }
+
+    const scrollToCatalog = () => {
+      const catalogEl = document.getElementById('catalogo') || document.getElementById('filter-section');
+      if (catalogEl) {
+        const headerOffset = 70;
+        const elementPosition = catalogEl.getBoundingClientRect().top;
+        const offsetPosition = elementPosition + window.pageYOffset - headerOffset;
+        window.scrollTo({
+          top: Math.max(0, offsetPosition),
+          behavior: 'smooth',
+        });
+      }
+    };
+
+    // Desplazamiento fluido inicial y respaldo
+    const timer = setTimeout(scrollToCatalog, 200);
+    const backupTimer = setTimeout(scrollToCatalog, 550);
+
+    return () => {
+      clearTimeout(timer);
+      clearTimeout(backupTimer);
+    };
   }, [initialUrlQuery]);
 
   // Ejecución de la búsqueda cuando debouncedSearchQuery tiene un valor
