@@ -747,8 +747,11 @@ export function ProductModal({
 
         <div className="grid grid-cols-2 gap-3 p-3.5 bg-surface-container rounded-lg border border-outline-variant/30">
           <div>
-            <span className="text-[10px] font-bold text-outline uppercase block">Escala</span>
-            <span className="text-xs font-semibold text-on-surface">{formatScalesList(product.scale)}</span>
+            <span className="text-[10px] font-bold text-outline uppercase flex items-center gap-1.5 flex-wrap">
+              Escala
+              <span className="text-[9px] font-medium text-primary/90 normal-case tracking-normal">(Medidas aproximadas)</span>
+            </span>
+            <span className="text-xs font-semibold text-on-surface block mt-0.5">{formatScalesList(product.scale)}</span>
           </div>
           <div>
             <span className="text-[10px] font-bold text-outline uppercase block">Material</span>

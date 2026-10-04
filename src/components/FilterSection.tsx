@@ -250,8 +250,8 @@ export function FilterSection({
                 title="Buscar e ir al inicio del catálogo"
                 className="pl-3 sm:pl-3.5 pr-2 py-2.5 flex items-center justify-center text-primary transition-transform active:scale-90"
               >
-                <div className="p-2 rounded-xl bg-primary/20 border border-primary/40 text-primary flex items-center justify-center shadow-inner">
-                  <Search className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />
+                <div className="p-2 rounded-xl bg-primary/20 border border-primary/40 text-primary flex items-center justify-center shadow-inner overflow-visible">
+                  <Search className="w-4 h-4 sm:w-5 sm:h-5 text-primary animate-search-zoom will-change-transform" />
                 </div>
               </button>
 

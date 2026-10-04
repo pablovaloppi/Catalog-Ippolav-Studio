@@ -53,4 +53,16 @@
   .animate-scale-pulse {
     animation: scale-pulse 2s ease-in-out infinite;
   }
+  @keyframes search-zoom {
+    0%, 100% {
+      transform: scale(0.95);
+    }
+    50% {
+      transform: scale(1.16);
+    }
+  }
+  .animate-search-zoom {
+    animation: search-zoom 1.8s ease-in-out infinite;
+    transform-origin: center;
+  }
 }
