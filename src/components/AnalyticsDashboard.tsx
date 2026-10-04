@@ -35,10 +35,21 @@ import {
   ShieldAlert,
   Info,
   ExternalLink,
-  Loader2
+  Loader2,
+  Globe,
+  Wifi,
+  Plus,
+  Trash2,
+  X
 } from 'lucide-react';
 import { Product, SiteConfig, Category, Designer } from '../types';
 import { ProductModal } from './ProductModal';
+import { 
+  getClientIp, 
+  initIpExclusionsListener, 
+  addExcludedIp, 
+  removeExcludedIp 
+} from '../services/ipExclusionService';
 
 interface AnalyticsDashboardProps {
   allFigures?: Product[];
@@ -67,6 +78,81 @@ export function AnalyticsDashboard({
   const [isExcluded, setIsExcluded] = useState<boolean>(() => {
     return isAnalyticsExcluded();
   });
+
+  const [clientIp, setClientIp] = useState<string | null>(null);
+  const [excludedIps, setExcludedIps] = useState<string[]>([]);
+  const [ipLabels, setIpLabels] = useState<Record<string, string>>({});
+  const [showIpModal, setShowIpModal] = useState(false);
+  const [customIp, setCustomIp] = useState('');
+  const [customIpLabel, setCustomIpLabel] = useState('');
+  const [isUpdatingIp, setIsUpdatingIp] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+    getClientIp().then((ip) => {
+      if (isMounted && ip) setClientIp(ip);
+    });
+
+    const unsub = initIpExclusionsListener((ips, labels) => {
+      if (isMounted) {
+        setExcludedIps(ips);
+        setIpLabels(labels);
+      }
+    });
+
+    return () => {
+      isMounted = false;
+      unsub();
+    };
+  }, []);
+
+  const isCurrentIpExcluded = useMemo(() => {
+    return !!clientIp && excludedIps.includes(clientIp);
+  }, [clientIp, excludedIps]);
+
+  const handleToggleCurrentIp = async () => {
+    if (!clientIp) return;
+    setIsUpdatingIp(true);
+    try {
+      if (isCurrentIpExcluded) {
+        await removeExcludedIp(clientIp);
+      } else {
+        await addExcludedIp(clientIp, 'Mi Red Actual (Admin)');
+      }
+    } catch (e: any) {
+      alert(`Error al actualizar exclusión de IP: ${e?.message || e}`);
+    } finally {
+      setIsUpdatingIp(false);
+    }
+  };
+
+  const handleAddCustomIp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const clean = customIp.trim();
+    if (!clean) return;
+    setIsUpdatingIp(true);
+    try {
+      await addExcludedIp(clean, customIpLabel.trim() || 'Dispositivo Administrador');
+      setCustomIp('');
+      setCustomIpLabel('');
+      setShowIpModal(false);
+    } catch (e: any) {
+      alert(`Error al agregar IP: ${e?.message || e}`);
+    } finally {
+      setIsUpdatingIp(false);
+    }
+  };
+
+  const handleRemoveIp = async (ipToRemove: string) => {
+    setIsUpdatingIp(true);
+    try {
+      await removeExcludedIp(ipToRemove);
+    } catch (e: any) {
+      alert(`Error al eliminar IP: ${e?.message || e}`);
+    } finally {
+      setIsUpdatingIp(false);
+    }
+  };
 
   // Mapa para resolver el número identificador (#001, etc.) de las figuras
   const [figuresLookup, setFiguresLookup] = useState<Map<string, { title: string; numericId: string }>>(() => {
@@ -651,44 +737,242 @@ export function AnalyticsDashboard({
         </div>
       </div>
 
-      {/* Banner de Exclusión de Métricas de Administrador */}
-      <div className="bg-surface-container-low border border-primary/20 rounded-xl p-4 md:p-5 flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="flex items-start gap-3.5">
-          <div className={`p-2.5 rounded-xl mt-0.5 shrink-0 ${isExcluded ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'}`}>
-            {isExcluded ? <ShieldCheck className="w-5 h-5" /> : <ShieldAlert className="w-5 h-5" />}
-          </div>
-          <div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <h3 className="font-medium text-sm md:text-base text-on-surface">
-                {isExcluded ? 'Exclusión de Administrador Activada' : 'Exclusión de Administrador Desactivada'}
-              </h3>
-              <span className={`px-2 py-0.5 text-[10px] uppercase font-bold tracking-wider rounded-full border ${isExcluded ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' : 'bg-amber-500/10 border-amber-500/30 text-amber-400'}`}>
-                {isExcluded ? 'Tus visitas no cuentan' : 'Modo Registro Completo'}
-              </span>
+      {/* Banner de Exclusión de Métricas de Administrador por IP y Dispositivo */}
+      <div className="bg-surface-container-low border border-primary/25 rounded-2xl p-4 md:p-6 space-y-4 shadow-sm">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          <div className="flex items-start gap-3.5">
+            <div className={`p-2.5 rounded-xl mt-0.5 shrink-0 ${isExcluded || isCurrentIpExcluded ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shadow-inner' : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'}`}>
+              {isExcluded || isCurrentIpExcluded ? <ShieldCheck className="w-6 h-6" /> : <ShieldAlert className="w-6 h-6" />}
             </div>
-            <p className="text-xs text-on-surface-variant mt-1 leading-relaxed max-w-2xl">
-              {isExcluded
-                ? 'Tus interacciones (navegar el catálogo, subir figuras, abrir modales, probar el botón de WhatsApp y hacer búsquedas) están bloqueadas en Google Analytics (GA4), Meta Pixel y las estadísticas internas para mantener métricas 100% limpias de clientes reales.'
-                : 'Tus visitas y pruebas en el catálogo se registrarán en las estadísticas como si fueras un visitante más.'}
-            </p>
-          </div>
-        </div>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="font-semibold text-sm md:text-base text-on-surface">
+                  Filtro de Exclusión de Administrador
+                </h3>
+                <span className={`px-2.5 py-0.5 text-[10px] uppercase font-bold tracking-wider rounded-full border ${
+                  isExcluded || isCurrentIpExcluded 
+                    ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-400' 
+                    : 'bg-amber-500/15 border-amber-500/30 text-amber-400'
+                }`}>
+                  {isExcluded || isCurrentIpExcluded ? 'Protección Activa: Tus búsquedas no cuentan' : 'Modo Registro Completo'}
+                </span>
+              </div>
+              <p className="text-xs text-on-surface-variant mt-1.5 leading-relaxed max-w-2xl">
+                Ignora automáticamente todas las búsquedas, visualizaciones y clics provenientes de tu <strong>IP de red (Wi-Fi/hogar/taller)</strong> o de este navegador para mantener tus estadísticas 100% reales con datos exclusivos de tus clientes.
+              </p>
+              
+              <div className="flex items-center gap-3 mt-3 flex-wrap text-xs">
+                <div className="flex items-center gap-1.5 bg-surface-container px-2.5 py-1 rounded-lg border border-outline-variant/30">
+                  <Globe className="w-3.5 h-3.5 text-primary" />
+                  <span className="text-on-surface-variant">Tu IP actual:</span>
+                  <strong className="font-mono text-on-surface">{clientIp || 'Detectando IP...'}</strong>
+                  {isCurrentIpExcluded ? (
+                    <span className="ml-1 text-[10px] font-bold text-emerald-400 bg-emerald-950/60 px-1.5 py-0.5 rounded border border-emerald-500/30">
+                      ✓ IP Excluida
+                    </span>
+                  ) : (
+                    <span className="ml-1 text-[10px] font-medium text-amber-400">
+                      (No excluida por IP)
+                    </span>
+                  )}
+                </div>
 
-        <div className="flex items-center gap-3 shrink-0 self-end md:self-center">
-          <button
-            type="button"
-            onClick={() => toggleExclusion(!isExcluded)}
-            className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold border transition-all active:scale-95 ${
-              isExcluded
-                ? 'bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border-emerald-500/30'
-                : 'bg-surface-container hover:bg-surface-container-high text-on-surface-variant border-outline-variant/40'
-            }`}
-          >
-            <span className={`w-2 h-2 rounded-full ${isExcluded ? 'bg-emerald-400 animate-pulse' : 'bg-on-surface-variant'}`} />
-            {isExcluded ? 'Exclusión: Activada' : 'Activar Exclusión'}
-          </button>
+                <span className="text-on-surface-variant hidden sm:inline">•</span>
+
+                <div className="flex items-center gap-1.5 text-on-surface-variant">
+                  <Wifi className="w-3.5 h-3.5 text-primary" />
+                  <span>IPs bloqueadas en total: <strong className="text-primary font-mono">{excludedIps.length}</strong></span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Botones de acción rápida */}
+          <div className="flex flex-wrap lg:flex-nowrap items-center gap-2.5 shrink-0 self-start lg:self-center">
+            {clientIp && (
+              <button
+                type="button"
+                onClick={handleToggleCurrentIp}
+                disabled={isUpdatingIp}
+                className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold border transition-all active:scale-95 disabled:opacity-50 ${
+                  isCurrentIpExcluded
+                    ? 'bg-emerald-950/60 hover:bg-emerald-900/60 text-emerald-300 border-emerald-500/40 shadow-sm'
+                    : 'bg-primary text-on-primary hover:brightness-110 shadow-md'
+                }`}
+                title={isCurrentIpExcluded ? 'Quitar mi IP de la lista de exclusión' : 'Bloquear mi IP actual para que mis búsquedas no se cuenten'}
+              >
+                {isUpdatingIp ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : isCurrentIpExcluded ? (
+                  <Check className="w-3.5 h-3.5 text-emerald-400" />
+                ) : (
+                  <Plus className="w-3.5 h-3.5" />
+                )}
+                <span>{isCurrentIpExcluded ? '✓ Mi IP está excluida' : 'Excluir mi IP Actual'}</span>
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={() => setShowIpModal(true)}
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold bg-surface-container hover:bg-surface-container-high border border-outline-variant/40 text-on-surface transition-all active:scale-95"
+              title="Ver y administrar todas las IPs excluidas (PC, Móvil, Wi-Fi)"
+            >
+              <Globe className="w-3.5 h-3.5 text-primary" />
+              <span>Gestionar IPs ({excludedIps.length})</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => toggleExclusion(!isExcluded)}
+              className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold border transition-all active:scale-95 ${
+                isExcluded
+                  ? 'bg-surface-container-highest text-emerald-300 border-emerald-500/30'
+                  : 'bg-surface-container hover:bg-surface-container-high text-on-surface-variant border-outline-variant/40'
+              }`}
+              title="Exclusión a nivel de navegador (localStorage)"
+            >
+              <span className={`w-2 h-2 rounded-full ${isExcluded ? 'bg-emerald-400 animate-pulse' : 'bg-on-surface-variant'}`} />
+              <span>Navegador: {isExcluded ? 'Excluido' : 'Activo'}</span>
+            </button>
+          </div>
         </div>
       </div>
+
+      {/* Modal para Gestión de IPs Excluidas */}
+      {showIpModal && (
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-surface-container-low border border-outline-variant/30 rounded-2xl max-w-lg w-full p-6 space-y-5 shadow-2xl animate-fade-in">
+            <div className="flex items-start justify-between">
+              <div>
+                <div className="flex items-center gap-2 text-primary font-bold text-base md:text-lg">
+                  <Globe className="w-5 h-5 text-primary" />
+                  <h3>IPs de Administrador Excluidas</h3>
+                </div>
+                <p className="text-xs text-on-surface-variant mt-1">
+                  Las búsquedas y visitas desde estas direcciones IP no se guardarán en las estadísticas ni alterarán los reportes.
+                </p>
+              </div>
+              <button 
+                onClick={() => setShowIpModal(false)}
+                className="text-on-surface-variant hover:text-on-surface p-1 rounded-lg hover:bg-surface-container-high transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Formulario para agregar IP manualmente o tu móvil */}
+            <form onSubmit={handleAddCustomIp} className="p-3.5 bg-surface-container rounded-xl border border-outline-variant/30 space-y-3">
+              <span className="text-xs font-bold text-on-surface block uppercase tracking-wider">
+                + Agregar IP a la lista de exclusión
+              </span>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <input 
+                  type="text" 
+                  value={customIp}
+                  onChange={(e) => setCustomIp(e.target.value)}
+                  placeholder="Ej: 181.44.210.15" 
+                  className="bg-surface-container-lowest border border-outline-variant/40 rounded-lg px-3 py-2 text-xs font-mono text-on-surface placeholder:text-outline outline-none focus:border-primary"
+                  required
+                />
+                <input 
+                  type="text" 
+                  value={customIpLabel}
+                  onChange={(e) => setCustomIpLabel(e.target.value)}
+                  placeholder="Etiqueta (ej: Celular 4G, Taller)" 
+                  className="bg-surface-container-lowest border border-outline-variant/40 rounded-lg px-3 py-2 text-xs text-on-surface placeholder:text-outline outline-none focus:border-primary"
+                />
+              </div>
+              <div className="flex justify-between items-center pt-1">
+                {clientIp && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCustomIp(clientIp);
+                      setCustomIpLabel('Mi IP Actual');
+                    }}
+                    className="text-[11px] text-primary hover:underline"
+                  >
+                    Usar mi IP actual ({clientIp})
+                  </button>
+                )}
+                <button
+                  type="submit"
+                  disabled={isUpdatingIp || !customIp.trim()}
+                  className="ml-auto px-4 py-1.5 rounded-lg bg-primary text-on-primary font-bold text-xs hover:brightness-110 active:scale-95 transition-all disabled:opacity-50 flex items-center gap-1.5"
+                >
+                  {isUpdatingIp ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
+                  <span>Agregar IP</span>
+                </button>
+              </div>
+            </form>
+
+            {/* Lista de IPs registradas */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-xs font-bold text-on-surface-variant uppercase">
+                <span>Direcciones IP Bloqueadas ({excludedIps.length})</span>
+                {clientIp && excludedIps.includes(clientIp) && (
+                  <span className="text-emerald-400 font-normal capitalize">✓ Tu IP actual está protegida</span>
+                )}
+              </div>
+
+              <div className="max-h-56 overflow-y-auto space-y-1.5 pr-1 no-scrollbar divide-y divide-outline-variant/10">
+                {excludedIps.length === 0 ? (
+                  <div className="p-4 text-center text-xs text-on-surface-variant bg-surface-container rounded-lg">
+                    No hay direcciones IP en la lista de exclusión todavía.
+                  </div>
+                ) : (
+                  excludedIps.map((ip) => {
+                    const isCurrent = ip === clientIp;
+                    const label = ipLabels[ip] || (isCurrent ? 'Tu IP Actual' : 'Dispositivo Administrador');
+                    return (
+                      <div 
+                        key={ip} 
+                        className={`flex items-center justify-between p-2.5 rounded-lg transition-colors ${
+                          isCurrent ? 'bg-primary/10 border border-primary/30' : 'bg-surface-container hover:bg-surface-container-high'
+                        }`}
+                      >
+                        <div className="min-w-0 pr-2">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-mono text-xs font-bold text-on-surface">{ip}</span>
+                            {isCurrent && (
+                              <span className="text-[10px] font-bold text-primary bg-primary/20 px-1.5 py-0.2 rounded border border-primary/30">
+                                Tu IP actual
+                              </span>
+                            )}
+                          </div>
+                          <span className="text-[11px] text-on-surface-variant block truncate mt-0.5">
+                            {label}
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveIp(ip)}
+                          disabled={isUpdatingIp}
+                          className="p-1.5 text-on-surface-variant hover:text-rose-400 hover:bg-rose-950/30 rounded-lg transition-colors shrink-0"
+                          title="Eliminar esta IP de la lista de exclusión"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+
+            <div className="pt-2 border-t border-outline-variant/20 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setShowIpModal(false)}
+                className="px-4 py-2 rounded-lg bg-surface-container hover:bg-surface-container-high text-on-surface text-xs font-semibold transition-colors"
+              >
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {loading ? (
         <div className="flex flex-col items-center justify-center py-20 gap-3">

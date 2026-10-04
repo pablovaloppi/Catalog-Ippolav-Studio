@@ -11,6 +11,8 @@ declare global {
   }
 }
 
+import { isClientIpOrAuthExcluded } from './ipExclusionService';
+
 export const EXCLUDE_ANALYTICS_KEY = 'ippolav_exclude_analytics';
 const DEFAULT_PIXEL_ID = '1649607870067319';
 
@@ -18,7 +20,7 @@ let isPixelInitialized = false;
 let currentPixelId: string | null = DEFAULT_PIXEL_ID;
 
 /**
- * Checks if tracking is excluded for this client (e.g. Admin testing / Admin logged in)
+ * Checks if tracking is excluded for this client (e.g. Admin testing / Admin logged in / Excluded IP)
  */
 export function isAnalyticsExcluded(): boolean {
   if (typeof window === 'undefined') return false;
@@ -26,6 +28,11 @@ export function isAnalyticsExcluded(): boolean {
     const stored = localStorage.getItem(EXCLUDE_ANALYTICS_KEY);
     if (stored === 'true') return true;
     if (stored === 'false') return false;
+
+    // Check if the client IP is in the excluded IPs list or is authenticated admin
+    if (isClientIpOrAuthExcluded()) {
+      return true;
+    }
 
     // Check if the current route is within the admin panel
     if (

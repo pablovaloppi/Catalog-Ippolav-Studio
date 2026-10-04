@@ -10,6 +10,7 @@ import { products as initialProducts } from './data';
 import type { QueryDocumentSnapshot, DocumentData } from 'firebase/firestore';
 import { extractSearchQueryFromLocation, extractFigureIdFromLocation } from './urlUtils';
 import { trackPageView, trackSearchQuery, trackFigureFavorite } from './services/analyticsService';
+import { initIpExclusionsListener } from './services/ipExclusionService';
 
 const NavigationDrawer = lazy(() => import('./components/NavigationDrawer').then(m => ({ default: m.NavigationDrawer })));
 const HowToBuy = lazy(() => import('./components/HowToBuy').then(m => ({ default: m.HowToBuy })));
@@ -340,6 +341,7 @@ export function Storefront() {
   // Carga optimizada de categorías, diseñadores y configuración en paralelo
   useEffect(() => {
     let isMounted = true;
+    const unsubIp = initIpExclusionsListener();
 
     async function loadMetadata() {
       try {
@@ -365,6 +367,7 @@ export function Storefront() {
 
     return () => {
       isMounted = false;
+      unsubIp();
     };
   }, []);
 
