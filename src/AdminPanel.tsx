@@ -2666,12 +2666,17 @@ function ConfigForm({ config }: { config: SiteConfig }) {
             </div>
           </div>
 
-          {/* 3.2 Mensaje para Consulta de Figura Individual */}
+          {/* 3.2 Mensaje Pre-cargado para Consulta de Figura Individual */}
           <div className="p-4 rounded-2xl bg-surface-container/60 border border-outline-variant/30 space-y-3">
-            <div className="flex items-center justify-between">
-              <label className="text-sm font-bold text-on-surface flex items-center gap-1.5">
-                <span>🗿</span> Mensaje al consultar una figura del catálogo
-              </label>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div>
+                <label className="text-sm font-bold text-on-surface flex items-center gap-1.5">
+                  <span>🗿</span> Mensaje Pre-cargado Predeterminado para todas las Figuras
+                </label>
+                <p className="text-xs text-on-surface-variant mt-0.5">
+                  Plantilla global que se carga en todas las figuras. Las etiquetas se reemplazan automáticamente con los datos de cada figura al cotizar.
+                </p>
+              </div>
               <button
                 type="button"
                 onClick={() => {
@@ -2680,9 +2685,9 @@ function ConfigForm({ config }: { config: SiteConfig }) {
                     whatsappMessageTemplate: 'Hola IPPOLAV STUDIO, me interesa encargar la figura {figura} ({codigo}).\n\n*Presupuesto:* \n• Precio Final (Contado/Transferencia): {precio final}\n• En {cuotas} cuotas de {valorCuota} (Total financiado: {precio final en cuotas})\n\nVer figura: {link}'
                   }));
                 }}
-                className="text-[11px] text-primary hover:underline font-semibold cursor-pointer"
+                className="text-[11px] text-primary hover:underline font-semibold cursor-pointer self-start sm:self-auto flex-shrink-0"
               >
-                Restaurar sugerido con cotizador
+                Restaurar formato recomendado
               </button>
             </div>
 
@@ -2691,7 +2696,7 @@ function ConfigForm({ config }: { config: SiteConfig }) {
               value={formData.whatsappMessageTemplate || ''} 
               onChange={handleChange} 
               rows={4}
-              className="w-full p-3 bg-surface-container-high border border-outline-variant/40 rounded-xl text-sm font-sans focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all"
+              className="w-full p-3 bg-surface-container-high border border-outline-variant/40 rounded-xl text-sm font-sans focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all font-mono"
               placeholder="Hola IPPOLAV STUDIO, me interesa encargar la figura {figura} ({codigo}).&#10;&#10;*Presupuesto:*&#10;• Precio Final (Contado/Transferencia): {precio final}&#10;• En {cuotas} cuotas de {valorCuota} (Total financiado: {precio final en cuotas})&#10;&#10;Ver figura: {link}"
             />
 

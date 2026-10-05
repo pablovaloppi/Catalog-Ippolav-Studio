@@ -916,11 +916,11 @@ export function ProductModal({
             </div>
 
             {/* Botón destacado de Copiar */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+            <div className="pt-1">
               <button
                 type="button"
                 onClick={handleAdminCopyMessage}
-                className={`w-full py-3 px-4 rounded-xl font-bold text-xs flex items-center justify-center gap-2 border transition-all active:scale-95 shadow-md ${
+                className={`w-full py-3.5 px-4 rounded-xl font-bold text-sm flex items-center justify-center gap-2 border transition-all active:scale-95 shadow-md cursor-pointer ${
                   adminCopied
                     ? 'bg-emerald-600 text-white border-emerald-500 shadow-emerald-500/30'
                     : 'bg-primary text-on-primary hover:brightness-110 border-primary shadow-primary/20'
@@ -928,26 +928,16 @@ export function ProductModal({
               >
                 {adminCopied ? (
                   <>
-                    <Check className="w-4.5 h-4.5" />
+                    <Check className="w-5 h-5" />
                     <span>¡Mensaje copiado al portapapeles!</span>
                   </>
                 ) : (
                   <>
-                    <Copy className="w-4.5 h-4.5" />
+                    <Copy className="w-5 h-5" />
                     <span>Copiar mensaje pre-cargado</span>
                   </>
                 )}
               </button>
-
-              <a
-                href={whatsappUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="w-full py-3 px-4 rounded-xl font-bold text-xs flex items-center justify-center gap-2 bg-[#25D366] hover:bg-[#20ba59] text-white border border-[#25D366] transition-all active:scale-95 shadow-md shadow-[#25D366]/20 uppercase"
-              >
-                <MessageCircle className="w-4.5 h-4.5" />
-                <span>Abrir WhatsApp con esta cotización</span>
-              </a>
             </div>
           </div>
         )}
