@@ -1,12 +1,23 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { X, MessageCircle, HelpCircle, View, ChevronLeft, ChevronRight, Heart, ZoomIn, ZoomOut, RotateCcw, Share2, Check, Instagram, Copy, Calculator, ShieldCheck, Sparkles, RefreshCw } from 'lucide-react';
+import { X, MessageCircle, HelpCircle, View, ChevronLeft, ChevronRight, Heart, ZoomIn, ZoomOut, RotateCcw, Share2, Check, Instagram, Copy, Calculator, ShieldCheck, Sparkles, RefreshCw, Edit3, Save, Eye, Layers, Ruler } from 'lucide-react';
 import { Product, SiteConfig } from '../types';
 import { getOptimizedCloudinaryUrl, getCloudinarySrcSet } from '../cloudinaryUtils';
 import { shareFigure, getShareableFigureUrl } from '../urlUtils';
 import { trackFigureView, trackWhatsAppClick, trackInstagramClick } from '../services/analyticsService';
-import { formatScalesList } from '../scaleUtils';
+import { formatScalesList, formatScale } from '../scaleUtils';
 import { useAuth } from '../contexts/AuthContext';
-import { processWhatsAppTemplate, calculateInstallmentQuote, DEFAULT_INSTALLMENT_PLANS, DEFAULT_ADMIN_QUOTE_TEMPLATE, DEFAULT_USER_INQUIRY_TEMPLATE } from '../templateUtils';
+import { 
+  processWhatsAppTemplate, 
+  calculateInstallmentQuote, 
+  DEFAULT_INSTALLMENT_PLANS, 
+  DEFAULT_ADMIN_QUOTE_TEMPLATE, 
+  DEFAULT_USER_INQUIRY_TEMPLATE,
+  getQuoteTemplateForScale,
+  getAvailableScalesForProduct,
+  normalizeScaleKey
+} from '../templateUtils';
+import { doc, setDoc } from 'firebase/firestore';
+import { db } from '../firebase';
 
 interface ProductModalProps {
   product: Product | null;
@@ -14,6 +25,7 @@ interface ProductModalProps {
   designerName?: string;
   onClose: () => void;
   config?: SiteConfig | null;
+  onUpdateConfig?: (newConfig: SiteConfig) => void;
   isLiked?: boolean;
   onToggleLike?: (productId: string) => void;
   initialFullScreen?: boolean;
@@ -26,6 +38,7 @@ export function ProductModal({
   designerName, 
   onClose, 
   config, 
+  onUpdateConfig,
   isLiked, 
   onToggleLike,
   initialFullScreen = false,
@@ -39,13 +52,54 @@ export function ProductModal({
 
   const { isAdmin } = useAuth();
 
-  const activePlans = useMemo(() => {
-    return (config?.installmentPlans && config.installmentPlans.length > 0)
-      ? config.installmentPlans
-      : DEFAULT_INSTALLMENT_PLANS;
-  }, [config?.installmentPlans]);
+  // Configuración local que se actualiza al guardar cambios directamente desde este modal
+  const [localConfig, setLocalConfig] = useState<SiteConfig | null>(config || null);
 
-  // Estados de Administrador: únicamente Precio Final y selección de Cuotas
+  useEffect(() => {
+    if (config) {
+      setLocalConfig(config);
+    }
+  }, [config]);
+
+  const activePlans = useMemo(() => {
+    return (localConfig?.installmentPlans && localConfig.installmentPlans.length > 0)
+      ? localConfig.installmentPlans
+      : DEFAULT_INSTALLMENT_PLANS;
+  }, [localConfig?.installmentPlans]);
+
+  // Escalas disponibles para esta figura (las propias de la figura + escalas estándar)
+  const availableScales = useMemo(() => {
+    return getAvailableScalesForProduct(product?.scale);
+  }, [product?.scale]);
+
+  // Escala seleccionada para la cotización
+  const [selectedScale, setSelectedScale] = useState<string>(() => {
+    if (product?.scale && product.scale.length > 0 && product.scale[0]) {
+      return product.scale[0];
+    }
+    return '1/6';
+  });
+
+  // Si cambia la figura, resetear la escala a la primera de la figura si existe
+  useEffect(() => {
+    if (product?.scale && product.scale.length > 0 && product.scale[0]) {
+      setSelectedScale(product.scale[0]);
+    }
+  }, [product?.id]);
+
+  // Estados de edición y guardado de plantilla directa en el modal
+  const [isEditingTemplate, setIsEditingTemplate] = useState<boolean>(false);
+  const [editedTemplateText, setEditedTemplateText] = useState<string>('');
+  const [isSavingTemplate, setIsSavingTemplate] = useState<boolean>(false);
+  const [saveFeedback, setSaveFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
+  // Inicializar el texto de edición cuando se cambia de escala o se abre el editor
+  useEffect(() => {
+    const currentTpl = getQuoteTemplateForScale(localConfig, selectedScale);
+    setEditedTemplateText(currentTpl);
+  }, [selectedScale, localConfig]);
+
+  // Estados de Administrador: Precio Final y selección de Cuotas
   const [precioFinal, setPrecioFinal] = useState<string>('');
   const [selectedInstallments, setSelectedInstallments] = useState<number>(() => {
     return activePlans[0]?.installments || 3;
@@ -64,9 +118,9 @@ export function ProductModal({
       precioFinalRaw: precioFinal,
       installments: selectedInstallments,
       plans: activePlans,
-      defaultFeeRate: config?.defaultPaymentFeeRate,
+      defaultFeeRate: localConfig?.defaultPaymentFeeRate,
     });
-  }, [precioFinal, selectedInstallments, activePlans, config?.defaultPaymentFeeRate]);
+  }, [precioFinal, selectedInstallments, activePlans, localConfig?.defaultPaymentFeeRate]);
 
   // Seguimiento de telemetría de visualización de figura
   useEffect(() => {
@@ -309,21 +363,27 @@ export function ProductModal({
   // Mensaje público de consulta para los usuarios (WhatsApp e Instagram)
   const userPublicMessage = useMemo(() => {
     return processWhatsAppTemplate({
-      template: config?.whatsappMessageTemplate || DEFAULT_USER_INQUIRY_TEMPLATE,
+      template: localConfig?.whatsappMessageTemplate || DEFAULT_USER_INQUIRY_TEMPLATE,
       productTitle: product.title,
       productCode: product.numericId,
       figureLink,
+      scale: selectedScale,
       isQuoting: false,
     });
-  }, [config?.whatsappMessageTemplate, product.title, product.numericId, figureLink]);
+  }, [localConfig?.whatsappMessageTemplate, product.title, product.numericId, figureLink, selectedScale]);
 
   // Mensaje exclusivo de cotización y cuotas para el Administrador (para copiar y enviar a clientes)
   const adminQuotedMessage = useMemo(() => {
+    const rawTemplateToUse = isEditingTemplate
+      ? editedTemplateText
+      : getQuoteTemplateForScale(localConfig, selectedScale);
+
     return processWhatsAppTemplate({
-      template: config?.adminQuoteMessageTemplate || DEFAULT_ADMIN_QUOTE_TEMPLATE,
+      template: rawTemplateToUse,
       productTitle: product.title,
       productCode: product.numericId,
       figureLink,
+      scale: selectedScale,
       pricing: {
         precioFinal: quote.precioFinalFormatted || precioFinal,
         precioFinalCuotas: quote.precioFinalCuotasFormatted,
@@ -332,13 +392,94 @@ export function ProductModal({
       },
       isQuoting: true,
     });
-  }, [config?.adminQuoteMessageTemplate, product.title, product.numericId, figureLink, quote, precioFinal]);
+  }, [
+    isEditingTemplate, 
+    editedTemplateText, 
+    localConfig, 
+    selectedScale, 
+    product.title, 
+    product.numericId, 
+    figureLink, 
+    quote, 
+    precioFinal
+  ]);
 
   const handleAdminCopyMessage = async () => {
     const ok = await copyTextToClipboard(adminQuotedMessage);
     if (ok) {
       setAdminCopied(true);
       setTimeout(() => setAdminCopied(false), 3000);
+    }
+  };
+
+  // Guardar plantilla editada en Firestore (para esta escala o como plantilla general)
+  const handleSaveTemplate = async (scope: 'scale' | 'all') => {
+    if (!isAdmin) return;
+    setIsSavingTemplate(true);
+    setSaveFeedback(null);
+
+    try {
+      const templateToSave = editedTemplateText.trim();
+      const currentScaleTemplates = { ...(localConfig?.scaleQuoteTemplates || {}) };
+
+      let updatedConfig: SiteConfig;
+
+      if (scope === 'scale') {
+        const normKey = normalizeScaleKey(selectedScale);
+        currentScaleTemplates[selectedScale] = templateToSave;
+        if (normKey) {
+          currentScaleTemplates[normKey] = templateToSave;
+        }
+
+        updatedConfig = {
+          ...(localConfig || {
+            whatsapp: '',
+            instagram: '',
+            facebook: '',
+            youtube: '',
+            whatsappMessageTemplate: DEFAULT_USER_INQUIRY_TEMPLATE,
+          }),
+          scaleQuoteTemplates: currentScaleTemplates,
+        };
+      } else {
+        // Guardar como plantilla predeterminada general para todas las figuras
+        updatedConfig = {
+          ...(localConfig || {
+            whatsapp: '',
+            instagram: '',
+            facebook: '',
+            youtube: '',
+            whatsappMessageTemplate: DEFAULT_USER_INQUIRY_TEMPLATE,
+          }),
+          adminQuoteMessageTemplate: templateToSave,
+          scaleQuoteTemplates: currentScaleTemplates,
+        };
+      }
+
+      await setDoc(doc(db, 'config', 'site'), updatedConfig, { merge: true });
+      setLocalConfig(updatedConfig);
+      onUpdateConfig?.(updatedConfig);
+
+      const targetLabel = scope === 'scale' 
+        ? `escala ${formatScale(selectedScale) || selectedScale}` 
+        : 'todas las figuras';
+
+      setSaveFeedback({
+        type: 'success',
+        message: `¡Plantilla guardada para ${targetLabel}! Quedará seteada para la próxima vez que abras una figura.`
+      });
+
+      setTimeout(() => {
+        setSaveFeedback(null);
+      }, 5000);
+    } catch (err) {
+      console.error('Error al guardar plantilla:', err);
+      setSaveFeedback({
+        type: 'error',
+        message: 'No se pudo guardar la plantilla en Firestore. Intenta de nuevo.'
+      });
+    } finally {
+      setIsSavingTemplate(false);
     }
   };
 
@@ -820,7 +961,7 @@ export function ProductModal({
           </div>
         )}
 
-        {/* Panel Exclusivo para Administrador: Cotizador Rápido y Mensaje Pre-cargado */}
+        {/* Panel Exclusivo para Administrador: Cotizador Rápido, Selector de Escala y Mensaje Pre-cargado */}
         {isAdmin && (
           <div className="p-4 rounded-xl bg-gradient-to-b from-surface-container-high/90 to-surface-container border-2 border-primary/50 shadow-xl space-y-3.5 animate-in fade-in duration-200">
             <div className="flex items-center justify-between gap-2 border-b border-primary/25 pb-2.5">
@@ -842,7 +983,50 @@ export function ProductModal({
               </span>
             </div>
 
-            {/* Box de Precio Final y selección de Cuotas */}
+            {/* 1. Selector de Escala de la Figura */}
+            <div className="space-y-1.5 p-2.5 rounded-lg bg-surface-container-lowest/60 border border-outline-variant/30">
+              <div className="flex items-center justify-between">
+                <label className="text-[11px] font-bold text-on-surface flex items-center gap-1.5">
+                  <Ruler className="w-3.5 h-3.5 text-primary" />
+                  <span>Escala de la cotización:</span>
+                </label>
+                <span className="text-[10px] text-primary font-mono font-bold">
+                  {formatScale(selectedScale) || selectedScale}
+                </span>
+              </div>
+              <div className="flex gap-1.5 flex-wrap">
+                {availableScales.map((sc) => {
+                  const isSelected = selectedScale.toLowerCase().trim() === sc.toLowerCase().trim();
+                  const isPieceOriginal = product.scale && product.scale.some(s => s.toLowerCase().trim() === sc.toLowerCase().trim());
+
+                  return (
+                    <button
+                      key={sc}
+                      type="button"
+                      onClick={() => {
+                        setSelectedScale(sc);
+                        setSaveFeedback(null);
+                      }}
+                      className={`py-1.5 px-2.5 rounded-md text-xs font-bold border transition-all cursor-pointer flex items-center gap-1 ${
+                        isSelected
+                          ? 'bg-primary text-on-primary border-primary shadow-sm scale-105'
+                          : 'bg-surface-container text-on-surface-variant border-outline-variant/40 hover:border-primary/50 hover:text-on-surface'
+                      }`}
+                      title={formatScale(sc) || sc}
+                    >
+                      <span>{sc}</span>
+                      {isPieceOriginal && (
+                        <span className={`text-[9px] px-1 rounded font-mono ${isSelected ? 'bg-black/25 text-white' : 'bg-primary/20 text-primary'}`}>
+                          Figura
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* 2. Box de Precio Final y selección de Cuotas */}
             <div className="space-y-2.5">
               <div className="flex flex-col sm:flex-row sm:items-end gap-3">
                 <div className="flex-1 space-y-1">
@@ -857,7 +1041,7 @@ export function ProductModal({
                       placeholder="Ingresa el precio final (ej: 45000)"
                       value={precioFinal}
                       onChange={(e) => setPrecioFinal(e.target.value)}
-                      className="w-full pl-8 pr-3 py-2.5 bg-surface-container-lowest border border-outline-variant/60 focus:border-primary focus:ring-2 focus:ring-primary/30 rounded-lg text-sm font-mono font-bold text-on-surface outline-none transition-all placeholder:text-outline/40 placeholder:font-normal"
+                      className="w-full pl-8 pr-3 py-2 bg-surface-container-lowest border border-outline-variant/60 focus:border-primary focus:ring-2 focus:ring-primary/30 rounded-lg text-sm font-mono font-bold text-on-surface outline-none transition-all placeholder:text-outline/40 placeholder:font-normal"
                     />
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-primary text-sm font-mono font-bold">$</span>
                   </div>
@@ -903,28 +1087,145 @@ export function ProductModal({
               </div>
             )}
 
-            {/* Texto Pre-cargado dinámico para copiar */}
+            {/* Feedback al guardar plantilla */}
+            {saveFeedback && (
+              <div className={`p-2.5 rounded-lg text-xs font-semibold flex items-center gap-2 animate-in fade-in ${
+                saveFeedback.type === 'success' 
+                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40' 
+                  : 'bg-error/20 text-error border border-error/40'
+              }`}>
+                {saveFeedback.type === 'success' ? <Check className="w-4 h-4 text-emerald-400" /> : <X className="w-4 h-4" />}
+                <span>{saveFeedback.message}</span>
+              </div>
+            )}
+
+            {/* 3. Mensaje Pre-cargado y Modo Edición de Plantilla */}
             <div className="space-y-1.5 pt-1">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-bold text-outline uppercase tracking-wider">
-                  Mensaje Pre-cargado con cotización (Listo para enviar al cliente):
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[10px] font-bold text-outline uppercase tracking-wider flex items-center gap-1">
+                  <span>{isEditingTemplate ? 'Modificando Plantilla' : 'Mensaje Pre-cargado listo para copiar'}</span>
+                  <span className="text-primary font-mono lowercase">({selectedScale})</span>
                 </span>
-                {precioFinal && (
+                <div className="flex items-center gap-2">
+                  {!isEditingTemplate && precioFinal && (
+                    <button
+                      type="button"
+                      onClick={() => setPrecioFinal('')}
+                      className="text-[10px] text-outline hover:text-primary flex items-center gap-1 transition-colors cursor-pointer"
+                      title="Restablecer precio"
+                    >
+                      <RefreshCw className="w-2.5 h-2.5" /> Limpiar
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => {
-                      setPrecioFinal('');
+                      setIsEditingTemplate(prev => !prev);
+                      setSaveFeedback(null);
                     }}
-                    className="text-[10px] text-outline hover:text-primary flex items-center gap-1 transition-colors"
-                    title="Restablecer precio"
+                    className="text-[11px] text-primary hover:underline font-bold flex items-center gap-1 cursor-pointer"
                   >
-                    <RefreshCw className="w-2.5 h-2.5" /> Limpiar
+                    {isEditingTemplate ? (
+                      <>
+                        <Eye className="w-3.5 h-3.5" /> Ver mensaje final
+                      </>
+                    ) : (
+                      <>
+                        <Edit3 className="w-3.5 h-3.5" /> Editar plantilla
+                      </>
+                    )}
                   </button>
-                )}
+                </div>
               </div>
-              <div className="p-3 bg-surface-container-lowest/90 border border-outline-variant/50 rounded-lg text-xs text-on-surface font-sans whitespace-pre-line leading-relaxed select-all max-h-48 overflow-y-auto font-mono">
-                {adminQuotedMessage}
-              </div>
+
+              {isEditingTemplate ? (
+                /* Modo Edición de Plantilla en el Modal */
+                <div className="p-3 bg-surface-container-lowest/95 border border-primary/40 rounded-xl space-y-3">
+                  <div className="text-[11px] text-on-surface-variant flex items-center justify-between">
+                    <span>Edita la plantilla para la <strong>Escala {selectedScale}</strong> o como predeterminada:</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditedTemplateText(DEFAULT_ADMIN_QUOTE_TEMPLATE);
+                      }}
+                      className="text-[10px] text-primary hover:underline"
+                    >
+                      Restaurar sugerido
+                    </button>
+                  </div>
+
+                  <textarea
+                    rows={4}
+                    value={editedTemplateText}
+                    onChange={(e) => setEditedTemplateText(e.target.value)}
+                    className="w-full p-2.5 bg-surface-container border border-outline-variant/50 rounded-lg text-xs font-mono text-on-surface focus:border-primary focus:ring-1 focus:ring-primary outline-none"
+                    placeholder={DEFAULT_ADMIN_QUOTE_TEMPLATE}
+                  />
+
+                  {/* Botones de Inserción Rápida de Etiquetas */}
+                  <div className="space-y-1">
+                    <div className="text-[10px] text-outline font-medium">Insertar etiqueta con 1 clic:</div>
+                    <div className="flex flex-wrap gap-1">
+                      {[
+                        { tag: '{precio final}', label: '+ {precio final}' },
+                        { tag: '{valorCuota}', label: '+ {valorCuota}' },
+                        { tag: '{precio final en cuotas}', label: '+ {precio final en cuotas}' },
+                        { tag: '{cuotas}', label: '+ {cuotas}' },
+                        { tag: '{escala}', label: '+ {escala}' },
+                        { tag: '{figura}', label: '+ {figura}' },
+                        { tag: '{codigo}', label: '+ {codigo}' },
+                        { tag: '{link}', label: '+ {link}' },
+                      ].map(({ tag, label }) => (
+                        <button
+                          key={tag}
+                          type="button"
+                          onClick={() => {
+                            setEditedTemplateText(prev => prev.includes(tag) ? prev : `${prev} ${tag}`.trim());
+                          }}
+                          className="px-2 py-0.5 rounded bg-primary/15 hover:bg-primary/25 border border-primary/30 text-primary text-[10px] font-mono font-bold cursor-pointer"
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Acciones para Guardar */}
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 pt-1 border-t border-outline-variant/30">
+                    <span className="text-[10px] text-outline">
+                      Al guardar, quedará seteada para la próxima vez que abras cualquier figura.
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        disabled={isSavingTemplate}
+                        onClick={() => handleSaveTemplate('scale')}
+                        className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center justify-center gap-1.5 shadow-sm transition-all cursor-pointer disabled:opacity-50"
+                        title={`Guardar para figuras en escala ${selectedScale}`}
+                      >
+                        <Save className="w-3.5 h-3.5" />
+                        <span>Guardar para Escala {selectedScale}</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        disabled={isSavingTemplate}
+                        onClick={() => handleSaveTemplate('all')}
+                        className="px-3 py-1.5 rounded-lg bg-primary hover:brightness-110 text-on-primary text-xs font-bold flex items-center justify-center gap-1.5 shadow-sm transition-all cursor-pointer disabled:opacity-50"
+                        title="Guardar como plantilla general para todas las figuras"
+                      >
+                        <Save className="w-3.5 h-3.5" />
+                        <span>Guardar General</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                /* Modo Vista Previa del Mensaje Resuelto */
+                <div className="p-3 bg-surface-container-lowest/90 border border-outline-variant/50 rounded-lg text-xs text-on-surface font-sans whitespace-pre-line leading-relaxed select-all max-h-48 overflow-y-auto font-mono">
+                  {adminQuotedMessage}
+                </div>
+              )}
             </div>
 
             {/* Botón destacado de Copiar */}

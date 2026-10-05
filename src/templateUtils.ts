@@ -1,4 +1,5 @@
-import { InstallmentPlan } from './types';
+import { InstallmentPlan, SiteConfig } from './types';
+import { formatScale } from './scaleUtils';
 
 /**
  * Utilidades para procesar plantillas de mensajes de WhatsApp y cotizaciones automáticas
@@ -11,10 +12,20 @@ export const DEFAULT_USER_INQUIRY_TEMPLATE =
 `Hola IPPOLAV STUDIO, me interesa encargar la figura {figura} ({codigo}). ¿Tienen disponibilidad?\n\nVer figura: {link}`;
 
 export const DEFAULT_ADMIN_QUOTE_TEMPLATE = 
-`Hola! Te paso el presupuesto para la figura {figura} ({codigo}):\n\n` +
+`Hola! Te paso el presupuesto para la figura {figura} ({codigo}) en {escala}:\n\n` +
 `• Precio Final (Contado/Transferencia): {precio final}\n` +
 `• En {cuotas} cuotas de {valorCuota} (Total financiado: {precio final en cuotas})\n\n` +
 `Ver figura: {link}`;
+
+export const COMMON_SCALES = [
+  '1/6',
+  '1/4',
+  '1/8',
+  '1/10',
+  '1/12',
+  '1/2',
+  '1/1',
+];
 
 export const DEFAULT_INSTALLMENT_PLANS: InstallmentPlan[] = [
   {
@@ -45,6 +56,73 @@ export interface PricingQuoteValues {
   precioFinalCuotas?: string | number;
   cuotas?: string | number;
   valorCuota?: string | number;
+}
+
+/**
+ * Normaliza la clave de escala para búsquedas (ej: "1:6" -> "1/6", " 1/6 (30cm) " -> "1/6")
+ */
+export function normalizeScaleKey(scale: string): string {
+  if (!scale) return '';
+  const trimmed = scale.trim();
+  const matched = trimmed.match(/1[/:]([0-9]+)/);
+  if (matched) {
+    return `1/${matched[1]}`;
+  }
+  return trimmed.replace(':', '/');
+}
+
+/**
+ * Obtiene la plantilla de cotización correspondiente a una escala específica
+ * o retorna la plantilla predeterminada general si no hay una personalizada para esa escala.
+ */
+export function getQuoteTemplateForScale(
+  config?: SiteConfig | null,
+  scale?: string
+): string {
+  if (scale && config?.scaleQuoteTemplates) {
+    const rawKey = scale.trim();
+    if (config.scaleQuoteTemplates[rawKey]?.trim()) {
+      return config.scaleQuoteTemplates[rawKey].trim();
+    }
+    const normKey = normalizeScaleKey(scale);
+    if (config.scaleQuoteTemplates[normKey]?.trim()) {
+      return config.scaleQuoteTemplates[normKey].trim();
+    }
+  }
+
+  return config?.adminQuoteMessageTemplate?.trim() || DEFAULT_ADMIN_QUOTE_TEMPLATE;
+}
+
+/**
+ * Retorna las escalas disponibles para una figura combinando las propias de la figura
+ * y las escalas estándar más comunes.
+ */
+export function getAvailableScalesForProduct(productScales?: string[] | null): string[] {
+  const result: string[] = [];
+  const seen = new Set<string>();
+
+  if (Array.isArray(productScales)) {
+    for (const sc of productScales) {
+      if (sc && typeof sc === 'string' && sc.trim()) {
+        const clean = sc.trim();
+        const norm = normalizeScaleKey(clean);
+        if (!seen.has(norm)) {
+          seen.add(norm);
+          result.push(clean);
+        }
+      }
+    }
+  }
+
+  for (const common of COMMON_SCALES) {
+    const norm = normalizeScaleKey(common);
+    if (!seen.has(norm)) {
+      seen.add(norm);
+      result.push(common);
+    }
+  }
+
+  return result;
 }
 
 /**
@@ -172,13 +250,14 @@ export function calculateInstallmentQuote({
 
 /**
  * Procesa la plantilla de WhatsApp sustituyendo todas las etiquetas dinámicas,
- * de producto, cotización automática y {valorCuota}.
+ * de producto, escala, cotización automática y {valorCuota}.
  */
 export function processWhatsAppTemplate({
   template,
   productTitle,
   productCode,
   figureLink,
+  scale,
   pricing = {},
   isQuoting = false,
 }: {
@@ -186,6 +265,7 @@ export function processWhatsAppTemplate({
   productTitle: string;
   productCode?: string;
   figureLink: string;
+  scale?: string;
   pricing?: PricingQuoteValues;
   isQuoting?: boolean;
 }): string {
@@ -197,12 +277,19 @@ export function processWhatsAppTemplate({
     text = isQuoting ? DEFAULT_ADMIN_QUOTE_TEMPLATE : DEFAULT_USER_INQUIRY_TEMPLATE;
   }
 
+  // Formato de escala legible (ej: "Escala 1/6 (30cm)" o "1/6 (30cm)")
+  const formattedScale = scale ? formatScale(scale) : '';
+  const displayScale = formattedScale ? (formattedScale.toLowerCase().startsWith('escala') ? formattedScale : `Escala ${formattedScale}`) : '';
+
   // 1. Reemplazos de datos básicos de la figura
   text = text
     .replace(/\{figura\}/gi, productTitle || '')
     .replace(/\{titulo\}/gi, productTitle || '')
     .replace(/\{codigo\}/gi, productCode || '')
-    .replace(/\{code\}/gi, productCode || '');
+    .replace(/\{code\}/gi, productCode || '')
+    .replace(/\{escala\}/gi, displayScale || formattedScale || scale || '')
+    .replace(/\{scale\}/gi, displayScale || formattedScale || scale || '')
+    .replace(/\{medida\}/gi, formattedScale || scale || '');
 
   // 2. Reemplazos de Enlace / Link
   if (/\{link\}|\{enlace\}|\{url\}/i.test(text)) {
@@ -239,6 +326,9 @@ export function processWhatsAppTemplate({
     }
     if (exprLower === 'valorcuota' || exprLower === 'valor cuota' || exprLower === 'valor_cuota' || exprLower === 'cuota') {
       return valorCuotaFormatted || (isQuoting ? '$0' : '{valorCuota}');
+    }
+    if (exprLower === 'escala' || exprLower === 'scale') {
+      return displayScale || formattedScale || scale || '';
     }
 
     // Compatibilidad hacia atrás si la plantilla aún contenía {precio final en cuotas}/{cuotas}

@@ -975,6 +975,7 @@ export function Storefront() {
             designerName={selectedProduct.designerId ? designers.find(d => d.id === selectedProduct.designerId)?.name : undefined}
             onClose={handleCloseProductModal} 
             config={siteConfig}
+            onUpdateConfig={setSiteConfig}
             isLiked={likedFigureIds.has(selectedProduct.id)}
             onToggleLike={handleToggleLike}
           />

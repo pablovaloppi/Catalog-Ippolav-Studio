@@ -1476,6 +1476,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
           designerName={designers.find(d => d.id === previewingFigure.designerId)?.name}
           onClose={() => setPreviewingFigure(null)}
           config={siteConfig}
+          onUpdateConfig={setSiteConfig}
         />
       )}
     </div>
@@ -2243,6 +2244,7 @@ function ConfigForm({ config }: { config: SiteConfig }) {
     ...config,
     whatsappMessageTemplate: config?.whatsappMessageTemplate || DEFAULT_USER_INQUIRY_TEMPLATE,
     adminQuoteMessageTemplate: config?.adminQuoteMessageTemplate || DEFAULT_ADMIN_QUOTE_TEMPLATE,
+    scaleQuoteTemplates: config?.scaleQuoteTemplates || {},
     installmentPlans: (config?.installmentPlans && config.installmentPlans.length > 0)
       ? config.installmentPlans
       : DEFAULT_INSTALLMENT_PLANS,
@@ -2253,12 +2255,14 @@ function ConfigForm({ config }: { config: SiteConfig }) {
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [simulatedPrice, setSimulatedPrice] = useState<string>('100000');
+  const [scaleConfigTab, setScaleConfigTab] = useState<string>('general');
 
   useEffect(() => {
     setFormData({
       ...config,
       whatsappMessageTemplate: config?.whatsappMessageTemplate || DEFAULT_USER_INQUIRY_TEMPLATE,
       adminQuoteMessageTemplate: config?.adminQuoteMessageTemplate || DEFAULT_ADMIN_QUOTE_TEMPLATE,
+      scaleQuoteTemplates: config?.scaleQuoteTemplates || {},
       installmentPlans: (config?.installmentPlans && config.installmentPlans.length > 0)
         ? config.installmentPlans
         : DEFAULT_INSTALLMENT_PLANS,
@@ -2750,38 +2754,108 @@ function ConfigForm({ config }: { config: SiteConfig }) {
           </div>
 
           {/* 3.3 Cotizador & Mensaje para Clientes (Exclusivo Administrador) */}
-          <div className="p-4 rounded-2xl bg-surface-container/80 border-2 border-primary/40 space-y-3 shadow-lg">
+          <div className="p-4 rounded-2xl bg-surface-container/80 border-2 border-primary/40 space-y-4 shadow-lg">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
               <div>
                 <label className="text-sm font-bold text-on-surface flex items-center gap-1.5">
                   <span className="text-primary">🛠️</span> Cotizador & Mensaje para Clientes (Exclusivo Administrador)
                 </label>
                 <p className="text-xs text-on-surface-variant mt-0.5">
-                  Plantilla que ves exclusivamente tú en el box <strong>«Cotizador & Mensaje para Clientes»</strong> al abrir cualquier figura para copiar y enviar la cotización con el precio final, cuotas y <code className="text-primary">{'{valorCuota}'}</code>.
+                  Plantilla que ves exclusivamente tú en el box <strong>«Cotizador & Mensaje para Clientes»</strong> al abrir cualquier figura para copiar y enviar la cotización con precio final, cuotas y <code className="text-primary">{'{valorCuota}'}</code>.
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => {
-                  setFormData(prev => ({
-                    ...prev,
-                    adminQuoteMessageTemplate: DEFAULT_ADMIN_QUOTE_TEMPLATE
-                  }));
+                  if (scaleConfigTab === 'general') {
+                    setFormData(prev => ({
+                      ...prev,
+                      adminQuoteMessageTemplate: DEFAULT_ADMIN_QUOTE_TEMPLATE
+                    }));
+                  } else {
+                    setFormData(prev => {
+                      const updated = { ...(prev.scaleQuoteTemplates || {}) };
+                      delete updated[scaleConfigTab];
+                      return { ...prev, scaleQuoteTemplates: updated };
+                    });
+                  }
+                  setSuccess(false);
                 }}
                 className="text-[11px] text-primary hover:underline font-semibold cursor-pointer self-start sm:self-auto flex-shrink-0"
               >
-                Restaurar sugerido cotizador
+                {scaleConfigTab === 'general' ? 'Restaurar sugerido general' : `Usar plantilla general para ${scaleConfigTab}`}
               </button>
             </div>
 
-            <textarea 
-              name="adminQuoteMessageTemplate" 
-              value={formData.adminQuoteMessageTemplate || ''} 
-              onChange={handleChange} 
-              rows={4}
-              className="w-full p-3 bg-surface-container-high border border-outline-variant/50 rounded-xl text-sm font-sans focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all font-mono"
-              placeholder={DEFAULT_ADMIN_QUOTE_TEMPLATE}
-            />
+            {/* Pestañas de Escalas para Personalizar Mensajes Específicos */}
+            <div className="space-y-1.5 pt-1">
+              <span className="text-xs font-bold text-on-surface">Selecciona la plantilla a editar según la escala:</span>
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {[
+                  { id: 'general', label: '🌐 Plantilla General' },
+                  { id: '1/6', label: '1/6 (30cm)' },
+                  { id: '1/4', label: '1/4 (45cm)' },
+                  { id: '1/8', label: '1/8 (20cm)' },
+                  { id: '1/10', label: '1/10 (18cm)' },
+                  { id: '1/12', label: '1/12 (15cm)' },
+                  { id: '1/2', label: '1/2 (90cm)' },
+                  { id: '1/1', label: '1/1 (180cm)' },
+                ].map(tab => {
+                  const isTabActive = scaleConfigTab === tab.id;
+                  const hasCustom = tab.id !== 'general' && Boolean(formData.scaleQuoteTemplates?.[tab.id]?.trim());
+
+                  return (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      onClick={() => setScaleConfigTab(tab.id)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all cursor-pointer flex items-center gap-1.5 ${
+                        isTabActive
+                          ? 'bg-primary text-on-primary border-primary shadow-sm scale-105'
+                          : 'bg-surface-container-high text-on-surface-variant border-outline-variant/40 hover:border-primary/50 hover:text-on-surface'
+                      }`}
+                    >
+                      <span>{tab.label}</span>
+                      {hasCustom && (
+                        <span className={`w-2 h-2 rounded-full ${isTabActive ? 'bg-white' : 'bg-emerald-400'}`} title="Tiene plantilla específica personalizada" />
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Textarea de la Plantilla Actual */}
+            <div>
+              {scaleConfigTab === 'general' ? (
+                <textarea 
+                  name="adminQuoteMessageTemplate" 
+                  value={formData.adminQuoteMessageTemplate || ''} 
+                  onChange={handleChange} 
+                  rows={4}
+                  className="w-full p-3 bg-surface-container-high border border-outline-variant/50 rounded-xl text-sm font-sans focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all font-mono"
+                  placeholder={DEFAULT_ADMIN_QUOTE_TEMPLATE}
+                />
+              ) : (
+                <textarea 
+                  value={formData.scaleQuoteTemplates?.[scaleConfigTab] || ''} 
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setFormData(prev => ({
+                      ...prev,
+                      scaleQuoteTemplates: {
+                        ...(prev.scaleQuoteTemplates || {}),
+                        [scaleConfigTab]: val,
+                      }
+                    }));
+                    setSuccess(false);
+                  }} 
+                  rows={4}
+                  className="w-full p-3 bg-surface-container-high border border-outline-variant/50 rounded-xl text-sm font-sans focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all font-mono"
+                  placeholder={formData.adminQuoteMessageTemplate || DEFAULT_ADMIN_QUOTE_TEMPLATE}
+                />
+              )}
+            </div>
 
             {/* Inserción rápida de etiquetas para cotizador */}
             <div className="space-y-1.5 pt-1">
@@ -2790,19 +2864,34 @@ function ConfigForm({ config }: { config: SiteConfig }) {
                 {[
                   { tag: '{figura}', label: '+ {figura}', title: 'Título de la figura' },
                   { tag: '{codigo}', label: '+ {codigo}', title: 'Código identificador numérico de la figura' },
+                  { tag: '{escala}', label: '+ {escala}', title: 'Escala de la figura (ej: Escala 1/6 (30cm))' },
                   { tag: '{link}', label: '+ {link}', title: 'Enlace directo a la figura' },
                 ].map(({ tag, label, title }) => (
                   <button
                     key={tag}
                     type="button"
                     onClick={() => {
-                      setFormData(prev => {
-                        const current = prev.adminQuoteMessageTemplate || '';
-                        return {
-                          ...prev,
-                          adminQuoteMessageTemplate: current.includes(tag) ? current : `${current} ${tag}`.trim()
-                        };
-                      });
+                      if (scaleConfigTab === 'general') {
+                        setFormData(prev => {
+                          const current = prev.adminQuoteMessageTemplate || '';
+                          return {
+                            ...prev,
+                            adminQuoteMessageTemplate: current.includes(tag) ? current : `${current} ${tag}`.trim()
+                          };
+                        });
+                      } else {
+                        setFormData(prev => {
+                          const current = prev.scaleQuoteTemplates?.[scaleConfigTab] || prev.adminQuoteMessageTemplate || '';
+                          return {
+                            ...prev,
+                            scaleQuoteTemplates: {
+                              ...(prev.scaleQuoteTemplates || {}),
+                              [scaleConfigTab]: current.includes(tag) ? current : `${current} ${tag}`.trim()
+                            }
+                          };
+                        });
+                      }
+                      setSuccess(false);
                     }}
                     className="px-2.5 py-1 rounded-lg bg-primary/15 hover:bg-primary/25 border border-primary/30 text-primary text-xs font-mono font-bold transition-all cursor-pointer active:scale-95"
                     title={title}
@@ -2824,13 +2913,27 @@ function ConfigForm({ config }: { config: SiteConfig }) {
                     key={tag}
                     type="button"
                     onClick={() => {
-                      setFormData(prev => {
-                        const current = prev.adminQuoteMessageTemplate || '';
-                        return {
-                          ...prev,
-                          adminQuoteMessageTemplate: current.includes(tag) ? current : `${current} ${tag}`.trim()
-                        };
-                      });
+                      if (scaleConfigTab === 'general') {
+                        setFormData(prev => {
+                          const current = prev.adminQuoteMessageTemplate || '';
+                          return {
+                            ...prev,
+                            adminQuoteMessageTemplate: current.includes(tag) ? current : `${current} ${tag}`.trim()
+                          };
+                        });
+                      } else {
+                        setFormData(prev => {
+                          const current = prev.scaleQuoteTemplates?.[scaleConfigTab] || prev.adminQuoteMessageTemplate || '';
+                          return {
+                            ...prev,
+                            scaleQuoteTemplates: {
+                              ...(prev.scaleQuoteTemplates || {}),
+                              [scaleConfigTab]: current.includes(tag) ? current : `${current} ${tag}`.trim()
+                            }
+                          };
+                        });
+                      }
+                      setSuccess(false);
                     }}
                     className="px-2.5 py-1 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-300 text-xs font-mono font-bold transition-all cursor-pointer active:scale-95"
                     title={title}
@@ -2845,7 +2948,7 @@ function ConfigForm({ config }: { config: SiteConfig }) {
             <div className="mt-3 p-3.5 rounded-xl bg-surface-container-lowest/90 border border-outline-variant/30 space-y-2">
               <div className="flex items-center justify-between">
                 <span className="text-[10px] uppercase font-bold tracking-wider text-outline">
-                  Vista previa en vivo del mensaje de cotización que copiarás:
+                  Vista previa en vivo del mensaje de cotización ({scaleConfigTab === 'general' ? 'General' : `Escala ${scaleConfigTab}`}):
                 </span>
                 <span className="text-[10px] text-primary font-mono">
                   Simulación con $100.000 (3 Cuotas)
@@ -2860,10 +2963,15 @@ function ConfigForm({ config }: { config: SiteConfig }) {
                     defaultFeeRate: formData.defaultPaymentFeeRate,
                   });
 
+                  const activeTpl = (scaleConfigTab !== 'general' && formData.scaleQuoteTemplates?.[scaleConfigTab]?.trim())
+                    ? formData.scaleQuoteTemplates[scaleConfigTab].trim()
+                    : (formData.adminQuoteMessageTemplate || DEFAULT_ADMIN_QUOTE_TEMPLATE);
+
                   return processWhatsAppTemplate({
-                    template: formData.adminQuoteMessageTemplate || DEFAULT_ADMIN_QUOTE_TEMPLATE,
+                    template: activeTpl,
                     productTitle: 'Goku Super Saiyan 4',
                     productCode: '#0142',
+                    scale: scaleConfigTab === 'general' ? '1/6' : scaleConfigTab,
                     figureLink: 'https://tu-tienda.com/?figura=goku-ssj4',
                     pricing: {
                       precioFinal: demoQuote.precioFinalFormatted,
