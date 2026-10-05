@@ -52,6 +52,7 @@ export interface SiteConfig {
   facebook: string;
   youtube: string;
   whatsappMessageTemplate: string;
+  adminQuoteMessageTemplate?: string; // Plantilla de cotizador que copia el administrador
   searchWhatsAppMessageTemplate?: string;
   cloudinaryCloudName?: string;
   cloudinaryUploadPreset?: string;

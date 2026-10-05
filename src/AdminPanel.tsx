@@ -41,7 +41,7 @@ import { RandomPickerTool } from './components/RandomPickerTool';
 import { AnalyticsDashboard } from './components/AnalyticsDashboard';
 import { TelegramGroupsManager } from './components/TelegramGroupsManager';
 import { formatScale } from './scaleUtils';
-import { processWhatsAppTemplate, DEFAULT_INSTALLMENT_PLANS, DEFAULT_PAYMENT_FEE_RATE, calculateInstallmentQuote, formatCurrencyValue } from './templateUtils';
+import { processWhatsAppTemplate, DEFAULT_INSTALLMENT_PLANS, DEFAULT_PAYMENT_FEE_RATE, calculateInstallmentQuote, formatCurrencyValue, DEFAULT_ADMIN_QUOTE_TEMPLATE, DEFAULT_USER_INQUIRY_TEMPLATE } from './templateUtils';
 
 // ... other imports ...
 
@@ -2241,6 +2241,8 @@ function FigureForm({ figure, categories, designers, onBack, orderCount, config 
 function ConfigForm({ config }: { config: SiteConfig }) {
   const [formData, setFormData] = useState<SiteConfig>(() => ({
     ...config,
+    whatsappMessageTemplate: config?.whatsappMessageTemplate || DEFAULT_USER_INQUIRY_TEMPLATE,
+    adminQuoteMessageTemplate: config?.adminQuoteMessageTemplate || DEFAULT_ADMIN_QUOTE_TEMPLATE,
     installmentPlans: (config?.installmentPlans && config.installmentPlans.length > 0)
       ? config.installmentPlans
       : DEFAULT_INSTALLMENT_PLANS,
@@ -2255,6 +2257,8 @@ function ConfigForm({ config }: { config: SiteConfig }) {
   useEffect(() => {
     setFormData({
       ...config,
+      whatsappMessageTemplate: config?.whatsappMessageTemplate || DEFAULT_USER_INQUIRY_TEMPLATE,
+      adminQuoteMessageTemplate: config?.adminQuoteMessageTemplate || DEFAULT_ADMIN_QUOTE_TEMPLATE,
       installmentPlans: (config?.installmentPlans && config.installmentPlans.length > 0)
         ? config.installmentPlans
         : DEFAULT_INSTALLMENT_PLANS,
@@ -2666,15 +2670,15 @@ function ConfigForm({ config }: { config: SiteConfig }) {
             </div>
           </div>
 
-          {/* 3.2 Mensaje Pre-cargado para Consulta de Figura Individual */}
+          {/* 3.2 Mensaje de Consulta de Figuras (Público - Usuarios en WhatsApp e Instagram) */}
           <div className="p-4 rounded-2xl bg-surface-container/60 border border-outline-variant/30 space-y-3">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
               <div>
                 <label className="text-sm font-bold text-on-surface flex items-center gap-1.5">
-                  <span>🗿</span> Mensaje Pre-cargado Predeterminado para todas las Figuras
+                  <span>📱</span> Mensaje de Consulta de Figuras (Público - Usuarios)
                 </label>
                 <p className="text-xs text-on-surface-variant mt-0.5">
-                  Plantilla global que se carga en todas las figuras. Las etiquetas se reemplazan automáticamente con los datos de cada figura al cotizar.
+                  Texto que se le abre a cualquier visitante al hacer clic en <strong>«Consultar por WhatsApp»</strong> o <strong>«Consultar por Instagram»</strong> en la tienda.
                 </p>
               </div>
               <button
@@ -2682,12 +2686,12 @@ function ConfigForm({ config }: { config: SiteConfig }) {
                 onClick={() => {
                   setFormData(prev => ({
                     ...prev,
-                    whatsappMessageTemplate: 'Hola IPPOLAV STUDIO, me interesa encargar la figura {figura} ({codigo}).\n\n*Presupuesto:* \n• Precio Final (Contado/Transferencia): {precio final}\n• En {cuotas} cuotas de {valorCuota} (Total financiado: {precio final en cuotas})\n\nVer figura: {link}'
+                    whatsappMessageTemplate: DEFAULT_USER_INQUIRY_TEMPLATE
                   }));
                 }}
                 className="text-[11px] text-primary hover:underline font-semibold cursor-pointer self-start sm:self-auto flex-shrink-0"
               >
-                Restaurar formato recomendado
+                Restaurar sugerido público
               </button>
             </div>
 
@@ -2695,15 +2699,94 @@ function ConfigForm({ config }: { config: SiteConfig }) {
               name="whatsappMessageTemplate" 
               value={formData.whatsappMessageTemplate || ''} 
               onChange={handleChange} 
-              rows={4}
+              rows={3}
               className="w-full p-3 bg-surface-container-high border border-outline-variant/40 rounded-xl text-sm font-sans focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all font-mono"
-              placeholder="Hola IPPOLAV STUDIO, me interesa encargar la figura {figura} ({codigo}).&#10;&#10;*Presupuesto:*&#10;• Precio Final (Contado/Transferencia): {precio final}&#10;• En {cuotas} cuotas de {valorCuota} (Total financiado: {precio final en cuotas})&#10;&#10;Ver figura: {link}"
+              placeholder={DEFAULT_USER_INQUIRY_TEMPLATE}
             />
 
-            {/* Inserción rápida de etiquetas */}
+            {/* Inserción rápida de etiquetas básicas */}
+            <div className="flex flex-wrap items-center gap-1.5 pt-1">
+              <span className="text-xs text-outline font-medium">Etiquetas dinámicas de figura:</span>
+              {[
+                { tag: '{figura}', label: '+ {figura}', title: 'Título de la figura' },
+                { tag: '{codigo}', label: '+ {codigo}', title: 'Código identificador numérico de la figura' },
+                { tag: '{link}', label: '+ {link}', title: 'Enlace directo a la figura' },
+              ].map(({ tag, label, title }) => (
+                <button
+                  key={tag}
+                  type="button"
+                  onClick={() => {
+                    setFormData(prev => {
+                      const current = prev.whatsappMessageTemplate || '';
+                      return {
+                        ...prev,
+                        whatsappMessageTemplate: current.includes(tag) ? current : `${current} ${tag}`.trim()
+                      };
+                    });
+                  }}
+                  className="px-2.5 py-1 rounded-lg bg-primary/15 hover:bg-primary/25 border border-primary/30 text-primary text-xs font-mono font-bold transition-all cursor-pointer active:scale-95"
+                  title={title}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            {/* Vista previa en tiempo real */}
+            <div className="mt-3 p-3 rounded-xl bg-surface-container-lowest/80 border border-outline-variant/20 space-y-1">
+              <div className="text-[10px] uppercase font-bold tracking-wider text-outline">
+                Vista previa del mensaje que envía el cliente:
+              </div>
+              <div className="text-xs text-on-surface bg-[#005c4b]/30 text-emerald-200 p-2.5 rounded-lg border border-emerald-500/20 font-sans whitespace-pre-line">
+                {processWhatsAppTemplate({
+                  template: formData.whatsappMessageTemplate || DEFAULT_USER_INQUIRY_TEMPLATE,
+                  productTitle: 'Goku Super Saiyan 4',
+                  productCode: '#0142',
+                  figureLink: 'https://tu-tienda.com/?figura=goku-ssj4',
+                  isQuoting: false,
+                })}
+              </div>
+            </div>
+          </div>
+
+          {/* 3.3 Cotizador & Mensaje para Clientes (Exclusivo Administrador) */}
+          <div className="p-4 rounded-2xl bg-surface-container/80 border-2 border-primary/40 space-y-3 shadow-lg">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div>
+                <label className="text-sm font-bold text-on-surface flex items-center gap-1.5">
+                  <span className="text-primary">🛠️</span> Cotizador & Mensaje para Clientes (Exclusivo Administrador)
+                </label>
+                <p className="text-xs text-on-surface-variant mt-0.5">
+                  Plantilla que ves exclusivamente tú en el box <strong>«Cotizador & Mensaje para Clientes»</strong> al abrir cualquier figura para copiar y enviar la cotización con el precio final, cuotas y <code className="text-primary">{'{valorCuota}'}</code>.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setFormData(prev => ({
+                    ...prev,
+                    adminQuoteMessageTemplate: DEFAULT_ADMIN_QUOTE_TEMPLATE
+                  }));
+                }}
+                className="text-[11px] text-primary hover:underline font-semibold cursor-pointer self-start sm:self-auto flex-shrink-0"
+              >
+                Restaurar sugerido cotizador
+              </button>
+            </div>
+
+            <textarea 
+              name="adminQuoteMessageTemplate" 
+              value={formData.adminQuoteMessageTemplate || ''} 
+              onChange={handleChange} 
+              rows={4}
+              className="w-full p-3 bg-surface-container-high border border-outline-variant/50 rounded-xl text-sm font-sans focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all font-mono"
+              placeholder={DEFAULT_ADMIN_QUOTE_TEMPLATE}
+            />
+
+            {/* Inserción rápida de etiquetas para cotizador */}
             <div className="space-y-1.5 pt-1">
               <div className="flex flex-wrap items-center gap-1.5">
-                <span className="text-xs text-outline font-medium">Etiquetas dinámicas de figura:</span>
+                <span className="text-xs text-outline font-medium">Etiquetas de figura:</span>
                 {[
                   { tag: '{figura}', label: '+ {figura}', title: 'Título de la figura' },
                   { tag: '{codigo}', label: '+ {codigo}', title: 'Código identificador numérico de la figura' },
@@ -2714,10 +2797,10 @@ function ConfigForm({ config }: { config: SiteConfig }) {
                     type="button"
                     onClick={() => {
                       setFormData(prev => {
-                        const current = prev.whatsappMessageTemplate || '';
+                        const current = prev.adminQuoteMessageTemplate || '';
                         return {
                           ...prev,
-                          whatsappMessageTemplate: current.includes(tag) ? current : `${current} ${tag}`.trim()
+                          adminQuoteMessageTemplate: current.includes(tag) ? current : `${current} ${tag}`.trim()
                         };
                       });
                     }}
@@ -2730,7 +2813,7 @@ function ConfigForm({ config }: { config: SiteConfig }) {
               </div>
 
               <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                <span className="text-xs text-outline font-medium">Etiquetas de cotizador & cuotas (Admin):</span>
+                <span className="text-xs text-outline font-medium">Etiquetas de cotización & cuotas (Admin):</span>
                 {[
                   { tag: '{precio final}', label: '+ {precio final}', title: 'Precio final contado / transferencia' },
                   { tag: '{precio final en cuotas}', label: '+ {precio final en cuotas}', title: 'Precio total financiado en cuotas con aumento y cobro' },
@@ -2742,10 +2825,10 @@ function ConfigForm({ config }: { config: SiteConfig }) {
                     type="button"
                     onClick={() => {
                       setFormData(prev => {
-                        const current = prev.whatsappMessageTemplate || '';
+                        const current = prev.adminQuoteMessageTemplate || '';
                         return {
                           ...prev,
-                          whatsappMessageTemplate: current.includes(tag) ? current : `${current} ${tag}`.trim()
+                          adminQuoteMessageTemplate: current.includes(tag) ? current : `${current} ${tag}`.trim()
                         };
                       });
                     }}
@@ -2762,10 +2845,10 @@ function ConfigForm({ config }: { config: SiteConfig }) {
             <div className="mt-3 p-3.5 rounded-xl bg-surface-container-lowest/90 border border-outline-variant/30 space-y-2">
               <div className="flex items-center justify-between">
                 <span className="text-[10px] uppercase font-bold tracking-wider text-outline">
-                  Vista previa en vivo del mensaje (Ejemplo: Goku SSJ4 • Contado: $100.000 • 3 cuotas):
+                  Vista previa en vivo del mensaje de cotización que copiarás:
                 </span>
                 <span className="text-[10px] text-primary font-mono">
-                  Simulación con tus reglas
+                  Simulación con $100.000 (3 Cuotas)
                 </span>
               </div>
               <div className="text-xs text-on-surface bg-[#005c4b]/30 text-emerald-200 p-3 rounded-lg border border-emerald-500/20 font-mono whitespace-pre-line leading-relaxed select-all">
@@ -2778,7 +2861,7 @@ function ConfigForm({ config }: { config: SiteConfig }) {
                   });
 
                   return processWhatsAppTemplate({
-                    template: formData.whatsappMessageTemplate || 'Hola IPPOLAV STUDIO, me interesa encargar la figura {figura} ({codigo}).\n\n*Presupuesto:* \n• Precio Final: {precio final}\n• En {cuotas} cuotas de {valorCuota} (Total financiado: {precio final en cuotas})\n\nVer figura: {link}',
+                    template: formData.adminQuoteMessageTemplate || DEFAULT_ADMIN_QUOTE_TEMPLATE,
                     productTitle: 'Goku Super Saiyan 4',
                     productCode: '#0142',
                     figureLink: 'https://tu-tienda.com/?figura=goku-ssj4',

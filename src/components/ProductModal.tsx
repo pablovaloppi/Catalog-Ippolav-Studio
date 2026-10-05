@@ -6,7 +6,7 @@ import { shareFigure, getShareableFigureUrl } from '../urlUtils';
 import { trackFigureView, trackWhatsAppClick, trackInstagramClick } from '../services/analyticsService';
 import { formatScalesList } from '../scaleUtils';
 import { useAuth } from '../contexts/AuthContext';
-import { processWhatsAppTemplate, calculateInstallmentQuote, DEFAULT_INSTALLMENT_PLANS } from '../templateUtils';
+import { processWhatsAppTemplate, calculateInstallmentQuote, DEFAULT_INSTALLMENT_PLANS, DEFAULT_ADMIN_QUOTE_TEMPLATE, DEFAULT_USER_INQUIRY_TEMPLATE } from '../templateUtils';
 
 interface ProductModalProps {
   product: Product | null;
@@ -306,9 +306,21 @@ export function ProductModal({
 
   const figureLink = getShareableFigureUrl(product, true);
 
-  const baseMessage = useMemo(() => {
+  // Mensaje público de consulta para los usuarios (WhatsApp e Instagram)
+  const userPublicMessage = useMemo(() => {
     return processWhatsAppTemplate({
-      template: config?.whatsappMessageTemplate,
+      template: config?.whatsappMessageTemplate || DEFAULT_USER_INQUIRY_TEMPLATE,
+      productTitle: product.title,
+      productCode: product.numericId,
+      figureLink,
+      isQuoting: false,
+    });
+  }, [config?.whatsappMessageTemplate, product.title, product.numericId, figureLink]);
+
+  // Mensaje exclusivo de cotización y cuotas para el Administrador (para copiar y enviar a clientes)
+  const adminQuotedMessage = useMemo(() => {
+    return processWhatsAppTemplate({
+      template: config?.adminQuoteMessageTemplate || DEFAULT_ADMIN_QUOTE_TEMPLATE,
       productTitle: product.title,
       productCode: product.numericId,
       figureLink,
@@ -318,19 +330,19 @@ export function ProductModal({
         cuotas: quote.installments,
         valorCuota: quote.valorCuotaFormatted,
       },
-      isQuoting: isAdmin && Boolean(precioFinal),
+      isQuoting: true,
     });
-  }, [config?.whatsappMessageTemplate, product.title, product.numericId, figureLink, quote, precioFinal, isAdmin]);
+  }, [config?.adminQuoteMessageTemplate, product.title, product.numericId, figureLink, quote, precioFinal]);
 
   const handleAdminCopyMessage = async () => {
-    const ok = await copyTextToClipboard(baseMessage);
+    const ok = await copyTextToClipboard(adminQuotedMessage);
     if (ok) {
       setAdminCopied(true);
       setTimeout(() => setAdminCopied(false), 3000);
     }
   };
 
-  const whatsappMessage = encodeURIComponent(baseMessage);
+  const whatsappMessage = encodeURIComponent(userPublicMessage);
   
   const whatsappNumber = config?.whatsapp || "5491100000000";
   const whatsappUrl = `https://wa.me/${whatsappNumber}?text=${whatsappMessage}`;
@@ -417,7 +429,7 @@ export function ProductModal({
     }
 
     // 1. Copiar primero el mensaje al portapapeles de inmediato antes de que el navegador pierda foco
-    await copyTextToClipboard(baseMessage);
+    await copyTextToClipboard(userPublicMessage);
     setIgStatus('copied');
     setTimeout(() => {
       setIgStatus('idle');
@@ -911,7 +923,7 @@ export function ProductModal({
                 )}
               </div>
               <div className="p-3 bg-surface-container-lowest/90 border border-outline-variant/50 rounded-lg text-xs text-on-surface font-sans whitespace-pre-line leading-relaxed select-all max-h-48 overflow-y-auto font-mono">
-                {baseMessage}
+                {adminQuotedMessage}
               </div>
             </div>
 

@@ -7,6 +7,15 @@ import { InstallmentPlan } from './types';
 
 export const DEFAULT_PAYMENT_FEE_RATE = 0.0926075; // 9.26075% de costo por cobro
 
+export const DEFAULT_USER_INQUIRY_TEMPLATE = 
+`Hola IPPOLAV STUDIO, me interesa encargar la figura {figura} ({codigo}). ¿Tienen disponibilidad?\n\nVer figura: {link}`;
+
+export const DEFAULT_ADMIN_QUOTE_TEMPLATE = 
+`Hola! Te paso el presupuesto para la figura {figura} ({codigo}):\n\n` +
+`• Precio Final (Contado/Transferencia): {precio final}\n` +
+`• En {cuotas} cuotas de {valorCuota} (Total financiado: {precio final en cuotas})\n\n` +
+`Ver figura: {link}`;
+
 export const DEFAULT_INSTALLMENT_PLANS: InstallmentPlan[] = [
   {
     id: 'plan-3',
@@ -185,15 +194,7 @@ export function processWhatsAppTemplate({
   // Si no hay plantilla base, proveer una plantilla con cotizador cuando aplique
   let text = rawTemplate;
   if (!text) {
-    if (isQuoting && pricing.precioFinal) {
-      text = `Hola IPPOLAV STUDIO, me interesa encargar la figura {figura} ({codigo}).\n\n` +
-             `*Presupuesto:* \n` +
-             `• Precio Final (Contado/Transferencia): {precio final}\n` +
-             `• En {cuotas} cuotas de {valorCuota} (Total financiado: {precio final en cuotas})\n\n` +
-             `Ver figura: {link}`;
-    } else {
-      text = `Hola IPPOLAV STUDIO, me interesa encargar la figura {figura}${productCode ? ` (${productCode})` : ''}. ¿Tienen disponibilidad?\n\nVer figura: {link}`;
-    }
+    text = isQuoting ? DEFAULT_ADMIN_QUOTE_TEMPLATE : DEFAULT_USER_INQUIRY_TEMPLATE;
   }
 
   // 1. Reemplazos de datos básicos de la figura
