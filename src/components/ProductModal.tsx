@@ -1,10 +1,12 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { X, MessageCircle, HelpCircle, View, ChevronLeft, ChevronRight, Heart, ZoomIn, ZoomOut, RotateCcw, Share2, Check, Instagram } from 'lucide-react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { X, MessageCircle, HelpCircle, View, ChevronLeft, ChevronRight, Heart, ZoomIn, ZoomOut, RotateCcw, Share2, Check, Instagram, Copy, Calculator, ShieldCheck, Sparkles, RefreshCw } from 'lucide-react';
 import { Product, SiteConfig } from '../types';
 import { getOptimizedCloudinaryUrl, getCloudinarySrcSet } from '../cloudinaryUtils';
 import { shareFigure, getShareableFigureUrl } from '../urlUtils';
 import { trackFigureView, trackWhatsAppClick, trackInstagramClick } from '../services/analyticsService';
 import { formatScalesList } from '../scaleUtils';
+import { useAuth } from '../contexts/AuthContext';
+import { processWhatsAppTemplate, calculateInstallmentQuote, DEFAULT_INSTALLMENT_PLANS } from '../templateUtils';
 
 interface ProductModalProps {
   product: Product | null;
@@ -34,7 +36,38 @@ export function ProductModal({
   const [shareStatus, setShareStatus] = useState<'idle' | 'copied' | 'shared'>('idle');
   const [igStatus, setIgStatus] = useState<'idle' | 'copied'>('idle');
   const startFullScreenRef = useRef(initialFullScreen);
-  
+
+  const { isAdmin } = useAuth();
+
+  const activePlans = useMemo(() => {
+    return (config?.installmentPlans && config.installmentPlans.length > 0)
+      ? config.installmentPlans
+      : DEFAULT_INSTALLMENT_PLANS;
+  }, [config?.installmentPlans]);
+
+  // Estados de Administrador: únicamente Precio Final y selección de Cuotas
+  const [precioFinal, setPrecioFinal] = useState<string>('');
+  const [selectedInstallments, setSelectedInstallments] = useState<number>(() => {
+    return activePlans[0]?.installments || 3;
+  });
+  const [adminCopied, setAdminCopied] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (activePlans.length > 0 && !activePlans.some(p => Number(p.installments) === Number(selectedInstallments))) {
+      setSelectedInstallments(Number(activePlans[0].installments));
+    }
+  }, [activePlans, selectedInstallments]);
+
+  // Cálculo automático de cotización según la fórmula configurada
+  const quote = useMemo(() => {
+    return calculateInstallmentQuote({
+      precioFinalRaw: precioFinal,
+      installments: selectedInstallments,
+      plans: activePlans,
+      defaultFeeRate: config?.defaultPaymentFeeRate,
+    });
+  }, [precioFinal, selectedInstallments, activePlans, config?.defaultPaymentFeeRate]);
+
   // Seguimiento de telemetría de visualización de figura
   useEffect(() => {
     if (product) {
@@ -273,30 +306,30 @@ export function ProductModal({
 
   const figureLink = getShareableFigureUrl(product, true);
 
-  const formatFigureInquiryMessage = (template?: string) => {
-    const rawTemplate = template?.trim();
-    if (!rawTemplate) {
-      return `Hola IPPOLAV STUDIO, me interesa encargar la figura ${product.title}${product.numericId ? ` (${product.numericId})` : ''}. ¿Tienen disponibilidad?\n\nVer figura: ${figureLink}`;
+  const baseMessage = useMemo(() => {
+    return processWhatsAppTemplate({
+      template: config?.whatsappMessageTemplate,
+      productTitle: product.title,
+      productCode: product.numericId,
+      figureLink,
+      pricing: {
+        precioFinal: quote.precioFinalFormatted || precioFinal,
+        precioFinalCuotas: quote.precioFinalCuotasFormatted,
+        cuotas: quote.installments,
+        valorCuota: quote.valorCuotaFormatted,
+      },
+      isQuoting: isAdmin && Boolean(precioFinal),
+    });
+  }, [config?.whatsappMessageTemplate, product.title, product.numericId, figureLink, quote, precioFinal, isAdmin]);
+
+  const handleAdminCopyMessage = async () => {
+    const ok = await copyTextToClipboard(baseMessage);
+    if (ok) {
+      setAdminCopied(true);
+      setTimeout(() => setAdminCopied(false), 3000);
     }
-
-    let msg = rawTemplate
-      .replace(/\{figura\}/gi, product.title)
-      .replace(/\{codigo\}/gi, product.numericId || '')
-      .replace(/\{code\}/gi, product.numericId || '');
-
-    if (/\{link\}|\{enlace\}|\{url\}/i.test(msg)) {
-      msg = msg
-        .replace(/\{link\}/gi, figureLink)
-        .replace(/\{enlace\}/gi, figureLink)
-        .replace(/\{url\}/gi, figureLink);
-    } else {
-      msg = `${msg}\n\nVer figura: ${figureLink}`;
-    }
-
-    return msg;
   };
 
-  const baseMessage = formatFigureInquiryMessage(config?.whatsappMessageTemplate);
   const whatsappMessage = encodeURIComponent(baseMessage);
   
   const whatsappNumber = config?.whatsapp || "5491100000000";
@@ -772,6 +805,150 @@ export function ProductModal({
         {product.description && (
           <div className="text-sm text-on-surface-variant leading-relaxed">
             {product.description}
+          </div>
+        )}
+
+        {/* Panel Exclusivo para Administrador: Cotizador Rápido y Mensaje Pre-cargado */}
+        {isAdmin && (
+          <div className="p-4 rounded-xl bg-gradient-to-b from-surface-container-high/90 to-surface-container border-2 border-primary/50 shadow-xl space-y-3.5 animate-in fade-in duration-200">
+            <div className="flex items-center justify-between gap-2 border-b border-primary/25 pb-2.5">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-lg bg-primary/20 flex items-center justify-center text-primary shadow-sm">
+                  <Calculator className="w-4 h-4" />
+                </div>
+                <div>
+                  <span className="text-xs font-bold text-on-surface uppercase tracking-wider block">
+                    Cotizador & Mensaje para Clientes
+                  </span>
+                  <span className="text-[10px] text-primary/90 font-medium">
+                    Visible exclusivamente cuando estás logeado como Administrador
+                  </span>
+                </div>
+              </div>
+              <span className="text-[10px] uppercase font-bold tracking-widest px-2.5 py-0.5 rounded-full bg-primary/20 text-primary border border-primary/40 flex items-center gap-1">
+                <ShieldCheck className="w-3 h-3" /> Admin
+              </span>
+            </div>
+
+            {/* Box de Precio Final y selección de Cuotas */}
+            <div className="space-y-2.5">
+              <div className="flex flex-col sm:flex-row sm:items-end gap-3">
+                <div className="flex-1 space-y-1">
+                  <label className="text-[11px] font-bold text-on-surface flex items-center justify-between">
+                    <span>Precio Final ($)</span>
+                    <span className="text-[9px] text-primary font-mono font-medium">Contado / Transferencia</span>
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      placeholder="Ingresa el precio final (ej: 45000)"
+                      value={precioFinal}
+                      onChange={(e) => setPrecioFinal(e.target.value)}
+                      className="w-full pl-8 pr-3 py-2.5 bg-surface-container-lowest border border-outline-variant/60 focus:border-primary focus:ring-2 focus:ring-primary/30 rounded-lg text-sm font-mono font-bold text-on-surface outline-none transition-all placeholder:text-outline/40 placeholder:font-normal"
+                    />
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-primary text-sm font-mono font-bold">$</span>
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[11px] font-bold text-on-surface block">
+                    Calcular en Cuotas:
+                  </label>
+                  <div className="flex gap-1.5 flex-wrap">
+                    {activePlans.map((plan) => {
+                      const isSelected = Number(selectedInstallments) === Number(plan.installments);
+                      return (
+                        <button
+                          key={plan.id || plan.installments}
+                          type="button"
+                          onClick={() => setSelectedInstallments(Number(plan.installments))}
+                          className={`py-2 px-3 rounded-lg text-xs font-bold border transition-all cursor-pointer ${
+                            isSelected
+                              ? 'bg-primary text-on-primary border-primary shadow-sm scale-105'
+                              : 'bg-surface-container-lowest text-on-surface-variant border-outline-variant/40 hover:border-primary/60 hover:text-on-surface'
+                          }`}
+                        >
+                          {plan.label || `${plan.installments} Cuotas`}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Resumen del cálculo automático de cuotas según la fórmula de aumento y costo de cobro */}
+            {quote.valorCuotaNum > 0 && (
+              <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-between text-xs text-emerald-300 flex-wrap gap-2">
+                <span className="flex items-center gap-1.5 font-bold">
+                  <Sparkles className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+                  <span>{quote.installments} cuotas de {quote.valorCuotaFormatted}</span>
+                </span>
+                <span className="text-[11px] text-emerald-200/90 font-mono">
+                  (Total financiado: {quote.precioFinalCuotasFormatted})
+                </span>
+              </div>
+            )}
+
+            {/* Texto Pre-cargado dinámico para copiar */}
+            <div className="space-y-1.5 pt-1">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold text-outline uppercase tracking-wider">
+                  Mensaje Pre-cargado con cotización (Listo para enviar al cliente):
+                </span>
+                {precioFinal && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPrecioFinal('');
+                    }}
+                    className="text-[10px] text-outline hover:text-primary flex items-center gap-1 transition-colors"
+                    title="Restablecer precio"
+                  >
+                    <RefreshCw className="w-2.5 h-2.5" /> Limpiar
+                  </button>
+                )}
+              </div>
+              <div className="p-3 bg-surface-container-lowest/90 border border-outline-variant/50 rounded-lg text-xs text-on-surface font-sans whitespace-pre-line leading-relaxed select-all max-h-48 overflow-y-auto font-mono">
+                {baseMessage}
+              </div>
+            </div>
+
+            {/* Botón destacado de Copiar */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+              <button
+                type="button"
+                onClick={handleAdminCopyMessage}
+                className={`w-full py-3 px-4 rounded-xl font-bold text-xs flex items-center justify-center gap-2 border transition-all active:scale-95 shadow-md ${
+                  adminCopied
+                    ? 'bg-emerald-600 text-white border-emerald-500 shadow-emerald-500/30'
+                    : 'bg-primary text-on-primary hover:brightness-110 border-primary shadow-primary/20'
+                }`}
+              >
+                {adminCopied ? (
+                  <>
+                    <Check className="w-4.5 h-4.5" />
+                    <span>¡Mensaje copiado al portapapeles!</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-4.5 h-4.5" />
+                    <span>Copiar mensaje pre-cargado</span>
+                  </>
+                )}
+              </button>
+
+              <a
+                href={whatsappUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-full py-3 px-4 rounded-xl font-bold text-xs flex items-center justify-center gap-2 bg-[#25D366] hover:bg-[#20ba59] text-white border border-[#25D366] transition-all active:scale-95 shadow-md shadow-[#25D366]/20 uppercase"
+              >
+                <MessageCircle className="w-4.5 h-4.5" />
+                <span>Abrir WhatsApp con esta cotización</span>
+              </a>
+            </div>
           </div>
         )}
 

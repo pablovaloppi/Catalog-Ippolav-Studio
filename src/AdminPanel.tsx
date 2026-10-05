@@ -21,9 +21,9 @@ import {
   where,
   QueryDocumentSnapshot
 } from 'firebase/firestore';
-import { Product, Category, Designer, SiteConfig } from './types';
+import { Product, Category, Designer, SiteConfig, InstallmentPlan } from './types';
 import { products as initialProducts } from './data';
-import { Plus, ChevronUp, ChevronDown, Trash2, Edit2, LogOut, ImagePlus, UserCircle, Settings, Hash, Sparkles, Eye, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Heart, CornerDownRight, FolderTree, Dices, TrendingUp, Search, Send } from 'lucide-react';
+import { Plus, ChevronUp, ChevronDown, Trash2, Edit2, LogOut, ImagePlus, UserCircle, Settings, Hash, Sparkles, Eye, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Heart, CornerDownRight, FolderTree, Dices, TrendingUp, Search, Send, Calculator, Percent, DollarSign, RefreshCw } from 'lucide-react';
 import { ProductModal } from './components/ProductModal';
 import { 
   getCategoryAncestors, 
@@ -41,6 +41,7 @@ import { RandomPickerTool } from './components/RandomPickerTool';
 import { AnalyticsDashboard } from './components/AnalyticsDashboard';
 import { TelegramGroupsManager } from './components/TelegramGroupsManager';
 import { formatScale } from './scaleUtils';
+import { processWhatsAppTemplate, DEFAULT_INSTALLMENT_PLANS, DEFAULT_PAYMENT_FEE_RATE, calculateInstallmentQuote, formatCurrencyValue } from './templateUtils';
 
 // ... other imports ...
 
@@ -2238,16 +2239,79 @@ function FigureForm({ figure, categories, designers, onBack, orderCount, config 
 }
 
 function ConfigForm({ config }: { config: SiteConfig }) {
-  const [formData, setFormData] = useState<SiteConfig>(config);
+  const [formData, setFormData] = useState<SiteConfig>(() => ({
+    ...config,
+    installmentPlans: (config?.installmentPlans && config.installmentPlans.length > 0)
+      ? config.installmentPlans
+      : DEFAULT_INSTALLMENT_PLANS,
+    defaultPaymentFeeRate: typeof config?.defaultPaymentFeeRate === 'number'
+      ? config.defaultPaymentFeeRate
+      : DEFAULT_PAYMENT_FEE_RATE,
+  }));
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [simulatedPrice, setSimulatedPrice] = useState<string>('100000');
 
   useEffect(() => {
-    setFormData(config);
+    setFormData({
+      ...config,
+      installmentPlans: (config?.installmentPlans && config.installmentPlans.length > 0)
+        ? config.installmentPlans
+        : DEFAULT_INSTALLMENT_PLANS,
+      defaultPaymentFeeRate: typeof config?.defaultPaymentFeeRate === 'number'
+        ? config.defaultPaymentFeeRate
+        : DEFAULT_PAYMENT_FEE_RATE,
+    });
   }, [config]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     setFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
+    setSuccess(false);
+  };
+
+  const handlePlanChange = (index: number, field: keyof InstallmentPlan, value: any) => {
+    setFormData(prev => {
+      const currentPlans = [...(prev.installmentPlans || DEFAULT_INSTALLMENT_PLANS)];
+      currentPlans[index] = {
+        ...currentPlans[index],
+        [field]: value,
+      };
+      return { ...prev, installmentPlans: currentPlans };
+    });
+    setSuccess(false);
+  };
+
+  const handleAddPlan = () => {
+    setFormData(prev => {
+      const currentPlans = [...(prev.installmentPlans || DEFAULT_INSTALLMENT_PLANS)];
+      const nextCuotas = currentPlans.length > 0 ? (Math.max(...currentPlans.map(p => Number(p.installments) || 0)) + 3) : 3;
+      const newPlan: InstallmentPlan = {
+        id: `plan-${Date.now()}`,
+        installments: nextCuotas,
+        increaseRate: 0.15,
+        paymentFeeRate: prev.defaultPaymentFeeRate ?? DEFAULT_PAYMENT_FEE_RATE,
+        label: `${nextCuotas} Cuotas`,
+      };
+      return { ...prev, installmentPlans: [...currentPlans, newPlan] };
+    });
+    setSuccess(false);
+  };
+
+  const handleRemovePlan = (index: number) => {
+    setFormData(prev => {
+      const currentPlans = [...(prev.installmentPlans || DEFAULT_INSTALLMENT_PLANS)];
+      currentPlans.splice(index, 1);
+      return { ...prev, installmentPlans: currentPlans };
+    });
+    setSuccess(false);
+  };
+
+  const handleResetDefaultPlans = () => {
+    setFormData(prev => ({
+      ...prev,
+      installmentPlans: DEFAULT_INSTALLMENT_PLANS,
+      defaultPaymentFeeRate: DEFAULT_PAYMENT_FEE_RATE,
+    }));
     setSuccess(false);
   };
 
@@ -2265,39 +2329,261 @@ function ConfigForm({ config }: { config: SiteConfig }) {
     setLoading(false);
   };
 
+  const plans = formData.installmentPlans || DEFAULT_INSTALLMENT_PLANS;
+  const parsedSimPrice = parseFloat(simulatedPrice.replace(/[^0-9.]/g, '')) || 100000;
+
   return (
-    <div className="max-w-2xl mx-auto space-y-6">
+    <div className="max-w-3xl mx-auto space-y-6">
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-serif font-bold">Configuración del Sitio</h2>
       </div>
       
-      <form onSubmit={handleSubmit} className="bg-surface-container-low border border-outline-variant/30 rounded-xl p-6 space-y-6">
+      <form onSubmit={handleSubmit} className="bg-surface-container-low border border-outline-variant/30 rounded-xl p-6 space-y-8">
+        {/* 1. Redes Sociales y Contacto */}
         <div className="space-y-4">
           <h3 className="text-lg font-bold text-primary">Redes Sociales y Contacto</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-1">
               <label className="text-sm font-bold text-on-surface">WhatsApp (Número)</label>
-              <input type="text" name="whatsapp" value={formData.whatsapp} onChange={handleChange} placeholder="Ej: 5491112345678" className="w-full p-3 bg-surface-container border border-outline-variant/30 rounded-lg text-sm" />
+              <input type="text" name="whatsapp" value={formData.whatsapp || ''} onChange={handleChange} placeholder="Ej: 5491112345678" className="w-full p-3 bg-surface-container border border-outline-variant/30 rounded-lg text-sm" />
               <p className="text-xs text-outline">Incluye el código de país sin el +</p>
             </div>
             <div className="space-y-1">
               <label className="text-sm font-bold text-on-surface">Instagram URL</label>
-              <input type="url" name="instagram" value={formData.instagram} onChange={handleChange} placeholder="https://instagram.com/tu-usuario" className="w-full p-3 bg-surface-container border border-outline-variant/30 rounded-lg text-sm" />
+              <input type="url" name="instagram" value={formData.instagram || ''} onChange={handleChange} placeholder="https://instagram.com/tu-usuario" className="w-full p-3 bg-surface-container border border-outline-variant/30 rounded-lg text-sm" />
             </div>
             <div className="space-y-1">
               <label className="text-sm font-bold text-on-surface">Facebook URL</label>
-              <input type="url" name="facebook" value={formData.facebook} onChange={handleChange} placeholder="https://facebook.com/tu-pagina" className="w-full p-3 bg-surface-container border border-outline-variant/30 rounded-lg text-sm" />
+              <input type="url" name="facebook" value={formData.facebook || ''} onChange={handleChange} placeholder="https://facebook.com/tu-pagina" className="w-full p-3 bg-surface-container border border-outline-variant/30 rounded-lg text-sm" />
             </div>
             <div className="space-y-1">
               <label className="text-sm font-bold text-on-surface">YouTube URL</label>
-              <input type="url" name="youtube" value={formData.youtube} onChange={handleChange} placeholder="https://youtube.com/c/tu-canal" className="w-full p-3 bg-surface-container border border-outline-variant/30 rounded-lg text-sm" />
+              <input type="url" name="youtube" value={formData.youtube || ''} onChange={handleChange} placeholder="https://youtube.com/c/tu-canal" className="w-full p-3 bg-surface-container border border-outline-variant/30 rounded-lg text-sm" />
             </div>
           </div>
         </div>
 
-        <div className="w-full h-px bg-outline-variant/30 my-6"></div>
+        <div className="w-full h-px bg-outline-variant/30"></div>
 
-        {/* Sección de Plantillas de WhatsApp */}
+        {/* 2. Sección de Cálculo y Reglas de Precios en Cuotas */}
+        <div className="space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div>
+              <h3 className="text-lg font-bold text-primary flex items-center gap-2">
+                <Calculator className="w-5 h-5 text-primary" /> Cálculo de Precio en Cuotas & Comisiones
+              </h3>
+              <p className="text-xs text-on-surface-variant mt-0.5">
+                Configura los factores de aumento financiero y costos de cobro para calcular automáticamente <code className="text-primary">{'{precio final en cuotas}'}</code> y <code className="text-primary">{'{valorCuota}'}</code>.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={handleResetDefaultPlans}
+              className="text-xs text-outline hover:text-primary flex items-center gap-1 self-start sm:self-auto font-medium transition-colors cursor-pointer"
+              title="Restaurar valores de aumentos y costos de cobro por defecto"
+            >
+              <RefreshCw className="w-3.5 h-3.5" /> Restaurar sugeridos
+            </button>
+          </div>
+
+          {/* Explicación de la Fórmula */}
+          <div className="p-4 rounded-xl bg-surface-container/70 border border-primary/20 space-y-2 text-xs text-on-surface-variant">
+            <span className="font-bold text-on-surface uppercase tracking-wider text-[11px] block">
+              📐 Fórmula de cálculo aplicada:
+            </span>
+            <div className="font-mono bg-surface-container-lowest p-2.5 rounded-lg border border-outline-variant/30 text-on-surface space-y-1">
+              <div>• <strong>Aumento financiamiento</strong> = {'{precio final}'} × [Valor de aumento] (ej: 0.1588457)</div>
+              <div>• <strong>Costo por cobro</strong> = {'{precio final}'} × [Costo por cobro] (ej: 0.0926075)</div>
+              <div>• <strong className="text-primary">{'{precio final en cuotas}'}</strong> = {'{precio final}'} + Aumento + Costo por cobro</div>
+              <div>• <strong className="text-emerald-400">{'{valorCuota}'}</strong> = {'{precio final en cuotas}'} ÷ Cantidad de cuotas</div>
+            </div>
+          </div>
+
+          {/* Costo por Cobro General por defecto */}
+          <div className="p-4 rounded-xl bg-surface-container/50 border border-outline-variant/30 space-y-2">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <label className="text-sm font-bold text-on-surface flex items-center gap-1.5">
+                <Percent className="w-4 h-4 text-amber-400" /> Costo por cobro por defecto (Pasarela / Comisiones)
+              </label>
+              <span className="text-xs text-primary font-mono font-bold">
+                {((formData.defaultPaymentFeeRate ?? DEFAULT_PAYMENT_FEE_RATE) * 100).toFixed(4)}%
+              </span>
+            </div>
+            <div className="flex items-center gap-3">
+              <input
+                type="number"
+                step="0.0000001"
+                min="0"
+                max="1"
+                name="defaultPaymentFeeRate"
+                value={formData.defaultPaymentFeeRate ?? DEFAULT_PAYMENT_FEE_RATE}
+                onChange={(e) => {
+                  const val = parseFloat(e.target.value) || 0;
+                  setFormData(prev => ({ ...prev, defaultPaymentFeeRate: val }));
+                  setSuccess(false);
+                }}
+                className="w-full sm:w-64 p-2.5 bg-surface-container-high border border-outline-variant/40 rounded-lg text-sm font-mono text-on-surface outline-none focus:border-primary"
+                placeholder="0.0926075"
+              />
+              <span className="text-xs text-outline">
+                Ej: 0.0926075 equivale al 9.26075% de comisión de cobro
+              </span>
+            </div>
+          </div>
+
+          {/* Lista Editable de Cuotas */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <label className="text-sm font-bold text-on-surface">
+                Planes de Cuotas Disponibles ({plans.length})
+              </label>
+              <button
+                type="button"
+                onClick={handleAddPlan}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/20 hover:bg-primary/30 border border-primary/40 text-primary text-xs font-bold transition-all cursor-pointer active:scale-95"
+              >
+                <Plus className="w-3.5 h-3.5" /> Agregar Cuota
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              {plans.map((plan, idx) => {
+                const increasePct = ((plan.increaseRate || 0) * 100).toFixed(4);
+                const feeRate = typeof plan.paymentFeeRate === 'number' ? plan.paymentFeeRate : (formData.defaultPaymentFeeRate ?? DEFAULT_PAYMENT_FEE_RATE);
+                const feePct = (feeRate * 100).toFixed(4);
+
+                return (
+                  <div 
+                    key={plan.id || idx}
+                    className="p-3.5 rounded-xl bg-surface-container/70 border border-outline-variant/30 space-y-3 transition-all hover:border-primary/40"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs font-bold text-primary font-mono">
+                        Plan #{idx + 1}: {plan.label || `${plan.installments} Cuotas`}
+                      </span>
+                      {plans.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => handleRemovePlan(idx)}
+                          className="text-outline hover:text-error p-1 rounded transition-colors cursor-pointer"
+                          title="Eliminar este plan de cuotas"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                      <div className="space-y-1">
+                        <label className="text-[11px] font-bold text-on-surface-variant">Cantidad Cuotas</label>
+                        <input
+                          type="number"
+                          min="1"
+                          max="72"
+                          value={plan.installments}
+                          onChange={(e) => handlePlanChange(idx, 'installments', parseInt(e.target.value, 10) || 1)}
+                          className="w-full p-2 bg-surface-container-high border border-outline-variant/40 rounded-lg text-xs font-mono font-bold text-on-surface outline-none focus:border-primary"
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-[11px] font-bold text-on-surface-variant">Etiqueta visible</label>
+                        <input
+                          type="text"
+                          value={plan.label || ''}
+                          onChange={(e) => handlePlanChange(idx, 'label', e.target.value)}
+                          placeholder="Ej: 3 Cuotas"
+                          className="w-full p-2 bg-surface-container-high border border-outline-variant/40 rounded-lg text-xs text-on-surface outline-none focus:border-primary"
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-[11px] font-bold text-on-surface-variant flex items-center justify-between">
+                          <span>Aumento (Factor)</span>
+                          <span className="text-primary text-[10px] font-mono">+{increasePct}%</span>
+                        </label>
+                        <input
+                          type="number"
+                          step="0.0000001"
+                          min="0"
+                          value={plan.increaseRate}
+                          onChange={(e) => handlePlanChange(idx, 'increaseRate', parseFloat(e.target.value) || 0)}
+                          placeholder="Ej: 0.1588457"
+                          className="w-full p-2 bg-surface-container-high border border-outline-variant/40 rounded-lg text-xs font-mono text-on-surface outline-none focus:border-primary"
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-[11px] font-bold text-on-surface-variant flex items-center justify-between">
+                          <span>Costo Cobro</span>
+                          <span className="text-amber-400 text-[10px] font-mono">+{feePct}%</span>
+                        </label>
+                        <input
+                          type="number"
+                          step="0.0000001"
+                          min="0"
+                          value={plan.paymentFeeRate ?? formData.defaultPaymentFeeRate ?? DEFAULT_PAYMENT_FEE_RATE}
+                          onChange={(e) => handlePlanChange(idx, 'paymentFeeRate', parseFloat(e.target.value) || 0)}
+                          placeholder="Ej: 0.0926075"
+                          className="w-full p-2 bg-surface-container-high border border-outline-variant/40 rounded-lg text-xs font-mono text-on-surface outline-none focus:border-primary"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Simulador Interactivo en Vivo */}
+          <div className="p-4 rounded-xl bg-surface-container-lowest border border-outline-variant/40 space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-outline-variant/20 pb-2">
+              <span className="text-xs font-bold text-on-surface uppercase tracking-wider flex items-center gap-1.5">
+                <Sparkles className="w-4 h-4 text-primary" /> Simulador de Precios en Vivo
+              </span>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-outline font-medium">Probar con Precio Final ($):</span>
+                <input
+                  type="text"
+                  value={simulatedPrice}
+                  onChange={(e) => setSimulatedPrice(e.target.value)}
+                  className="w-28 p-1.5 bg-surface-container border border-outline-variant/50 rounded text-xs font-mono font-bold text-on-surface text-right focus:border-primary outline-none"
+                  placeholder="100000"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+              {plans.map((plan) => {
+                const quoteSim = calculateInstallmentQuote({
+                  precioFinalRaw: parsedSimPrice,
+                  installments: Number(plan.installments),
+                  plans: plans,
+                  defaultFeeRate: formData.defaultPaymentFeeRate,
+                });
+
+                return (
+                  <div key={plan.id || plan.installments} className="p-3 rounded-lg bg-surface-container/60 border border-outline-variant/30 space-y-1.5">
+                    <div className="flex items-center justify-between text-xs font-bold text-on-surface">
+                      <span>{plan.label || `${plan.installments} Cuotas`}</span>
+                      <span className="text-primary font-mono">{quoteSim.valorCuotaFormatted} / mes</span>
+                    </div>
+                    <div className="text-[11px] text-outline font-mono space-y-0.5 pt-1 border-t border-outline-variant/20">
+                      <div>Base: {formatCurrencyValue(parsedSimPrice)}</div>
+                      <div>Aumento: +{formatCurrencyValue(quoteSim.aumentoMontoNum)}</div>
+                      <div>Costo cobro: +{formatCurrencyValue(quoteSim.costoCobroMontoNum)}</div>
+                      <div className="text-on-surface font-bold pt-0.5">Total: {quoteSim.precioFinalCuotasFormatted}</div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+
+        <div className="w-full h-px bg-outline-variant/30"></div>
+
+        {/* 3. Sección de Plantillas de WhatsApp */}
         <div className="space-y-6">
           <div className="flex items-center justify-between">
             <h3 className="text-lg font-bold text-primary flex items-center gap-2">
@@ -2309,10 +2595,10 @@ function ConfigForm({ config }: { config: SiteConfig }) {
           </div>
 
           <p className="text-xs text-on-surface-variant leading-relaxed">
-            Personaliza el texto predeterminado con el que se abrirá WhatsApp en el teléfono del cliente al consultar una figura o al buscar un personaje que no está disponible en el catálogo.
+            Personaliza el texto predeterminado con el que se abrirá WhatsApp al consultar una figura o al buscar un personaje que no está en el catálogo.
           </p>
 
-          {/* 1. Mensaje para Búsqueda / Pedido Personalizado */}
+          {/* 3.1 Mensaje para Búsqueda / Pedido Personalizado */}
           <div className="p-4 rounded-2xl bg-surface-container/60 border border-outline-variant/30 space-y-3">
             <div className="flex items-center justify-between">
               <label className="text-sm font-bold text-on-surface flex items-center gap-1.5">
@@ -2380,7 +2666,7 @@ function ConfigForm({ config }: { config: SiteConfig }) {
             </div>
           </div>
 
-          {/* 2. Mensaje para Consulta de Figura Individual */}
+          {/* 3.2 Mensaje para Consulta de Figura Individual */}
           <div className="p-4 rounded-2xl bg-surface-container/60 border border-outline-variant/30 space-y-3">
             <div className="flex items-center justify-between">
               <label className="text-sm font-bold text-on-surface flex items-center gap-1.5">
@@ -2391,12 +2677,12 @@ function ConfigForm({ config }: { config: SiteConfig }) {
                 onClick={() => {
                   setFormData(prev => ({
                     ...prev,
-                    whatsappMessageTemplate: 'Hola IPPOLAV STUDIO, me interesa encargar la figura {figura} ({codigo}). ¿Tienen disponibilidad?\n\nVer figura: {link}'
+                    whatsappMessageTemplate: 'Hola IPPOLAV STUDIO, me interesa encargar la figura {figura} ({codigo}).\n\n*Presupuesto:* \n• Precio Final (Contado/Transferencia): {precio final}\n• En {cuotas} cuotas de {valorCuota} (Total financiado: {precio final en cuotas})\n\nVer figura: {link}'
                   }));
                 }}
                 className="text-[11px] text-primary hover:underline font-semibold cursor-pointer"
               >
-                Restaurar sugerido
+                Restaurar sugerido con cotizador
               </button>
             </div>
 
@@ -2404,91 +2690,110 @@ function ConfigForm({ config }: { config: SiteConfig }) {
               name="whatsappMessageTemplate" 
               value={formData.whatsappMessageTemplate || ''} 
               onChange={handleChange} 
-              rows={3}
+              rows={4}
               className="w-full p-3 bg-surface-container-high border border-outline-variant/40 rounded-xl text-sm font-sans focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all"
-              placeholder="Hola IPPOLAV STUDIO, me interesa encargar la figura {figura} ({codigo}). ¿Tienen disponibilidad?&#10;&#10;Ver figura: {link}"
+              placeholder="Hola IPPOLAV STUDIO, me interesa encargar la figura {figura} ({codigo}).&#10;&#10;*Presupuesto:*&#10;• Precio Final (Contado/Transferencia): {precio final}&#10;• En {cuotas} cuotas de {valorCuota} (Total financiado: {precio final en cuotas})&#10;&#10;Ver figura: {link}"
             />
 
             {/* Inserción rápida de etiquetas */}
-            <div className="flex flex-wrap items-center gap-2 pt-1">
-              <span className="text-xs text-outline font-medium">Etiquetas dinámicas:</span>
-              <button
-                type="button"
-                onClick={() => {
-                  setFormData(prev => {
-                    const current = prev.whatsappMessageTemplate || '';
-                    return {
-                      ...prev,
-                      whatsappMessageTemplate: current.includes('{figura}') ? current : `${current} {figura}`.trim()
-                    };
-                  });
-                }}
-                className="px-2.5 py-1 rounded-lg bg-primary/15 hover:bg-primary/25 border border-primary/30 text-primary text-xs font-mono font-bold transition-all cursor-pointer"
-                title="Haz clic para insertar {figura}"
-              >
-                + {'{figura}'}
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setFormData(prev => {
-                    const current = prev.whatsappMessageTemplate || '';
-                    return {
-                      ...prev,
-                      whatsappMessageTemplate: current.includes('{codigo}') ? current : `${current} {codigo}`.trim()
-                    };
-                  });
-                }}
-                className="px-2.5 py-1 rounded-lg bg-primary/15 hover:bg-primary/25 border border-primary/30 text-primary text-xs font-mono font-bold transition-all cursor-pointer"
-                title="Haz clic para insertar {codigo}"
-              >
-                + {'{codigo}'}
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setFormData(prev => {
-                    const current = prev.whatsappMessageTemplate || '';
-                    return {
-                      ...prev,
-                      whatsappMessageTemplate: current.includes('{link}') ? current : `${current}\n\nVer figura: {link}`.trim()
-                    };
-                  });
-                }}
-                className="px-2.5 py-1 rounded-lg bg-primary/15 hover:bg-primary/25 border border-primary/30 text-primary text-xs font-mono font-bold transition-all cursor-pointer"
-                title="Haz clic para insertar {link} (Enlace directo a la figura)"
-              >
-                + {'{link}'}
-              </button>
+            <div className="space-y-1.5 pt-1">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="text-xs text-outline font-medium">Etiquetas dinámicas de figura:</span>
+                {[
+                  { tag: '{figura}', label: '+ {figura}', title: 'Título de la figura' },
+                  { tag: '{codigo}', label: '+ {codigo}', title: 'Código identificador numérico de la figura' },
+                  { tag: '{link}', label: '+ {link}', title: 'Enlace directo a la figura' },
+                ].map(({ tag, label, title }) => (
+                  <button
+                    key={tag}
+                    type="button"
+                    onClick={() => {
+                      setFormData(prev => {
+                        const current = prev.whatsappMessageTemplate || '';
+                        return {
+                          ...prev,
+                          whatsappMessageTemplate: current.includes(tag) ? current : `${current} ${tag}`.trim()
+                        };
+                      });
+                    }}
+                    className="px-2.5 py-1 rounded-lg bg-primary/15 hover:bg-primary/25 border border-primary/30 text-primary text-xs font-mono font-bold transition-all cursor-pointer active:scale-95"
+                    title={title}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                <span className="text-xs text-outline font-medium">Etiquetas de cotizador & cuotas (Admin):</span>
+                {[
+                  { tag: '{precio final}', label: '+ {precio final}', title: 'Precio final contado / transferencia' },
+                  { tag: '{precio final en cuotas}', label: '+ {precio final en cuotas}', title: 'Precio total financiado en cuotas con aumento y cobro' },
+                  { tag: '{cuotas}', label: '+ {cuotas}', title: 'Cantidad de cuotas seleccionada' },
+                  { tag: '{valorCuota}', label: '+ {valorCuota}', title: 'Calcula automáticamente el valor de cada cuota' },
+                ].map(({ tag, label, title }) => (
+                  <button
+                    key={tag}
+                    type="button"
+                    onClick={() => {
+                      setFormData(prev => {
+                        const current = prev.whatsappMessageTemplate || '';
+                        return {
+                          ...prev,
+                          whatsappMessageTemplate: current.includes(tag) ? current : `${current} ${tag}`.trim()
+                        };
+                      });
+                    }}
+                    className="px-2.5 py-1 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-300 text-xs font-mono font-bold transition-all cursor-pointer active:scale-95"
+                    title={title}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
             </div>
 
             {/* Vista previa en tiempo real */}
-            <div className="mt-3 p-3 rounded-xl bg-surface-container-lowest/80 border border-outline-variant/20 space-y-1">
-              <div className="text-[10px] uppercase font-bold tracking-wider text-outline">
-                Vista previa del mensaje (ejemplo figura "Goku Super Saiyan 4"):
+            <div className="mt-3 p-3.5 rounded-xl bg-surface-container-lowest/90 border border-outline-variant/30 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] uppercase font-bold tracking-wider text-outline">
+                  Vista previa en vivo del mensaje (Ejemplo: Goku SSJ4 • Contado: $100.000 • 3 cuotas):
+                </span>
+                <span className="text-[10px] text-primary font-mono">
+                  Simulación con tus reglas
+                </span>
               </div>
-              <div className="text-xs text-on-surface bg-[#005c4b]/30 text-emerald-200 p-2.5 rounded-lg border border-emerald-500/20 font-sans whitespace-pre-line">
+              <div className="text-xs text-on-surface bg-[#005c4b]/30 text-emerald-200 p-3 rounded-lg border border-emerald-500/20 font-mono whitespace-pre-line leading-relaxed select-all">
                 {(() => {
-                  const tpl = formData.whatsappMessageTemplate || 'Hola IPPOLAV STUDIO, me interesa encargar la figura {figura} ({codigo}). ¿Tienen disponibilidad?\n\nVer figura: {link}';
-                  let preview = tpl
-                    .replace(/\{figura\}/gi, 'Goku Super Saiyan 4')
-                    .replace(/\{codigo\}/gi, '#0142')
-                    .replace(/\{code\}/gi, '#0142')
-                    .replace(/\{link\}/gi, 'https://tu-tienda.com/?figura=goku-ssj4')
-                    .replace(/\{enlace\}/gi, 'https://tu-tienda.com/?figura=goku-ssj4')
-                    .replace(/\{url\}/gi, 'https://tu-tienda.com/?figura=goku-ssj4');
-                  if (!preview.includes('https://tu-tienda.com/?figura=')) {
-                    preview += '\n\nVer figura: https://tu-tienda.com/?figura=goku-ssj4';
-                  }
-                  return preview;
+                  const demoQuote = calculateInstallmentQuote({
+                    precioFinalRaw: 100000,
+                    installments: 3,
+                    plans: plans,
+                    defaultFeeRate: formData.defaultPaymentFeeRate,
+                  });
+
+                  return processWhatsAppTemplate({
+                    template: formData.whatsappMessageTemplate || 'Hola IPPOLAV STUDIO, me interesa encargar la figura {figura} ({codigo}).\n\n*Presupuesto:* \n• Precio Final: {precio final}\n• En {cuotas} cuotas de {valorCuota} (Total financiado: {precio final en cuotas})\n\nVer figura: {link}',
+                    productTitle: 'Goku Super Saiyan 4',
+                    productCode: '#0142',
+                    figureLink: 'https://tu-tienda.com/?figura=goku-ssj4',
+                    pricing: {
+                      precioFinal: demoQuote.precioFinalFormatted,
+                      precioFinalCuotas: demoQuote.precioFinalCuotasFormatted,
+                      cuotas: demoQuote.installments,
+                      valorCuota: demoQuote.valorCuotaFormatted,
+                    },
+                    isQuoting: true,
+                  });
                 })()}
               </div>
             </div>
           </div>
         </div>
 
-        <div className="w-full h-px bg-outline-variant/30 my-6"></div>
+        <div className="w-full h-px bg-outline-variant/30"></div>
 
+        {/* 4. Configuración de Imágenes (Cloudinary) */}
         <div className="space-y-4">
           <h3 className="text-lg font-bold text-primary">Configuración de Imágenes (Cloudinary)</h3>
           <p className="text-xs text-on-surface-variant">Cloudinary es un servicio profesional y gratuito para alojar y optimizar imágenes. Permite que el catálogo cargue instantáneamente y ahorre datos a tus clientes.</p>
@@ -2505,8 +2810,9 @@ function ConfigForm({ config }: { config: SiteConfig }) {
           </div>
         </div>
 
-        <div className="w-full h-px bg-outline-variant/30 my-6"></div>
+        <div className="w-full h-px bg-outline-variant/30"></div>
 
+        {/* 5. Analítica & Píxel de Meta (Instagram / Facebook) */}
         <div className="space-y-4">
           <h3 className="text-lg font-bold text-primary">Analítica & Píxel de Meta (Instagram / Facebook)</h3>
           <p className="text-xs text-on-surface-variant">
@@ -2557,7 +2863,7 @@ function ConfigForm({ config }: { config: SiteConfig }) {
 
         <div className="flex justify-end gap-3 pt-6 border-t border-outline-variant/20">
           {success && <span className="text-green-500 font-bold self-center mr-4">¡Guardado!</span>}
-          <button type="submit" disabled={loading} className="px-6 py-2 bg-primary text-on-primary font-bold rounded-lg hover:brightness-110 active:scale-95 transition-all disabled:opacity-50">
+          <button type="submit" disabled={loading} className="px-6 py-2.5 bg-primary text-on-primary font-bold rounded-lg hover:brightness-110 active:scale-95 transition-all disabled:opacity-50 shadow-md shadow-primary/20">
             {loading ? 'Guardando...' : 'Guardar Configuración'}
           </button>
         </div>

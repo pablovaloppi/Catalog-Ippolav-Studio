@@ -38,6 +38,14 @@ export interface Designer {
   order?: number;
 }
 
+export interface InstallmentPlan {
+  id: string;
+  installments: number; // Cantidad de cuotas (ej: 3, 6, 12)
+  increaseRate: number; // Tasa / Coeficiente de aumento (ej: 0.1588457 para 3 cuotas)
+  paymentFeeRate?: number; // Costo por cobro (ej: 0.0926075)
+  label?: string; // Nombre visible opcional (ej: "3 Cuotas")
+}
+
 export interface SiteConfig {
   whatsapp: string;
   instagram: string;
@@ -49,6 +57,8 @@ export interface SiteConfig {
   cloudinaryUploadPreset?: string;
   metaPixelId?: string;
   googleAnalyticsId?: string;
+  installmentPlans?: InstallmentPlan[];
+  defaultPaymentFeeRate?: number; // Costo por cobro general por defecto (ej: 0.0926075)
 }
 
 export interface TelegramGroup {
