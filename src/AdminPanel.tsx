@@ -2909,6 +2909,7 @@ function ConfigForm({ config }: { config: SiteConfig }) {
                 <span className="text-xs text-outline font-medium">Etiquetas de cotización & cuotas (Admin):</span>
                 {[
                   { tag: '{precio final}', label: '+ {precio final}', title: 'Precio final contado / transferencia' },
+                  { tag: '({precio final}/2)', label: '+ ({precio final}/2)', title: 'Calcula el 50% de seña / reserva' },
                   { tag: '{precio final en cuotas}', label: '+ {precio final en cuotas}', title: 'Precio total financiado en cuotas con aumento y cobro' },
                   { tag: '{cuotas}', label: '+ {cuotas}', title: 'Cantidad de cuotas seleccionada' },
                   { tag: '{valorCuota}', label: '+ {valorCuota}', title: 'Calcula automáticamente el valor de cada cuota' },

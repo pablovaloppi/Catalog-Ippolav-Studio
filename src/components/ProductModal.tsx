@@ -1345,6 +1345,7 @@ export function ProductModal({
                     <div className="flex flex-wrap gap-1">
                       {[
                         { tag: '{precio final}', label: '+ {precio final}' },
+                        { tag: '({precio final}/2)', label: '+ ({precio final}/2)' },
                         { tag: '{valorCuota}', label: '+ {valorCuota}' },
                         { tag: '{precio final en cuotas}', label: '+ {precio final en cuotas}' },
                         { tag: '{cuotas}', label: '+ {cuotas}' },

@@ -287,8 +287,61 @@ export function calculateInstallmentQuote({
 }
 
 /**
+ * Evalúa expresiones aritméticas seguras con operadores (+, -, *, /) y paréntesis.
+ * Retorna el resultado numérico o null si no es una expresión válida.
+ */
+export function evaluateSafeMath(expr: string): number | null {
+  if (!expr || typeof expr !== 'string') return null;
+
+  let clean = expr.trim();
+  
+  // Limpiar signos de pesos, ARS, etc. que hayan quedado
+  clean = clean.replace(/[$€ARS]/gi, '').trim();
+
+  // Solo permitir caracteres matemáticos seguros: números, puntos, comas, +, -, *, /, (, ), espacios
+  if (!/^[0-9\.\,\s\+\-\*\/\(\)]+$/.test(clean)) {
+    return null;
+  }
+
+  // Normalizar comas decimales seguidas de dígitos que no sean separadores de miles
+  clean = clean.replace(/,([0-9]{1,2})(?![0-9])/g, '.$1');
+
+  try {
+    // Evaluación segura mediante Function pura en modo estricto
+    const fn = new Function(`
+      "use strict";
+      const res = (${clean});
+      return typeof res === 'number' && isFinite(res) ? res : null;
+    `);
+    const val = fn();
+    return typeof val === 'number' && !isNaN(val) && isFinite(val) ? val : null;
+  } catch (err) {
+    return null;
+  }
+}
+
+function substituteAndEvaluateMath(
+  rawExpr: string,
+  vars: { precioFinalNum: number; precioFinalCuotasNum: number; valorCuotaNum: number; cuotasNum: number }
+): string | null {
+  // Reemplazar nombres de variables por sus números correspondientes
+  let expr = rawExpr
+    .replace(/\{?\s*(?:precio\s*final\s*en\s*cuotas|precio_final_en_cuotas)\s*\}?/gi, String(vars.precioFinalCuotasNum))
+    .replace(/\{?\s*(?:precio\s*final|precio_final|precio)\s*\}?/gi, String(vars.precioFinalNum))
+    .replace(/\{?\s*(?:valor\s*cuota|valorcuota|valor_cuota)\s*\}?/gi, String(vars.valorCuotaNum))
+    .replace(/\{?\s*(?:cuotas)\s*\}?/gi, String(vars.cuotasNum));
+
+  // Evaluar matemáticamente
+  const evaluated = evaluateSafeMath(expr);
+  if (evaluated !== null && !isNaN(evaluated) && isFinite(evaluated)) {
+    return formatCurrencyValue(evaluated);
+  }
+  return null;
+}
+
+/**
  * Procesa la plantilla de WhatsApp sustituyendo todas las etiquetas dinámicas,
- * de producto, escala, cotización automática y {valorCuota}.
+ * de producto, escala, operaciones aritméticas (ej: ({precio final}/2)) y cotización automática.
  */
 export function processWhatsAppTemplate({
   template,
@@ -344,14 +397,48 @@ export function processWhatsAppTemplate({
   const precioFinalCuotasNum = parseNumericValue(pricing.precioFinalCuotas);
   const valorCuotaNum = parseNumericValue(pricing.valorCuota);
   const cuotasVal = pricing.cuotas ? String(pricing.cuotas).trim() : '3';
+  const cuotasNum = parseNumericValue(cuotasVal) || 1;
 
   const precioFinalFormatted = precioFinalNum > 0 ? formatCurrencyValue(precioFinalNum) : (pricing.precioFinal ? String(pricing.precioFinal).trim() : '');
   const precioFinalCuotasFormatted = precioFinalCuotasNum > 0 ? formatCurrencyValue(precioFinalCuotasNum) : (pricing.precioFinalCuotas ? String(pricing.precioFinalCuotas).trim() : '');
   const valorCuotaFormatted = valorCuotaNum > 0 ? formatCurrencyValue(valorCuotaNum) : (pricing.valorCuota ? String(pricing.valorCuota).trim() : '');
 
-  // 4. Reemplazo de etiquetas de cotización y {valorCuota}
+  const mathVars = {
+    precioFinalNum,
+    precioFinalCuotasNum,
+    valorCuotaNum,
+    cuotasNum,
+  };
+
+  // 4. Procesamiento de Operaciones Aritméticas:
+  // 4.1. Expresiones entre paréntesis con etiquetas adentro, ej: ({precio final}/2), ({precio final} * 0.5)
+  text = text.replace(/\(([^{}()]*\{[^{}()]*\}[^{}()]*)\)/g, (match, inner) => {
+    if (/[\+\-\*\/]/.test(inner) && /precio|cuota|valor/i.test(inner)) {
+      const evaluated = substituteAndEvaluateMath(inner, mathVars);
+      if (evaluated !== null) return evaluated;
+    }
+    return match;
+  });
+
+  // 4.2. Operaciones directas adjuntas a etiquetas, ej: {precio final}/2, {precio final} * 0.5
+  text = text.replace(/(\{[^{}]+\})\s*([\+\-\*\/])\s*([0-9\.\,]+)/gi, (match, tag, op, num) => {
+    if (/precio|cuota|valor/i.test(tag)) {
+      const expr = `${tag} ${op} ${num}`;
+      const evaluated = substituteAndEvaluateMath(expr, mathVars);
+      if (evaluated !== null) return evaluated;
+    }
+    return match;
+  });
+
+  // 5. Reemplazo de etiquetas dentro de llaves {}, soportando también expresiones como {precio final / 2}
   text = text.replace(/\{([^{}]+)\}/g, (match, expression: string) => {
     const exprLower = expression.trim().toLowerCase();
+
+    // 5.1. Si contiene operadores matemáticos dentro de las llaves ej: {precio final / 2}
+    if (/[\+\-\*\/]/.test(expression) && /precio|cuota|valor/i.test(expression)) {
+      const evaluated = substituteAndEvaluateMath(expression, mathVars);
+      if (evaluated !== null) return evaluated;
+    }
 
     if (exprLower === 'precio final' || exprLower === 'precio_final' || exprLower === 'precio') {
       return precioFinalFormatted || (isQuoting ? '$0' : '{precio final}');
