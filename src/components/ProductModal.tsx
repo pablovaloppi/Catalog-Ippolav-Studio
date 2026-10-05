@@ -1134,7 +1134,6 @@ export function ProductModal({
               <div className="flex gap-1.5 flex-wrap">
                 {availableScales.map((sc) => {
                   const isSelected = selectedScale.toLowerCase().trim() === sc.toLowerCase().trim();
-                  const isPieceOriginal = (localProduct?.scale || product?.scale) && (localProduct?.scale || product?.scale)!.some(s => s.toLowerCase().trim() === sc.toLowerCase().trim());
                   const savedPriceForSc = scalePricesMap[sc] || getFigureScalePrice(localProduct, sc);
 
                   return (
@@ -1146,7 +1145,7 @@ export function ProductModal({
                         setSaveFeedback(null);
                         setPriceSaveFeedback(null);
                       }}
-                      className={`py-1.5 px-2.5 rounded-md text-xs font-bold border transition-all cursor-pointer flex items-center gap-1.5 ${
+                      className={`py-1.5 px-3 rounded-lg text-xs font-bold border transition-all cursor-pointer flex items-center gap-1.5 ${
                         isSelected
                           ? 'bg-primary text-on-primary border-primary shadow-sm scale-105 ring-2 ring-primary/40'
                           : 'bg-surface-container text-on-surface-variant border-outline-variant/40 hover:border-primary/50 hover:text-on-surface'
@@ -1154,7 +1153,7 @@ export function ProductModal({
                       title={`${formatScale(sc) || sc}${savedPriceForSc ? ` - Precio guardado: $${savedPriceForSc}` : ''}`}
                     >
                       <span>{sc}</span>
-                      {savedPriceForSc ? (
+                      {savedPriceForSc && (
                         <span className={`text-[10px] px-1.5 py-0.2 rounded font-mono font-bold ${
                           isSelected 
                             ? 'bg-black/30 text-white' 
@@ -1162,11 +1161,7 @@ export function ProductModal({
                         }`}>
                           ${savedPriceForSc}
                         </span>
-                      ) : isPieceOriginal ? (
-                        <span className={`text-[9px] px-1 rounded font-mono ${isSelected ? 'bg-black/25 text-white' : 'bg-primary/20 text-primary'}`}>
-                          Figura
-                        </span>
-                      ) : null}
+                      )}
                     </button>
                   );
                 })}

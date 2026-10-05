@@ -126,14 +126,14 @@ export function getFigureScalePrice(product?: Product | null, scale?: string): s
 }
 
 /**
- * Retorna las escalas disponibles para una figura combinando las propias de la figura
- * y las escalas estándar más comunes.
+ * Retorna ÚNICAMENTE las escalas establecidas en la figura.
+ * Solo si la figura no tiene ninguna escala configurada, recurre a las escalas comunes como fallback.
  */
 export function getAvailableScalesForProduct(productScales?: string[] | null): string[] {
   const result: string[] = [];
   const seen = new Set<string>();
 
-  if (Array.isArray(productScales)) {
+  if (Array.isArray(productScales) && productScales.length > 0) {
     for (const sc of productScales) {
       if (sc && typeof sc === 'string' && sc.trim()) {
         const clean = sc.trim();
@@ -146,6 +146,12 @@ export function getAvailableScalesForProduct(productScales?: string[] | null): s
     }
   }
 
+  // Si la figura tiene escalas establecidas, retornar SOLAMENTE esas escalas
+  if (result.length > 0) {
+    return result;
+  }
+
+  // Fallback si la figura no tiene ninguna escala establecida
   for (const common of COMMON_SCALES) {
     const norm = normalizeScaleKey(common);
     if (!seen.has(norm)) {
