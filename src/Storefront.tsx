@@ -976,6 +976,10 @@ export function Storefront() {
             onClose={handleCloseProductModal} 
             config={siteConfig}
             onUpdateConfig={setSiteConfig}
+            onUpdateProduct={(updated) => {
+              setProducts(prev => prev.map(p => p.id === updated.id ? updated : p));
+              setSelectedProduct(updated);
+            }}
             isLiked={likedFigureIds.has(selectedProduct.id)}
             onToggleLike={handleToggleLike}
           />

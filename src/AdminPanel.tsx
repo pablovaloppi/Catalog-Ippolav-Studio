@@ -1477,6 +1477,10 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
           onClose={() => setPreviewingFigure(null)}
           config={siteConfig}
           onUpdateConfig={setSiteConfig}
+          onUpdateProduct={(updated) => {
+            setFigures(prev => prev.map(f => f.id === updated.id ? updated : f));
+            setPreviewingFigure(updated);
+          }}
         />
       )}
     </div>

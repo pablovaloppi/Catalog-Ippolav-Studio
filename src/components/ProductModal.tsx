@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { X, MessageCircle, HelpCircle, View, ChevronLeft, ChevronRight, Heart, ZoomIn, ZoomOut, RotateCcw, Share2, Check, Instagram, Copy, Calculator, ShieldCheck, Sparkles, RefreshCw, Edit3, Save, Eye, Layers, Ruler } from 'lucide-react';
+import { X, MessageCircle, HelpCircle, View, ChevronLeft, ChevronRight, Heart, ZoomIn, ZoomOut, RotateCcw, Share2, Check, Instagram, Copy, Calculator, ShieldCheck, Sparkles, RefreshCw, Edit3, Save, Eye, Layers, Ruler, DollarSign } from 'lucide-react';
 import { Product, SiteConfig } from '../types';
 import { getOptimizedCloudinaryUrl, getCloudinarySrcSet } from '../cloudinaryUtils';
 import { shareFigure, getShareableFigureUrl } from '../urlUtils';
@@ -14,7 +14,10 @@ import {
   DEFAULT_USER_INQUIRY_TEMPLATE,
   getQuoteTemplateForScale,
   getAvailableScalesForProduct,
-  normalizeScaleKey
+  normalizeScaleKey,
+  getFigureScalePrice,
+  parseNumericValue,
+  formatCurrencyValue
 } from '../templateUtils';
 import { doc, setDoc } from 'firebase/firestore';
 import { db } from '../firebase';
@@ -26,6 +29,7 @@ interface ProductModalProps {
   onClose: () => void;
   config?: SiteConfig | null;
   onUpdateConfig?: (newConfig: SiteConfig) => void;
+  onUpdateProduct?: (updatedProduct: Product) => void;
   isLiked?: boolean;
   onToggleLike?: (productId: string) => void;
   initialFullScreen?: boolean;
@@ -39,6 +43,7 @@ export function ProductModal({
   onClose, 
   config, 
   onUpdateConfig,
+  onUpdateProduct,
   isLiked, 
   onToggleLike,
   initialFullScreen = false,
@@ -51,6 +56,34 @@ export function ProductModal({
   const startFullScreenRef = useRef(initialFullScreen);
 
   const { isAdmin } = useAuth();
+
+  // Estado local del producto para reflejar precios guardados al instante
+  const [localProduct, setLocalProduct] = useState<Product | null>(product);
+
+  useEffect(() => {
+    setLocalProduct(product);
+  }, [product]);
+
+  // Mapa local de precios por escala
+  const [scalePricesMap, setScalePricesMap] = useState<Record<string, string>>(() => {
+    const map: Record<string, string> = {};
+    if (product?.scalePrices) {
+      Object.entries(product.scalePrices).forEach(([k, v]) => {
+        map[k] = String(v);
+      });
+    }
+    return map;
+  });
+
+  useEffect(() => {
+    const map: Record<string, string> = {};
+    if (localProduct?.scalePrices) {
+      Object.entries(localProduct.scalePrices).forEach(([k, v]) => {
+        map[k] = String(v);
+      });
+    }
+    setScalePricesMap(map);
+  }, [localProduct?.id, localProduct?.scalePrices]);
 
   // Configuración local que se actualiza al guardar cambios directamente desde este modal
   const [localConfig, setLocalConfig] = useState<SiteConfig | null>(config || null);
@@ -69,23 +102,46 @@ export function ProductModal({
 
   // Escalas disponibles para esta figura (las propias de la figura + escalas estándar)
   const availableScales = useMemo(() => {
-    return getAvailableScalesForProduct(product?.scale);
-  }, [product?.scale]);
+    return getAvailableScalesForProduct(localProduct?.scale || product?.scale);
+  }, [localProduct?.scale, product?.scale]);
 
   // Escala seleccionada para la cotización
   const [selectedScale, setSelectedScale] = useState<string>(() => {
-    if (product?.scale && product.scale.length > 0 && product.scale[0]) {
-      return product.scale[0];
+    const figureScales = localProduct?.scale || product?.scale;
+    if (figureScales && figureScales.length > 0 && figureScales[0]) {
+      return figureScales[0];
     }
     return '1/6';
   });
 
   // Si cambia la figura, resetear la escala a la primera de la figura si existe
   useEffect(() => {
-    if (product?.scale && product.scale.length > 0 && product.scale[0]) {
-      setSelectedScale(product.scale[0]);
+    const figureScales = localProduct?.scale || product?.scale;
+    if (figureScales && figureScales.length > 0 && figureScales[0]) {
+      setSelectedScale(figureScales[0]);
     }
   }, [product?.id]);
+
+  // Estados de Administrador: Precio Final y selección de Cuotas
+  const [precioFinal, setPrecioFinal] = useState<string>(() => {
+    const initialPrice = getFigureScalePrice(product, product?.scale?.[0] || '1/6');
+    return initialPrice ? String(initialPrice) : '';
+  });
+  const [selectedInstallments, setSelectedInstallments] = useState<number>(() => {
+    return activePlans[0]?.installments || 3;
+  });
+  const [adminCopied, setAdminCopied] = useState<boolean>(false);
+
+  // Estados de guardado de precio
+  const [isSavingPrice, setIsSavingPrice] = useState<boolean>(false);
+  const [priceSaveFeedback, setPriceSaveFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
+  // Cada vez que cambia la escala seleccionada o el producto, cargar el precio guardado para esa escala
+  useEffect(() => {
+    const savedPrice = getFigureScalePrice(localProduct, selectedScale) || scalePricesMap[selectedScale] || '';
+    setPrecioFinal(savedPrice ? String(savedPrice) : '');
+    setPriceSaveFeedback(null);
+  }, [selectedScale, localProduct?.id]);
 
   // Estados de edición y guardado de plantilla directa en el modal
   const [isEditingTemplate, setIsEditingTemplate] = useState<boolean>(false);
@@ -98,13 +154,6 @@ export function ProductModal({
     const currentTpl = getQuoteTemplateForScale(localConfig, selectedScale);
     setEditedTemplateText(currentTpl);
   }, [selectedScale, localConfig]);
-
-  // Estados de Administrador: Precio Final y selección de Cuotas
-  const [precioFinal, setPrecioFinal] = useState<string>('');
-  const [selectedInstallments, setSelectedInstallments] = useState<number>(() => {
-    return activePlans[0]?.installments || 3;
-  });
-  const [adminCopied, setAdminCopied] = useState<boolean>(false);
 
   useEffect(() => {
     if (activePlans.length > 0 && !activePlans.some(p => Number(p.installments) === Number(selectedInstallments))) {
@@ -121,6 +170,87 @@ export function ProductModal({
       defaultFeeRate: localConfig?.defaultPaymentFeeRate,
     });
   }, [precioFinal, selectedInstallments, activePlans, localConfig?.defaultPaymentFeeRate]);
+
+  // Guardar el precio de la escala seleccionada en Firestore
+  const handleSavePrice = async () => {
+    const currentFig = localProduct || product;
+    if (!currentFig?.id || !isAdmin) return;
+
+    setIsSavingPrice(true);
+    setPriceSaveFeedback(null);
+
+    try {
+      const rawVal = precioFinal.trim();
+      const cleanNum = parseNumericValue(rawVal);
+      const priceToStore = cleanNum > 0 ? cleanNum : (rawVal ? rawVal : '');
+
+      const normKey = normalizeScaleKey(selectedScale);
+      const colonKey = selectedScale.replace('/', ':');
+      const slashKey = selectedScale.replace(':', '/');
+
+      const currentScalePrices = { ...(currentFig.scalePrices || {}), ...scalePricesMap };
+      if (priceToStore !== '') {
+        currentScalePrices[selectedScale] = priceToStore;
+        if (normKey) currentScalePrices[normKey] = priceToStore;
+        if (colonKey) currentScalePrices[colonKey] = priceToStore;
+        if (slashKey) currentScalePrices[slashKey] = priceToStore;
+      } else {
+        delete currentScalePrices[selectedScale];
+        if (normKey) delete currentScalePrices[normKey];
+        if (colonKey) delete currentScalePrices[colonKey];
+        if (slashKey) delete currentScalePrices[slashKey];
+      }
+
+      const updatedProduct: Product = {
+        ...currentFig,
+        scalePrices: currentScalePrices,
+        ...(cleanNum > 0 ? { price: cleanNum } : {}),
+      };
+
+      // Guardar en Firestore
+      await setDoc(doc(db, 'figures', currentFig.id), {
+        scalePrices: currentScalePrices,
+        ...(cleanNum > 0 ? { price: cleanNum } : {}),
+      }, { merge: true });
+
+      setLocalProduct(updatedProduct);
+      setScalePricesMap(prev => {
+        const next = { ...prev };
+        if (priceToStore !== '') {
+          next[selectedScale] = String(priceToStore);
+          if (normKey) next[normKey] = String(priceToStore);
+          if (colonKey) next[colonKey] = String(priceToStore);
+          if (slashKey) next[slashKey] = String(priceToStore);
+        } else {
+          delete next[selectedScale];
+          if (normKey) delete next[normKey];
+          if (colonKey) delete next[colonKey];
+          if (slashKey) delete next[slashKey];
+        }
+        return next;
+      });
+
+      onUpdateProduct?.(updatedProduct);
+
+      const displayPrice = cleanNum > 0 ? formatCurrencyValue(cleanNum) : (rawVal ? `$${rawVal}` : '$0');
+      setPriceSaveFeedback({
+        type: 'success',
+        message: `¡Precio de ${displayPrice} guardado para Escala ${formatScale(selectedScale) || selectedScale}!`,
+      });
+
+      setTimeout(() => {
+        setPriceSaveFeedback(null);
+      }, 4000);
+    } catch (err) {
+      console.error('Error al guardar precio en Firestore:', err);
+      setPriceSaveFeedback({
+        type: 'error',
+        message: 'No se pudo guardar el precio. Intenta de nuevo.',
+      });
+    } finally {
+      setIsSavingPrice(false);
+    }
+  };
 
   // Seguimiento de telemetría de visualización de figura
   useEffect(() => {
@@ -990,14 +1120,22 @@ export function ProductModal({
                   <Ruler className="w-3.5 h-3.5 text-primary" />
                   <span>Escala de la cotización:</span>
                 </label>
-                <span className="text-[10px] text-primary font-mono font-bold">
-                  {formatScale(selectedScale) || selectedScale}
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] text-primary font-mono font-bold">
+                    {formatScale(selectedScale) || selectedScale}
+                  </span>
+                  {getFigureScalePrice(localProduct, selectedScale) && (
+                    <span className="text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 px-1.5 py-0.5 rounded font-mono font-bold">
+                      ${getFigureScalePrice(localProduct, selectedScale)}
+                    </span>
+                  )}
+                </div>
               </div>
               <div className="flex gap-1.5 flex-wrap">
                 {availableScales.map((sc) => {
                   const isSelected = selectedScale.toLowerCase().trim() === sc.toLowerCase().trim();
-                  const isPieceOriginal = product.scale && product.scale.some(s => s.toLowerCase().trim() === sc.toLowerCase().trim());
+                  const isPieceOriginal = (localProduct?.scale || product?.scale) && (localProduct?.scale || product?.scale)!.some(s => s.toLowerCase().trim() === sc.toLowerCase().trim());
+                  const savedPriceForSc = scalePricesMap[sc] || getFigureScalePrice(localProduct, sc);
 
                   return (
                     <button
@@ -1006,20 +1144,29 @@ export function ProductModal({
                       onClick={() => {
                         setSelectedScale(sc);
                         setSaveFeedback(null);
+                        setPriceSaveFeedback(null);
                       }}
-                      className={`py-1.5 px-2.5 rounded-md text-xs font-bold border transition-all cursor-pointer flex items-center gap-1 ${
+                      className={`py-1.5 px-2.5 rounded-md text-xs font-bold border transition-all cursor-pointer flex items-center gap-1.5 ${
                         isSelected
-                          ? 'bg-primary text-on-primary border-primary shadow-sm scale-105'
+                          ? 'bg-primary text-on-primary border-primary shadow-sm scale-105 ring-2 ring-primary/40'
                           : 'bg-surface-container text-on-surface-variant border-outline-variant/40 hover:border-primary/50 hover:text-on-surface'
                       }`}
-                      title={formatScale(sc) || sc}
+                      title={`${formatScale(sc) || sc}${savedPriceForSc ? ` - Precio guardado: $${savedPriceForSc}` : ''}`}
                     >
                       <span>{sc}</span>
-                      {isPieceOriginal && (
+                      {savedPriceForSc ? (
+                        <span className={`text-[10px] px-1.5 py-0.2 rounded font-mono font-bold ${
+                          isSelected 
+                            ? 'bg-black/30 text-white' 
+                            : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                        }`}>
+                          ${savedPriceForSc}
+                        </span>
+                      ) : isPieceOriginal ? (
                         <span className={`text-[9px] px-1 rounded font-mono ${isSelected ? 'bg-black/25 text-white' : 'bg-primary/20 text-primary'}`}>
                           Figura
                         </span>
-                      )}
+                      ) : null}
                     </button>
                   );
                 })}
@@ -1030,20 +1177,43 @@ export function ProductModal({
             <div className="space-y-2.5">
               <div className="flex flex-col sm:flex-row sm:items-end gap-3">
                 <div className="flex-1 space-y-1">
-                  <label className="text-[11px] font-bold text-on-surface flex items-center justify-between">
-                    <span>Precio Final ($)</span>
+                  <div className="flex items-center justify-between">
+                    <label className="text-[11px] font-bold text-on-surface flex items-center gap-1.5">
+                      <DollarSign className="w-3.5 h-3.5 text-primary" />
+                      <span>Precio Final para Escala {selectedScale} ($)</span>
+                    </label>
                     <span className="text-[9px] text-primary font-mono font-medium">Contado / Transferencia</span>
-                  </label>
-                  <div className="relative">
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      placeholder="Ingresa el precio final (ej: 45000)"
-                      value={precioFinal}
-                      onChange={(e) => setPrecioFinal(e.target.value)}
-                      className="w-full pl-8 pr-3 py-2 bg-surface-container-lowest border border-outline-variant/60 focus:border-primary focus:ring-2 focus:ring-primary/30 rounded-lg text-sm font-mono font-bold text-on-surface outline-none transition-all placeholder:text-outline/40 placeholder:font-normal"
-                    />
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-primary text-sm font-mono font-bold">$</span>
+                  </div>
+                  
+                  <div className="flex items-center gap-2">
+                    <div className="relative flex-1">
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        placeholder={`Ingresa precio para ${selectedScale} (ej: ${selectedScale.includes('8') ? '230' : selectedScale.includes('6') ? '325' : '45000'})`}
+                        value={precioFinal}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setPrecioFinal(val);
+                          setScalePricesMap(prev => ({ ...prev, [selectedScale]: val }));
+                          setPriceSaveFeedback(null);
+                        }}
+                        className="w-full pl-8 pr-3 py-2 bg-surface-container-lowest border border-outline-variant/60 focus:border-primary focus:ring-2 focus:ring-primary/30 rounded-lg text-sm font-mono font-bold text-on-surface outline-none transition-all placeholder:text-outline/40 placeholder:font-normal"
+                      />
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-primary text-sm font-mono font-bold">$</span>
+                    </div>
+
+                    {/* Botón destacado para Guardar Precio de esta Escala */}
+                    <button
+                      type="button"
+                      disabled={isSavingPrice || !precioFinal.trim()}
+                      onClick={handleSavePrice}
+                      className="px-3.5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white text-xs font-bold flex items-center gap-1.5 shadow-md transition-all cursor-pointer disabled:opacity-40 disabled:pointer-events-none flex-shrink-0"
+                      title={`Guardar precio de $${precioFinal} para escala ${selectedScale} en la base de datos`}
+                    >
+                      <Save className="w-3.5 h-3.5" />
+                      <span>{isSavingPrice ? 'Guardando...' : 'Guardar Precio'}</span>
+                    </button>
                   </div>
                 </div>
 
@@ -1072,6 +1242,18 @@ export function ProductModal({
                   </div>
                 </div>
               </div>
+
+              {/* Feedback al guardar precio */}
+              {priceSaveFeedback && (
+                <div className={`p-2 rounded-lg text-xs font-semibold flex items-center gap-2 animate-in fade-in ${
+                  priceSaveFeedback.type === 'success' 
+                    ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40' 
+                    : 'bg-error/20 text-error border border-error/40'
+                }`}>
+                  {priceSaveFeedback.type === 'success' ? <Check className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" /> : <X className="w-3.5 h-3.5 flex-shrink-0" />}
+                  <span>{priceSaveFeedback.message}</span>
+                </div>
+              )}
             </div>
 
             {/* Resumen del cálculo automático de cuotas según la fórmula de aumento y costo de cobro */}

@@ -1,4 +1,4 @@
-import { InstallmentPlan, SiteConfig } from './types';
+import { InstallmentPlan, SiteConfig, Product } from './types';
 import { formatScale } from './scaleUtils';
 
 /**
@@ -91,6 +91,38 @@ export function getQuoteTemplateForScale(
   }
 
   return config?.adminQuoteMessageTemplate?.trim() || DEFAULT_ADMIN_QUOTE_TEMPLATE;
+}
+
+/**
+ * Obtiene el precio guardado para una figura en una escala específica (ej: 230 para 1:8, 325 para 1:6).
+ */
+export function getFigureScalePrice(product?: Product | null, scale?: string): string {
+  if (!product) return '';
+  
+  if (scale && product.scalePrices) {
+    const rawKey = scale.trim();
+    if (product.scalePrices[rawKey] !== undefined && product.scalePrices[rawKey] !== null && String(product.scalePrices[rawKey]).trim() !== '') {
+      return String(product.scalePrices[rawKey]).trim();
+    }
+    const normKey = normalizeScaleKey(scale);
+    if (product.scalePrices[normKey] !== undefined && product.scalePrices[normKey] !== null && String(product.scalePrices[normKey]).trim() !== '') {
+      return String(product.scalePrices[normKey]).trim();
+    }
+    const colonKey = rawKey.replace('/', ':');
+    if (product.scalePrices[colonKey] !== undefined && product.scalePrices[colonKey] !== null && String(product.scalePrices[colonKey]).trim() !== '') {
+      return String(product.scalePrices[colonKey]).trim();
+    }
+    const slashKey = rawKey.replace(':', '/');
+    if (product.scalePrices[slashKey] !== undefined && product.scalePrices[slashKey] !== null && String(product.scalePrices[slashKey]).trim() !== '') {
+      return String(product.scalePrices[slashKey]).trim();
+    }
+  }
+
+  if (product.price !== undefined && product.price !== null && String(product.price).trim() !== '') {
+    return String(product.price).trim();
+  }
+
+  return '';
 }
 
 /**

@@ -9,6 +9,8 @@ export interface Product {
   finish: string;
   scale: string[];
   material: string;
+  price?: number; // Precio base general
+  scalePrices?: Record<string, number | string>; // Precios guardados por escala (ej: { "1:8": 230, "1:6": 325 })
   description?: string;
   badge?: string;
   whatsappMessage?: string;
