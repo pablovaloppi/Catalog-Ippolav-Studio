@@ -53,13 +53,19 @@ export function buildFiguresQuery(
     return query(figuresRef, where('status', '==', statusFilter), limit(limitCount));
   }
 
-  let firestoreOrderField = 'order';
-  let firestoreOrderDirection: 'asc' | 'desc' = 'asc';
+  let firestoreOrderField = 'viewsCount';
+  let firestoreOrderDirection: 'asc' | 'desc' = 'desc';
 
-  if (sortBy === 'recent') {
+  if (sortBy === 'default' || sortBy === 'views-desc') {
+    firestoreOrderField = 'viewsCount';
+    firestoreOrderDirection = 'desc';
+  } else if (sortBy === 'likes-desc') {
+    firestoreOrderField = 'likesCount';
+    firestoreOrderDirection = 'desc';
+  } else if (sortBy === 'recent') {
     firestoreOrderField = 'order';
     firestoreOrderDirection = 'desc';
-  } else if (sortBy === 'oldest' || sortBy === 'default' || sortBy === 'likes-desc') {
+  } else if (sortBy === 'oldest') {
     firestoreOrderField = 'order';
     firestoreOrderDirection = 'asc';
   } else if (sortBy === 'name-asc') {

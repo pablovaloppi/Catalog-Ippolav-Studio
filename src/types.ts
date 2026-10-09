@@ -18,13 +18,14 @@ export interface Product {
   keywords?: string[];
   order?: number;
   likesCount?: number;
+  viewsCount?: number;
   selectedInRandomDraw?: boolean;
   selectedInRandomDrawAt?: any;
   createdAt?: any;
   updatedAt?: any;
 }
 
-export type SortOption = 'default' | 'likes-desc' | 'recent' | 'oldest' | 'name-asc' | 'name-desc' | 'finish';
+export type SortOption = 'default' | 'views-desc' | 'likes-desc' | 'recent' | 'oldest' | 'name-asc' | 'name-desc' | 'finish';
 
 export interface Category {
   id: string;

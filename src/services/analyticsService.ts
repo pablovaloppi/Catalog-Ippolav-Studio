@@ -1,6 +1,7 @@
 import { 
   doc, 
   setDoc, 
+  updateDoc,
   addDoc, 
   collection, 
   increment, 
@@ -261,6 +262,16 @@ export async function trackFigureView(
       figureNumericId: figure.numericId || '',
       timestamp: serverTimestamp(),
     });
+
+    // Incrementar viewsCount directamente en el documento de la figura para ordenación en catálogo
+    try {
+      const figureRef = doc(db, 'figures', figure.id);
+      await updateDoc(figureRef, {
+        viewsCount: increment(1),
+      });
+    } catch {
+      // Silenciar si no existe o permiso transitorio
+    }
   } catch (err) {
     console.warn('Analytics figure view error:', err);
   }

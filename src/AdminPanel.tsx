@@ -2035,12 +2035,14 @@ function FigureForm({ figure, categories, designers, onBack, orderCount, config 
         await updateDoc(doc(db, 'figures', figure.id), {
           ...payload,
           likesCount: figure.likesCount ?? 0,
+          viewsCount: figure.viewsCount ?? 0,
           updatedAt: serverTimestamp()
         });
       } else {
         await addDoc(collection(db, 'figures'), {
           ...payload,
           likesCount: 0,
+          viewsCount: 0,
           order: orderCount,
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp()

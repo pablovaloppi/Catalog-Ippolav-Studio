@@ -12,7 +12,8 @@ import {
   Palette, 
   Check,
   Heart,
-  Link2
+  Link2,
+  Eye
 } from 'lucide-react';
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { Category, SortOption } from '../types';
@@ -49,10 +50,10 @@ const sortOptions: {
 }[] = [
   {
     id: 'default',
-    label: 'Destacados / Catálogo',
-    shortLabel: 'Destacados',
-    description: 'Orden predeterminado de la tienda',
-    icon: Sparkles,
+    label: 'Más vistas (Predeterminado)',
+    shortLabel: 'Más vistas',
+    description: 'Figuras con mayor cantidad de visitas',
+    icon: Eye,
   },
   {
     id: 'likes-desc',

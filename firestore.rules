@@ -29,6 +29,7 @@ service cloud.firestore {
         && data.get('designerId', '') is string && data.get('designerId', '').size() <= 100
         && data.get('numericId', '') is string && data.get('numericId', '').size() <= 100
         && data.get('likesCount', 0) is int && data.get('likesCount', 0) >= 0
+        && data.get('viewsCount', 0) is int && data.get('viewsCount', 0) >= 0
         && data.status is string && data.status.matches('^(disponible|consultar|proximamente)$');
     }
 
@@ -55,9 +56,9 @@ service cloud.firestore {
         (isAdmin() && isValidId(figureId) && isValidFigure(incoming())) ||
         (
           isValidId(figureId) &&
-          incoming().diff(existing()).affectedKeys().hasOnly(['likesCount']) &&
-          incoming().likesCount is int &&
-          incoming().likesCount >= 0
+          incoming().diff(existing()).affectedKeys().hasOnly(['likesCount', 'viewsCount']) &&
+          (!incoming().diff(existing()).affectedKeys().hasAny(['likesCount']) || (incoming().likesCount is int && incoming().likesCount >= 0)) &&
+          (!incoming().diff(existing()).affectedKeys().hasAny(['viewsCount']) || (incoming().viewsCount is int && incoming().viewsCount >= 0))
         )
       );
       allow delete: if isAdmin() && isValidId(figureId);

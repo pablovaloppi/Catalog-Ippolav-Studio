@@ -291,7 +291,7 @@ export function Storefront() {
       setLoading(true);
 
       try {
-        const initialLimit = sortBy === 'likes-desc' ? 12 : INITIAL_STEP;
+        const initialLimit = (sortBy === 'likes-desc' || sortBy === 'default' || sortBy === 'views-desc') ? 12 : INITIAL_STEP;
         const { fetchFiguresBatch } = await import('./services/firestoreService');
         const { products: data, lastDoc: lastVisible, hasMore: moreAvailable } =
           await fetchFiguresBatch(franchiseFilter, statusFilter, categories, null, initialLimit, sortBy);
@@ -304,6 +304,11 @@ export function Storefront() {
         } else if (franchiseFilter === 'all' && statusFilter === 'all') {
           // Si la base de datos de Firestore está vacía, usar las figuras locales de prueba ordenadas
           const localSorted = [...initialProducts].sort((a, b) => {
+            if (sortBy === 'default' || sortBy === 'views-desc') {
+              const diff = (b.viewsCount ?? 0) - (a.viewsCount ?? 0);
+              if (diff !== 0) return diff;
+              return (b.likesCount ?? 0) - (a.likesCount ?? 0);
+            }
             if (sortBy === 'likes-desc') return (b.likesCount ?? 0) - (a.likesCount ?? 0);
             if (sortBy === 'recent') return (b.order ?? 0) - (a.order ?? 0);
             if (sortBy === 'oldest') return (a.order ?? 0) - (b.order ?? 0);
@@ -521,11 +526,17 @@ export function Storefront() {
 
   const sortedAndFilteredProducts = useMemo(() => {
     const list = [...filteredProducts];
-    if (sortBy === 'default') {
-      return list;
-    }
 
     return list.sort((a, b) => {
+      if (sortBy === 'default' || sortBy === 'views-desc') {
+        const viewsA = a.viewsCount ?? 0;
+        const viewsB = b.viewsCount ?? 0;
+        if (viewsB !== viewsA) return viewsB - viewsA;
+        const likesA = a.likesCount ?? 0;
+        const likesB = b.likesCount ?? 0;
+        if (likesB !== likesA) return likesB - likesA;
+        return (a.order ?? 0) - (b.order ?? 0);
+      }
       if (sortBy === 'likes-desc') {
         const likesA = a.likesCount ?? 0;
         const likesB = b.likesCount ?? 0;

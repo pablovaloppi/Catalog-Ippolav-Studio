@@ -411,8 +411,8 @@ export function processWhatsAppTemplate({
   };
 
   // 4. Procesamiento de Operaciones Aritméticas:
-  // 4.1. Expresiones entre paréntesis con etiquetas adentro, ej: ({precio final}/2), ({precio final} * 0.5)
-  text = text.replace(/\(([^{}()]*\{[^{}()]*\}[^{}()]*)\)/g, (match, inner) => {
+  // 4.1. Expresiones entre paréntesis con etiquetas adentro, ej: ({precio final}/2), $({precio final}/2), ({precio final} * 0.5)
+  text = text.replace(/\$?\s*\(([^{}()]*\{[^{}()]*\}[^{}()]*)\)/g, (match, inner) => {
     if (/[\+\-\*\/]/.test(inner) && /precio|cuota|valor/i.test(inner)) {
       const evaluated = substituteAndEvaluateMath(inner, mathVars);
       if (evaluated !== null) return evaluated;
@@ -463,6 +463,9 @@ export function processWhatsAppTemplate({
 
     return match;
   });
+
+  // Evitar duplicación accidental de signo $ (ej: $$115 -> $115)
+  text = text.replace(/\${2,}/g, '$');
 
   return text;
 }
