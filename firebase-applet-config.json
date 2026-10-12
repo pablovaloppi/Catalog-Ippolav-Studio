@@ -1,11 +1,11 @@
 {
-  "projectId": "acquired-honor-spqwl",
-  "appId": "1:1012266721679:web:26d3e00a86e9489eb9ebfa",
-  "apiKey": "AIzaSyBt0xEufsMGIhpMzUMAiQlCyGd_QPn2yA8",
-  "authDomain": "acquired-honor-spqwl.firebaseapp.com",
-  "firestoreDatabaseId": "ai-studio-849c231f-9364-42b7-9da2-1b447713726a",
-  "storageBucket": "acquired-honor-spqwl.firebasestorage.app",
-  "messagingSenderId": "1012266721679",
+  "projectId": "ippolav-catalog",
+  "appId": "1:850505594456:web:1d2c0f27620d0f8cba3c2d",
+  "apiKey": "AIzaSyAsn7iuVc6HczgGo3Pa84VUJRm8_0UEfiY",
+  "authDomain": "ippolav-catalog.firebaseapp.com",
+  "firestoreDatabaseId": "(default)",
+  "storageBucket": "ippolav-catalog.firebasestorage.app",
+  "messagingSenderId": "850505594456",
   "measurementId": "",
   "oAuthClientId": "1012266721679-hikpc1pl85cnlu8r8ggkhfoqkcht5en8.apps.googleusercontent.com",
   "recaptchaSiteKey": ""
