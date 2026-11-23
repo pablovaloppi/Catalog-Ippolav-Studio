@@ -7,12 +7,21 @@ export function formatScale(scale: string): string {
   const trimmed = scale.trim();
   if (!trimmed) return '';
 
+  const normalized = trimmed.toLowerCase().replace(/\s+/g, '');
+
+  if (
+    normalized === '1:1' ||
+    normalized === '1/1' ||
+    normalized === '1:1(180cm)' ||
+    normalized === '1/1(180cm)'
+  ) {
+    return '1:1';
+  }
+
   // Si ya tiene dimensiones especificadas entre paréntesis (ej: "1:8 (20cm)"), no duplicar
   if (trimmed.includes('(') && trimmed.includes(')')) {
     return trimmed;
   }
-
-  const normalized = trimmed.toLowerCase().replace(/\s+/g, '');
   
   if (normalized === '1:8' || normalized === '1/8') {
     return '1:8 (20cm)';
@@ -25,9 +34,6 @@ export function formatScale(scale: string): string {
   }
   if (normalized === '1:2' || normalized === '1/2') {
     return '1:2 (90cm)';
-  }
-  if (normalized === '1:1' || normalized === '1/1') {
-    return '1:1 (180cm)';
   }
   if (normalized === 'chibi') {
     return 'Chibi';

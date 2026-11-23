@@ -2062,7 +2062,7 @@ function FigureForm({ figure, categories, designers, onBack, orderCount, config 
     { id: '1:6', label: '1:6 (30cm)' },
     { id: '1:4', label: '1:4 (45cm)' },
     { id: '1:2', label: '1:2 (90cm)' },
-    { id: '1:1', label: '1:1 (180cm)' },
+    { id: '1:1', label: '1:1' },
     { id: 'Chibi', label: 'Chibi' },
   ];
 
@@ -2805,7 +2805,7 @@ function ConfigForm({ config }: { config: SiteConfig }) {
                   { id: '1/10', label: '1/10 (18cm)' },
                   { id: '1/12', label: '1/12 (15cm)' },
                   { id: '1/2', label: '1/2 (90cm)' },
-                  { id: '1/1', label: '1/1 (180cm)' },
+                  { id: '1/1', label: '1/1' },
                 ].map(tab => {
                   const isTabActive = scaleConfigTab === tab.id;
                   const hasCustom = tab.id !== 'general' && Boolean(formData.scaleQuoteTemplates?.[tab.id]?.trim());
