@@ -41,6 +41,7 @@ import { RandomPickerTool } from './components/RandomPickerTool';
 import { AnalyticsDashboard } from './components/AnalyticsDashboard';
 import { TelegramGroupsManager } from './components/TelegramGroupsManager';
 import { formatScale } from './scaleUtils';
+import { matchesProductSearch } from './searchUtils';
 import { processWhatsAppTemplate, DEFAULT_INSTALLMENT_PLANS, DEFAULT_PAYMENT_FEE_RATE, calculateInstallmentQuote, formatCurrencyValue, DEFAULT_ADMIN_QUOTE_TEMPLATE, DEFAULT_USER_INQUIRY_TEMPLATE } from './templateUtils';
 
 // ... other imports ...
@@ -367,16 +368,19 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
         matched = matched.filter(fig => matchingCatIds.includes(fig.franchiseId));
       }
 
-      // 3. Filtrado por búsqueda en tiempo real
+      // 3. Filtrado por búsqueda en tiempo real (soporta multi-término + categoría + diseñador)
       if (trimmedSearch) {
+        const categoryNameMap = new Map<string, string>();
+        categories.forEach(cat => {
+          const ancestors = getCategoryAncestors(cat.id, categories);
+          categoryNameMap.set(cat.id, [cat.name, ...ancestors.map(a => a.name)].join(' '));
+        });
+        const designerNameMap = new Map<string, string>(designers.map(d => [d.id, d.name]));
+
         matched = matched.filter(fig => {
-          const titleMatch = Boolean(fig.title && fig.title.toLowerCase().includes(trimmedSearch));
-          const idMatch = Boolean(fig.numericId && fig.numericId.toLowerCase().includes(trimmedSearch));
-          const kws = fig.searchKeywords || fig.keywords;
-          const kwMatch = Array.isArray(kws)
-            ? kws.some(k => typeof k === 'string' && k.toLowerCase().includes(trimmedSearch))
-            : typeof kws === 'string' && (kws as string).toLowerCase().includes(trimmedSearch);
-          return titleMatch || idMatch || kwMatch;
+          const catNames = categoryNameMap.get(fig.franchiseId) || '';
+          const designerName = fig.designerId ? (designerNameMap.get(fig.designerId) || '') : '';
+          return matchesProductSearch(fig, search, catNames, designerName);
         });
       }
 
@@ -428,7 +432,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
     } finally {
       setFiguresLoading(false);
     }
-  }, [categories]);
+  }, [categories, designers]);
 
   // Efecto para recargar cuando cambian los parámetros de paginación, filtro o selector de orden
   useEffect(() => {

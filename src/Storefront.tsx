@@ -11,6 +11,7 @@ import type { QueryDocumentSnapshot, DocumentData } from 'firebase/firestore';
 import { extractSearchQueryFromLocation, extractFigureIdFromLocation } from './urlUtils';
 import { trackPageView, trackSearchQuery, trackFigureFavorite } from './services/analyticsService';
 import { initIpExclusionsListener } from './services/ipExclusionService';
+import { getProductSearchScore, matchesProductSearch } from './searchUtils';
 
 const NavigationDrawer = lazy(() => import('./components/NavigationDrawer').then(m => ({ default: m.NavigationDrawer })));
 const HowToBuy = lazy(() => import('./components/HowToBuy').then(m => ({ default: m.HowToBuy })));
@@ -493,24 +494,22 @@ export function Storefront() {
     return map;
   }, [categories]);
 
+  const designerSearchMap = useMemo(() => {
+    const map = new Map<string, string>();
+    designers.forEach((d) => {
+      map.set(d.id, d.name);
+    });
+    return map;
+  }, [designers]);
+
   const filteredProducts = useMemo(() => {
-    const normalize = (str: string) => str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
-    const queryNorm = normalize(searchQuery.trim());
-    const hasSearchQuery = queryNorm.length > 0;
+    const hasSearchQuery = searchQuery.trim().length > 0;
 
     return products.filter((product) => {
       if (hasSearchQuery) {
-        const kws = product.searchKeywords || product.keywords;
-        const kwMatch = Array.isArray(kws)
-          ? kws.some((k) => typeof k === 'string' && normalize(k).includes(queryNorm))
-          : typeof kws === 'string' && normalize(kws as string).includes(queryNorm);
-
-        const titleMatch = normalize(product.title || '').includes(queryNorm);
-        const idMatch = product.numericId ? normalize(product.numericId).includes(queryNorm) : false;
-        const catMatch = normalize(categorySearchMap.get(product.franchiseId) || '').includes(queryNorm);
-        const descMatch = product.description ? normalize(product.description).includes(queryNorm) : false;
-
-        if (!titleMatch && !idMatch && !catMatch && !descMatch && !kwMatch) {
+        const catNames = categorySearchMap.get(product.franchiseId) || '';
+        const designerName = product.designerId ? (designerSearchMap.get(product.designerId) || '') : '';
+        if (!matchesProductSearch(product, searchQuery, catNames, designerName)) {
           return false;
         }
       }
@@ -522,7 +521,7 @@ export function Storefront() {
 
       return matchesStatus && matchesFranchise && matchesFinish && matchesScale;
     });
-  }, [searchQuery, statusFilter, allowedFranchiseIds, finishFilter, scaleFilter, products, categorySearchMap]);
+  }, [searchQuery, statusFilter, allowedFranchiseIds, finishFilter, scaleFilter, products, categorySearchMap, designerSearchMap]);
 
   const sortedAndFilteredProducts = useMemo(() => {
     const list = [...filteredProducts];
@@ -705,18 +704,15 @@ export function Storefront() {
 
         if (isCancelled) return;
 
+        const scoreMap = new Map<string, number>();
         const matched = (allFigures || []).filter((product) => {
           const catNames = categorySearchMap.get(product.franchiseId) || '';
-          const kws = product.searchKeywords || product.keywords;
-          const kwMatch = Array.isArray(kws)
-            ? kws.some((k) => typeof k === 'string' && k.toLowerCase().includes(trimmed))
-            : typeof kws === 'string' && (kws as string).toLowerCase().includes(trimmed);
-
-          const matchesSearch =
-            product.title.toLowerCase().includes(trimmed) ||
-            (product.numericId && product.numericId.toLowerCase().includes(trimmed)) ||
-            catNames.includes(trimmed) ||
-            kwMatch;
+          const designerName = product.designerId ? (designerSearchMap.get(product.designerId) || '') : '';
+          const score = getProductSearchScore(product, debouncedSearchQuery, catNames, designerName);
+          const matchesSearch = score > 0;
+          if (matchesSearch) {
+            scoreMap.set(product.id, score);
+          }
 
           const matchesStatus = statusFilter === 'all' || product.status === statusFilter;
           const matchesFranchise = !allowedFranchiseIds || allowedFranchiseIds.has(product.franchiseId);
@@ -727,6 +723,27 @@ export function Storefront() {
         });
 
         matched.sort((a, b) => {
+          if (sortBy === 'default') {
+            const scoreA = scoreMap.get(a.id) ?? 0;
+            const scoreB = scoreMap.get(b.id) ?? 0;
+            if (scoreB !== scoreA) return scoreB - scoreA;
+            const viewsA = a.viewsCount ?? 0;
+            const viewsB = b.viewsCount ?? 0;
+            if (viewsB !== viewsA) return viewsB - viewsA;
+            const likesA = a.likesCount ?? 0;
+            const likesB = b.likesCount ?? 0;
+            if (likesB !== likesA) return likesB - likesA;
+            return (a.order ?? 0) - (b.order ?? 0);
+          }
+          if (sortBy === 'views-desc') {
+            const viewsA = a.viewsCount ?? 0;
+            const viewsB = b.viewsCount ?? 0;
+            if (viewsB !== viewsA) return viewsB - viewsA;
+            const likesA = a.likesCount ?? 0;
+            const likesB = b.likesCount ?? 0;
+            if (likesB !== likesA) return likesB - likesA;
+            return (a.order ?? 0) - (b.order ?? 0);
+          }
           if (sortBy === 'likes-desc') {
             const likesA = a.likesCount ?? 0;
             const likesB = b.likesCount ?? 0;
@@ -774,7 +791,7 @@ export function Storefront() {
     return () => {
       isCancelled = true;
     };
-  }, [debouncedSearchQuery, statusFilter, allowedFranchiseIds, finishFilter, scaleFilter, sortBy, categories]);
+  }, [debouncedSearchQuery, statusFilter, allowedFranchiseIds, finishFilter, scaleFilter, sortBy, categories, categorySearchMap, designerSearchMap]);
 
   // Lista de productos favoritos del usuario
   const favoriteProducts = useMemo(() => {
@@ -799,13 +816,10 @@ export function Storefront() {
 
     const list = Array.from(allKnownMap.values());
 
-    const searchQueryLower = searchQuery.toLowerCase().trim();
     const filtered = list.filter((product) => {
-      const matchesSearch =
-        !searchQueryLower ||
-        product.title.toLowerCase().includes(searchQueryLower) ||
-        (product.numericId && product.numericId.toLowerCase().includes(searchQueryLower)) ||
-        (categorySearchMap.get(product.franchiseId) || '').includes(searchQueryLower);
+      const catNames = categorySearchMap.get(product.franchiseId) || '';
+      const designerName = product.designerId ? (designerSearchMap.get(product.designerId) || '') : '';
+      const matchesSearch = !searchQuery.trim() || matchesProductSearch(product, searchQuery, catNames, designerName);
 
       const matchesStatus = statusFilter === 'all' || product.status === statusFilter;
       const matchesFranchise = !allowedFranchiseIds || allowedFranchiseIds.has(product.franchiseId);
@@ -838,7 +852,7 @@ export function Storefront() {
       if (sortBy === 'name-desc') return b.title.localeCompare(a.title, 'es', { sensitivity: 'base' });
       return (a.order ?? 0) - (b.order ?? 0);
     });
-  }, [favoritesOnly, likedFigureIds, favoriteFiguresList, products, searchQuery, statusFilter, allowedFranchiseIds, finishFilter, scaleFilter, sortBy, categorySearchMap]);
+  }, [favoritesOnly, likedFigureIds, favoriteFiguresList, products, searchQuery, statusFilter, allowedFranchiseIds, finishFilter, scaleFilter, sortBy, categorySearchMap, designerSearchMap]);
 
   const handleToggleFavoritesOnly = useCallback(() => {
     setFavoritesOnly((prev) => {
