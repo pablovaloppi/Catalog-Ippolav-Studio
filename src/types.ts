@@ -6,6 +6,7 @@ export interface Product {
   designerId?: string;
   status: 'disponible' | 'consultar' | 'proximamente';
   imageUrls?: string[];
+  realImagesInstagramUrl?: string;
   finish: string;
   scale: string[];
   material: string;

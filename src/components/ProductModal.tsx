@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { X, MessageCircle, HelpCircle, View, ChevronLeft, ChevronRight, Heart, ZoomIn, ZoomOut, RotateCcw, Share2, Check, Instagram, Copy, Calculator, ShieldCheck, Sparkles, RefreshCw, Edit3, Save, Eye, Layers, Ruler, DollarSign } from 'lucide-react';
+import { X, MessageCircle, HelpCircle, View, ChevronLeft, ChevronRight, Heart, ZoomIn, ZoomOut, RotateCcw, Share2, Check, Instagram, ExternalLink, Copy, Calculator, ShieldCheck, Sparkles, RefreshCw, Edit3, Save, Eye, Layers, Ruler, DollarSign } from 'lucide-react';
 import { Product, SiteConfig } from '../types';
 import { getOptimizedCloudinaryUrl, getCloudinarySrcSet } from '../cloudinaryUtils';
 import { shareFigure, getShareableFigureUrl } from '../urlUtils';
@@ -63,6 +63,22 @@ export function ProductModal({
   useEffect(() => {
     setLocalProduct(product);
   }, [product]);
+
+  const realImagesUrl = useMemo(() => {
+    const raw = (localProduct?.realImagesInstagramUrl || product?.realImagesInstagramUrl || '').trim();
+    if (!raw) return null;
+    if (/^(javascript|data|vbscript):/i.test(raw)) return null;
+    const candidate = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+    try {
+      const parsed = new URL(candidate);
+      if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+        return parsed.toString();
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  }, [localProduct?.realImagesInstagramUrl, product?.realImagesInstagramUrl]);
 
   // Mapa local de precios por escala
   const [scalePricesMap, setScalePricesMap] = useState<Record<string, string>>(() => {
@@ -1060,6 +1076,19 @@ export function ProductModal({
             </div>
           </div>
         </div>
+
+        {realImagesUrl && (
+          <a
+            href={realImagesUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="w-full py-2.5 px-4 rounded-lg bg-gradient-to-r from-[#833AB4]/20 via-[#FD1D1D]/20 to-[#FCAF45]/20 hover:from-[#833AB4]/35 hover:via-[#FD1D1D]/35 hover:to-[#FCAF45]/35 border border-primary/40 hover:border-primary text-on-surface font-semibold text-sm flex items-center justify-center gap-2 transition-all active:scale-[0.99] shadow-sm group"
+          >
+            <Instagram className="w-4 h-4 text-primary group-hover:scale-110 transition-transform" />
+            <span>Ver imágenes reales</span>
+            <ExternalLink className="w-3.5 h-3.5 text-on-surface-variant group-hover:text-primary transition-colors" />
+          </a>
+        )}
 
         <div className="grid grid-cols-2 gap-3 p-3.5 bg-surface-container rounded-lg border border-outline-variant/30">
           <div>

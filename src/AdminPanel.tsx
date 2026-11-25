@@ -23,7 +23,7 @@ import {
 } from 'firebase/firestore';
 import { Product, Category, Designer, SiteConfig, InstallmentPlan } from './types';
 import { products as initialProducts } from './data';
-import { Plus, ChevronUp, ChevronDown, Trash2, Edit2, LogOut, ImagePlus, UserCircle, Settings, Hash, Sparkles, Eye, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Heart, CornerDownRight, FolderTree, Dices, TrendingUp, Search, Send, Calculator, Percent, DollarSign, RefreshCw } from 'lucide-react';
+import { Plus, ChevronUp, ChevronDown, Trash2, Edit2, LogOut, ImagePlus, UserCircle, Settings, Hash, Sparkles, Eye, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Heart, CornerDownRight, FolderTree, Dices, TrendingUp, Search, Send, Calculator, Percent, DollarSign, RefreshCw, Instagram } from 'lucide-react';
 import { ProductModal } from './components/ProductModal';
 import { 
   getCategoryAncestors, 
@@ -1761,6 +1761,7 @@ function FigureForm({ figure, categories, designers, onBack, orderCount, config 
     designerId: '',
     status: 'consultar',
     imageUrls: [],
+    realImagesInstagramUrl: '',
     finish: 'Hiperrealista',
     scale: [],
     material: 'Resina',
@@ -2021,6 +2022,7 @@ function FigureForm({ figure, categories, designers, onBack, orderCount, config 
         designerId: formData.designerId || '',
         status: formData.status || 'disponible',
         imageUrls: (formData.imageUrls || []).filter(u => u.trim() !== ''),
+        realImagesInstagramUrl: (formData.realImagesInstagramUrl || '').trim(),
         finish: formData.finish || 'Hiperrealista',
         scale: formData.scale || [],
         material: formData.material || 'Resina',
@@ -2154,6 +2156,26 @@ function FigureForm({ figure, categories, designers, onBack, orderCount, config 
                 <span className="text-xs font-semibold">Seleccionar</span>
                 <input type="file" multiple accept="image/*" onChange={handleFileSelect} className="hidden" />
               </label>
+            </div>
+
+            <div className="mt-3 p-3 rounded-lg bg-surface-container/40 border border-outline-variant/30 space-y-1.5">
+              <label className="text-xs font-bold text-on-surface-variant uppercase flex items-center gap-1.5">
+                <Instagram className="w-3.5 h-3.5 text-primary" />
+                <span>Link de Instagram — Imágenes reales</span>
+                <span className="text-[10px] text-outline normal-case font-normal">(Opcional)</span>
+              </label>
+              <input
+                type="text"
+                name="realImagesInstagramUrl"
+                maxLength={1000}
+                value={formData.realImagesInstagramUrl || ''}
+                onChange={handleChange}
+                placeholder="https://www.instagram.com/p/..."
+                className="w-full bg-surface-container border border-outline-variant/40 rounded p-2 text-sm focus:border-primary outline-none placeholder:text-outline/40"
+              />
+              <p className="text-[11px] text-on-surface-variant/80">
+                Si completás este campo, en &quot;Ver figura&quot; aparecerá el botón &quot;Ver imágenes reales&quot; entre las fotos y los detalles. Si queda vacío, el botón permanecerá oculto.
+              </p>
             </div>
           </div>
 
