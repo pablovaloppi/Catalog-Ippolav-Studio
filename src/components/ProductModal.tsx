@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { X, MessageCircle, HelpCircle, View, ChevronLeft, ChevronRight, Heart, ZoomIn, ZoomOut, RotateCcw, Share2, Check, Instagram, ExternalLink, Copy, Calculator, ShieldCheck, Sparkles, RefreshCw, Edit3, Save, Eye, Layers, Ruler, DollarSign } from 'lucide-react';
 import { Product, SiteConfig } from '../types';
-import { getOptimizedCloudinaryUrl, getCloudinarySrcSet } from '../cloudinaryUtils';
+import { getOptimizedCloudinaryUrl, getCloudinarySrcSet, getStandardJpegUrl, downloadImageAsFile } from '../cloudinaryUtils';
 import { shareFigure, getShareableFigureUrl } from '../urlUtils';
 import { trackFigureView, trackWhatsAppClick, trackInstagramClick } from '../services/analyticsService';
 import { formatScalesList, formatScale } from '../scaleUtils';
@@ -52,6 +52,7 @@ export function ProductModal({
   const [currentImageIndex, setCurrentImageIndex] = useState(initialImageIndex);
   const [isFullScreen, setIsFullScreen] = useState(initialFullScreen);
   const [shareStatus, setShareStatus] = useState<'idle' | 'copied' | 'shared'>('idle');
+  const [imageShareStatus, setImageShareStatus] = useState<'idle' | 'loading' | 'shared' | 'downloaded'>('idle');
   const [igStatus, setIgStatus] = useState<'idle' | 'copied'>('idle');
   const startFullScreenRef = useRef(initialFullScreen);
 
@@ -736,6 +737,63 @@ export function ProductModal({
   
   const currentImageUrl = product.imageUrls?.[currentImageIndex] || '';
 
+  const handleShareCurrentImage = async () => {
+    if (!product || !currentImageUrl || imageShareStatus === 'loading') return;
+
+    setImageShareStatus('loading');
+    const safeTitle = (product.title || 'figura')
+      .toLowerCase()
+      .replace(/[^a-z0-9]/gi, '_')
+      .substring(0, 40);
+    const numId = product.numericId ? product.numericId.replace(/[^a-z0-9#]/gi, '') : 'fig';
+    const filename = `${numId}_${safeTitle}_img_${currentImageIndex + 1}.jpg`;
+    const jpegUrl = getStandardJpegUrl(currentImageUrl) || currentImageUrl;
+
+    try {
+      if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
+        const response = await fetch(jpegUrl, { mode: 'cors' });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const blob = await response.blob();
+        const finalBlob = blob.type === 'image/jpeg' ? blob : new Blob([blob], { type: 'image/jpeg' });
+        const file = new File([finalBlob], filename, { type: 'image/jpeg' });
+
+        if (!navigator.canShare || navigator.canShare({ files: [file] })) {
+          try {
+            await navigator.share({
+              title: product.title || 'IPPOLAV STUDIO',
+              files: [file],
+            });
+            setImageShareStatus('shared');
+            setTimeout(() => setImageShareStatus('idle'), 3000);
+            return;
+          } catch (shareErr: any) {
+            if (shareErr?.name === 'AbortError') {
+              setImageShareStatus('idle');
+              return;
+            }
+          }
+        }
+      }
+
+      const downloaded = await downloadImageAsFile(currentImageUrl, filename);
+      if (downloaded) {
+        setImageShareStatus('downloaded');
+        setTimeout(() => setImageShareStatus('idle'), 3000);
+      } else {
+        setImageShareStatus('idle');
+      }
+    } catch (err) {
+      console.warn('Error preparando imagen para compartir:', err);
+      const downloaded = await downloadImageAsFile(currentImageUrl, filename);
+      if (downloaded) {
+        setImageShareStatus('downloaded');
+        setTimeout(() => setImageShareStatus('idle'), 3000);
+      } else {
+        setImageShareStatus('idle');
+      }
+    }
+  };
+
   const handleDoubleTapOrClick = (clientX: number, clientY: number) => {
     if (scaleRef.current > 1.05) {
       resetZoom();
@@ -1053,7 +1111,44 @@ export function ProductModal({
         </div>
 
         <div className="space-y-2">
-          <span className="text-[10px] font-bold text-outline uppercase tracking-wider block">Ángulos y Detalles de Escultura</span>
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <span className="text-[10px] font-bold text-outline uppercase tracking-wider">Ángulos y Detalles de Escultura</span>
+            {isAdmin && currentImageUrl && (
+              <button
+                type="button"
+                onClick={handleShareCurrentImage}
+                disabled={imageShareStatus === 'loading'}
+                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all active:scale-95 border cursor-pointer disabled:opacity-60 ${
+                  imageShareStatus === 'shared' || imageShareStatus === 'downloaded'
+                    ? 'bg-emerald-950/80 border-emerald-500/70 text-emerald-300'
+                    : 'bg-surface-container border-primary/40 text-primary hover:bg-primary/15 hover:border-primary'
+                }`}
+                title="Compartir imagen actual (ideal para Historia de Instagram)"
+              >
+                {imageShareStatus === 'loading' ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>Preparando...</span>
+                  </>
+                ) : imageShareStatus === 'shared' ? (
+                  <>
+                    <Check className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>¡Lista para compartir!</span>
+                  </>
+                ) : imageShareStatus === 'downloaded' ? (
+                  <>
+                    <Check className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>¡Imagen descargada!</span>
+                  </>
+                ) : (
+                  <>
+                    <Share2 className="w-3.5 h-3.5" />
+                    <span>Compartir imagen</span>
+                  </>
+                )}
+              </button>
+            )}
+          </div>
           <div className="flex gap-2 overflow-x-auto pb-2 snap-x">
             {product.imageUrls?.map((url, i) => (
               <button 
@@ -1544,14 +1639,59 @@ export function ProductModal({
           onMouseUp={handleMouseUp}
           onWheel={handleWheel}
         >
-          {/* Botón cerrar */}
-          <button 
-            className="absolute top-5 right-5 text-on-surface-variant hover:text-white bg-surface-container/60 hover:bg-surface-container p-2.5 rounded-full transition-colors z-30 shadow-lg"
-            onClick={(e) => { e.stopPropagation(); closeFullScreen(); }}
-            title="Cerrar vista completa (Esc)"
+          {/* Controles superiores derechos: Compartir imagen (Admin) + Cerrar */}
+          <div
+            className="absolute top-5 right-5 flex items-center gap-2 z-30"
+            onTouchStart={(e) => e.stopPropagation()}
+            onTouchEnd={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
           >
-            <X className="w-6 h-6" />
-          </button>
+            {isAdmin && currentImageUrl && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleShareCurrentImage();
+                }}
+                disabled={imageShareStatus === 'loading'}
+                className={`flex items-center gap-1.5 px-3.5 py-2 rounded-full text-xs font-bold transition-all shadow-lg backdrop-blur-md border cursor-pointer disabled:opacity-60 ${
+                  imageShareStatus === 'shared' || imageShareStatus === 'downloaded'
+                    ? 'bg-emerald-950/90 border-emerald-400/70 text-emerald-200'
+                    : 'bg-surface-container/85 hover:bg-primary text-primary hover:text-on-primary border-primary/50'
+                }`}
+                title="Compartir imagen (ej: Historia de Instagram)"
+              >
+                {imageShareStatus === 'loading' ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    <span>Preparando...</span>
+                  </>
+                ) : imageShareStatus === 'shared' ? (
+                  <>
+                    <Check className="w-4 h-4" />
+                    <span>¡Compartida!</span>
+                  </>
+                ) : imageShareStatus === 'downloaded' ? (
+                  <>
+                    <Check className="w-4 h-4" />
+                    <span>¡Descargada!</span>
+                  </>
+                ) : (
+                  <>
+                    <Share2 className="w-4 h-4" />
+                    <span>Compartir</span>
+                  </>
+                )}
+              </button>
+            )}
+            <button 
+              className="text-on-surface-variant hover:text-white bg-surface-container/60 hover:bg-surface-container p-2.5 rounded-full transition-colors shadow-lg"
+              onClick={(e) => { e.stopPropagation(); closeFullScreen(); }}
+              title="Cerrar vista completa (Esc)"
+            >
+              <X className="w-6 h-6" />
+            </button>
+          </div>
           
           {/* Botones de navegación de imágenes */}
           {product.imageUrls && product.imageUrls.length > 1 && (
