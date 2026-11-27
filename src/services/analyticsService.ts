@@ -16,6 +16,7 @@ import {
 import { logEvent } from 'firebase/analytics';
 import { db, getFirebaseAnalytics } from '../firebase';
 import { Product } from '../types';
+import { extractSearchQueryFromLocation } from '../urlUtils';
 import { 
   initMetaPixel, 
   trackPixelPageView, 
@@ -101,6 +102,8 @@ export interface AnalyticsEventItem {
   figureTitle?: string;
   figureNumericId?: string;
   searchTerm?: string;
+  entrySearchTerm?: string;
+  entryPath?: string;
   categoryName?: string;
   timestamp: Timestamp | Date;
 }
@@ -319,9 +322,16 @@ export async function trackPageView(metaPixelId?: string, bypassExclusion = fals
 
   try {
     const today = getTodayKey();
-    const sessionKey = `ippolav_session_tracked_${today}_${source}_${sourceDetail}`;
+    const rawEntrySearchTerm = extractSearchQueryFromLocation().trim();
+    const cleanedEntrySearchTerm = rawEntrySearchTerm.toLowerCase();
+    const entryKey = cleanedEntrySearchTerm ? cleanedEntrySearchTerm.replace(/[^a-z0-9_-]/g, '_').slice(0, 60) : 'root';
+    const rawEntryPath = rawEntrySearchTerm
+      ? `${window.location.pathname}${window.location.search}${window.location.hash}`
+      : '';
+
+    const sessionKey = `ippolav_session_tracked_${today}_${source}_${sourceDetail}_${entryKey}`;
     if (sessionStorage.getItem(sessionKey)) {
-      return; // Already tracked in daily Firestore doc for this session/source today
+      return; // Already tracked in daily Firestore doc for this session/source/entry today
     }
     sessionStorage.setItem(sessionKey, '1');
 
@@ -343,6 +353,17 @@ export async function trackPageView(metaPixelId?: string, bypassExclusion = fals
       detailCounterUpdate.viewsFromWaMsg = increment(1);
     }
 
+    const searchTermsUpdate: Record<string, any> = {};
+    if (cleanedEntrySearchTerm.length >= 2) {
+      const safeSearchKey = cleanedEntrySearchTerm.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 50);
+      searchTermsUpdate.searchTerms = {
+        [safeSearchKey]: {
+          term: cleanedEntrySearchTerm,
+          count: increment(1),
+        }
+      };
+    }
+
     const deviceField = device === 'mobile' ? 'deviceMobile' : 'deviceDesktop';
 
     await setDoc(dailyRef, {
@@ -350,16 +371,23 @@ export async function trackPageView(metaPixelId?: string, bypassExclusion = fals
       viewsTotal: increment(1),
       [sourceField]: increment(1),
       ...detailCounterUpdate,
+      ...searchTermsUpdate,
       [deviceField]: increment(1),
       updatedAt: serverTimestamp(),
     }, { merge: true });
 
-    // Also log recent visit event
+    // Also log recent visit event (including direct search URL arrival if present)
     await addDoc(collection(db, 'analytics_events'), {
       type: 'visit',
       source,
       sourceDetail,
       device,
+      ...(rawEntrySearchTerm
+        ? {
+            entrySearchTerm: rawEntrySearchTerm,
+            entryPath: rawEntryPath,
+          }
+        : {}),
       timestamp: serverTimestamp(),
     });
   } catch (err) {

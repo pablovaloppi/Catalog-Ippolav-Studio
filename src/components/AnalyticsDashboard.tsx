@@ -1660,7 +1660,10 @@ export function AnalyticsDashboard({
                         let icon = <Users className="w-3.5 h-3.5 text-primary" />;
                         let actionPrefix = "Nueva visita a la tienda";
 
-                        if (evt.type === 'figure_view') {
+                        if (evt.type === 'visit' && evt.entrySearchTerm) {
+                          icon = <Link2 className="w-3.5 h-3.5 text-amber-400" />;
+                          actionPrefix = "Entró por enlace buscando";
+                        } else if (evt.type === 'figure_view') {
                           icon = <Eye className="w-3.5 h-3.5 text-sky-400" />;
                           actionPrefix = "Vio la figura";
                         } else if (evt.type === 'whatsapp_click') {
@@ -1755,6 +1758,19 @@ export function AnalyticsDashboard({
                                 <span className="font-medium text-on-surface truncate">
                                   Buscó &ldquo;{evt.searchTerm}&rdquo;
                                 </span>
+                              ) : evt.type === 'visit' && evt.entrySearchTerm ? (
+                                <div className="flex items-center gap-1.5 flex-wrap font-medium text-on-surface min-w-0">
+                                  <span className="text-on-surface-variant">{actionPrefix}</span>
+                                  <span className="font-semibold text-amber-300">
+                                    &ldquo;{evt.entrySearchTerm}&rdquo;
+                                  </span>
+                                  <code
+                                    className="px-1.5 py-0.5 rounded bg-surface-container-high border border-outline-variant/30 font-mono text-[10px] text-primary truncate max-w-[160px] sm:max-w-[240px]"
+                                    title={evt.entryPath || `/b=${evt.entrySearchTerm}`}
+                                  >
+                                    {evt.entryPath || `/b=${evt.entrySearchTerm}`}
+                                  </code>
+                                </div>
                               ) : (
                                 <span className="font-medium text-on-surface truncate">
                                   {actionPrefix}
