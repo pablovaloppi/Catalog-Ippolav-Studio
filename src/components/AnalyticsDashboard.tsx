@@ -40,7 +40,9 @@ import {
   Wifi,
   Plus,
   Trash2,
-  X
+  X,
+  Link2,
+  Copy
 } from 'lucide-react';
 import { Product, SiteConfig, Category, Designer } from '../types';
 import { ProductModal } from './ProductModal';
@@ -86,6 +88,8 @@ export function AnalyticsDashboard({
   const [customIp, setCustomIp] = useState('');
   const [customIpLabel, setCustomIpLabel] = useState('');
   const [isUpdatingIp, setIsUpdatingIp] = useState(false);
+  const [copiedTrackingId, setCopiedTrackingId] = useState<string | null>(null);
+  const [showTrackingLinks, setShowTrackingLinks] = useState(true);
 
   useEffect(() => {
     let isMounted = true;
@@ -340,6 +344,11 @@ export function AnalyticsDashboard({
     let whatsappViews = 0;
     let directViews = 0;
     let otherViews = 0;
+    let igLinkViews = 0;
+    let igHistoryViews = 0;
+    let igFeedViews = 0;
+    let igDmViews = 0;
+    let waMsgViews = 0;
     let mobileViews = 0;
     let desktopViews = 0;
     let totalWhatsAppClicks = 0;
@@ -354,6 +363,11 @@ export function AnalyticsDashboard({
       whatsappViews += day.viewsFromWhatsApp || 0;
       directViews += day.viewsFromDirect || 0;
       otherViews += day.viewsFromOther || 0;
+      igLinkViews += day.viewsFromIgLink || 0;
+      igHistoryViews += day.viewsFromIgHistory || 0;
+      igFeedViews += day.viewsFromIgFeed || 0;
+      igDmViews += day.viewsFromIgDm || 0;
+      waMsgViews += day.viewsFromWaMsg || 0;
       mobileViews += day.deviceMobile || 0;
       desktopViews += day.deviceDesktop || 0;
       totalWhatsAppClicks += day.whatsappTotalClicks || 0;
@@ -501,6 +515,11 @@ export function AnalyticsDashboard({
       whatsappViews,
       directViews,
       otherViews,
+      igLinkViews,
+      igHistoryViews,
+      igFeedViews,
+      igDmViews,
+      waMsgViews,
       mobileViews,
       desktopViews,
       totalWhatsAppClicks,
@@ -511,6 +530,79 @@ export function AnalyticsDashboard({
       conversionRate
     };
   }, [dailyData, recentEvents, allFigures]);
+
+  const baseSiteUrl = useMemo(() => {
+    if (
+      typeof window !== 'undefined' &&
+      !window.location.hostname.includes('run.app') &&
+      !window.location.hostname.includes('localhost')
+    ) {
+      return window.location.origin;
+    }
+    return 'https://catalog-ippolav-studio.vercel.app';
+  }, []);
+
+  const trackingLinks = useMemo(() => [
+    {
+      id: 'ig-profile',
+      label: 'Perfil de Instagram (Link directo)',
+      badge: 'Instagram • Link',
+      badgeClass: 'bg-primary/15 text-primary border-primary/30',
+      url: `${baseSiteUrl}/`,
+      hint: 'El enlace limpio para poner en la biografía de tu perfil.',
+    },
+    {
+      id: 'ig-history',
+      label: 'Historias de Instagram',
+      badge: 'Instagram • History',
+      badgeClass: 'bg-pink-500/15 text-pink-300 border-pink-500/30',
+      url: `${baseSiteUrl}/?ig=history`,
+      hint: 'Para pegar en el sticker de enlace de tus Historias.',
+    },
+    {
+      id: 'ig-feed',
+      label: 'Feed / Post / Reel de Instagram',
+      badge: 'Instagram • Feed',
+      badgeClass: 'bg-sky-500/15 text-sky-300 border-sky-500/30',
+      url: `${baseSiteUrl}/?ig=feed`,
+      hint: 'Para medir visitas desde publicaciones del Feed o Reels.',
+    },
+    {
+      id: 'ig-dm',
+      label: 'Mensaje Directo de Instagram (DM)',
+      badge: 'Instagram • Mensaje',
+      badgeClass: 'bg-fuchsia-500/15 text-fuchsia-300 border-fuchsia-500/30',
+      url: `${baseSiteUrl}/?ig=dm`,
+      hint: 'Para cuando envías el catálogo por chat/DM de Instagram.',
+    },
+    {
+      id: 'wa-msg',
+      label: 'Compartido por WhatsApp',
+      badge: 'WhatsApp • Mensaje',
+      badgeClass: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30',
+      url: `${baseSiteUrl}/?wa=1`,
+      hint: 'Para cuando envías el link por chat o estados de WhatsApp.',
+    },
+  ], [baseSiteUrl]);
+
+  const handleCopyTrackingLink = async (id: string, url: string) => {
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopiedTrackingId(id);
+      setTimeout(() => setCopiedTrackingId(null), 2000);
+    } catch {
+      const ta = document.createElement('textarea');
+      ta.value = url;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+      setCopiedTrackingId(id);
+      setTimeout(() => setCopiedTrackingId(null), 2000);
+    }
+  };
 
   // Limpieza inteligente del Feed de Actividad:
   // 1. Omitir eventos de tecleo intermedios (ej: 'd', 'da' antes de 'darth')
@@ -1180,6 +1272,22 @@ export function AnalyticsDashboard({
                         style={{ width: `${aggregated.totalViews > 0 ? (aggregated.instagramViews / aggregated.totalViews) * 100 : 0}%` }}
                       />
                     </div>
+                    {(aggregated.igHistoryViews > 0 || aggregated.igFeedViews > 0 || aggregated.igDmViews > 0 || aggregated.igLinkViews > 0) && (
+                      <div className="flex flex-wrap gap-1.5 pt-1">
+                        <span className="text-[10px] px-2 py-0.5 rounded bg-surface-container border border-pink-500/25 text-pink-300 font-mono">
+                          History: <strong>{aggregated.igHistoryViews}</strong>
+                        </span>
+                        <span className="text-[10px] px-2 py-0.5 rounded bg-surface-container border border-sky-500/25 text-sky-300 font-mono">
+                          Feed: <strong>{aggregated.igFeedViews}</strong>
+                        </span>
+                        <span className="text-[10px] px-2 py-0.5 rounded bg-surface-container border border-fuchsia-500/25 text-fuchsia-300 font-mono">
+                          Mensaje: <strong>{aggregated.igDmViews}</strong>
+                        </span>
+                        <span className="text-[10px] px-2 py-0.5 rounded bg-surface-container border border-primary/25 text-primary font-mono">
+                          Link: <strong>{aggregated.igLinkViews}</strong>
+                        </span>
+                      </div>
+                    )}
                   </div>
 
                   {/* WhatsApp */}
@@ -1200,11 +1308,11 @@ export function AnalyticsDashboard({
                     </div>
                   </div>
 
-                  {/* Enlaces directos */}
+                  {/* Enlaces directos (Perfil IG) */}
                   <div className="space-y-1.5">
                     <div className="flex justify-between text-xs font-semibold">
                       <span className="flex items-center gap-1.5 text-primary">
-                        <ArrowUpRight className="w-3.5 h-3.5" /> Enlaces Directos
+                        <ArrowUpRight className="w-3.5 h-3.5" /> Link Directo (Perfil IG)
                       </span>
                       <span className="text-on-surface font-mono">
                         {aggregated.directViews} ({aggregated.totalViews > 0 ? Math.round((aggregated.directViews / aggregated.totalViews) * 100) : 0}%)
@@ -1432,6 +1540,74 @@ export function AnalyticsDashboard({
             </div>
           </div>
 
+          {/* Enlaces Simples de Seguimiento para Redes (Instagram & WhatsApp) */}
+          <div className="bg-surface-container-low border border-primary/25 rounded-xl p-5 space-y-4">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <div>
+                <h3 className="text-base font-serif font-bold text-on-surface flex items-center gap-2">
+                  <Link2 className="w-4 h-4 text-primary" />
+                  Enlaces Simples de Seguimiento (Instagram & WhatsApp)
+                </h3>
+                <p className="text-xs text-on-surface-variant mt-0.5">
+                  Copia y usa estos enlaces cortos para saber exactamente desde dónde llegan tus visitas en el Feed en Tiempo Real.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowTrackingLinks((v) => !v)}
+                className="text-xs font-semibold text-primary hover:underline px-2.5 py-1 rounded-lg bg-primary/10 border border-primary/20"
+              >
+                {showTrackingLinks ? 'Ocultar enlaces' : 'Mostrar enlaces'}
+              </button>
+            </div>
+
+            {showTrackingLinks && (
+              <div className="space-y-2.5">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                  {trackingLinks.map((item) => {
+                    const isCopied = copiedTrackingId === item.id;
+                    return (
+                      <div
+                        key={item.id}
+                        className="p-3 rounded-lg bg-surface-container border border-outline-variant/30 flex items-center justify-between gap-3 hover:border-primary/40 transition-colors"
+                      >
+                        <div className="min-w-0 flex-1 space-y-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-xs font-bold text-on-surface">{item.label}</span>
+                            <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded border ${item.badgeClass}`}>
+                              {item.badge}
+                            </span>
+                          </div>
+                          <code className="block text-[11px] font-mono text-primary truncate select-all">
+                            {item.url}
+                          </code>
+                          <span className="block text-[10px] text-on-surface-variant/80">
+                            {item.hint}
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleCopyTrackingLink(item.id, item.url)}
+                          className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-bold border transition-all active:scale-95 flex items-center gap-1.5 ${
+                            isCopied
+                              ? 'bg-emerald-950/80 border-emerald-500/50 text-emerald-300'
+                              : 'bg-surface-container-high hover:bg-primary text-on-surface hover:text-on-primary border-outline-variant/40'
+                          }`}
+                        >
+                          {isCopied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                          <span>{isCopied ? '¡Copiado!' : 'Copiar'}</span>
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+                <p className="text-[11px] text-on-surface-variant bg-surface-container/60 px-3 py-2 rounded-lg border border-outline-variant/20">
+                  <strong>Tip para figuras puntuales:</strong> Si compartís el link de una figura específica (ej: <code className="font-mono text-primary">?figura=ID</code>), solo agregá <code className="font-mono text-pink-300">&amp;ig=dm</code> para mensajes de Instagram o <code className="font-mono text-emerald-300">&amp;wa=1</code> para WhatsApp. También funcionan los parámetros UTM clásicos (<code className="font-mono">?utm_source=ig&amp;utm_medium=history</code>).
+                </p>
+              </div>
+            )}
+          </div>
+
           {/* Feed de Actividad en Vivo */}
           <div className="bg-surface-container-low border border-outline-variant/30 rounded-xl p-6 space-y-4">
             <div className="flex items-center justify-between">
@@ -1497,14 +1673,40 @@ export function AnalyticsDashboard({
                           icon = <Search className="w-3.5 h-3.5 text-amber-400" />;
                         }
 
-                        let sourceBadge = 'Enlace directo';
-                        let sourceClass = 'bg-surface-container text-on-surface-variant border-outline-variant/30';
+                        let sourceBadge = 'Perfil IG / Directo';
+                        let sourceClass = 'bg-primary/15 text-primary border-primary/30';
                         if (evt.source === 'instagram') {
                           sourceBadge = 'Instagram';
                           sourceClass = 'bg-pink-950/50 text-pink-300 border-pink-500/40';
                         } else if (evt.source === 'whatsapp') {
                           sourceBadge = 'WhatsApp';
                           sourceClass = 'bg-emerald-950/50 text-emerald-300 border-emerald-500/40';
+                        } else if (evt.source === 'other') {
+                          sourceBadge = 'Externo';
+                          sourceClass = 'bg-surface-container text-on-surface-variant border-outline-variant/30';
+                        }
+
+                        const resolvedDetail = evt.sourceDetail || (
+                          evt.source === 'whatsapp' ? 'dm' :
+                          evt.source === 'other' ? 'other' : 'link'
+                        );
+
+                        let detailBadge = 'Link';
+                        let detailClass = 'bg-amber-950/40 text-amber-300 border-amber-500/35';
+                        if (resolvedDetail === 'history') {
+                          detailBadge = 'History';
+                          detailClass = 'bg-purple-950/50 text-purple-300 border-purple-500/40';
+                        } else if (resolvedDetail === 'feed') {
+                          detailBadge = 'Feed';
+                          detailClass = 'bg-sky-950/50 text-sky-300 border-sky-500/40';
+                        } else if (resolvedDetail === 'dm') {
+                          detailBadge = 'Mensaje';
+                          detailClass = evt.source === 'whatsapp'
+                            ? 'bg-teal-950/50 text-teal-300 border-teal-500/40'
+                            : 'bg-fuchsia-950/50 text-fuchsia-300 border-fuchsia-500/40';
+                        } else if (resolvedDetail === 'other') {
+                          detailBadge = 'Web';
+                          detailClass = 'bg-surface-container text-on-surface-variant border-outline-variant/30';
                         }
 
                         return (
@@ -1559,11 +1761,14 @@ export function AnalyticsDashboard({
                                 </span>
                               )}
                             </div>
-                            <div className="flex items-center gap-2 shrink-0">
+                            <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
                               <span className={`px-2 py-0.5 rounded text-[10px] font-semibold border ${sourceClass}`}>
                                 {sourceBadge}
                               </span>
-                              <span className="text-[10px] text-on-surface-variant flex items-center gap-1 font-mono">
+                              <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${detailClass}`}>
+                                {detailBadge}
+                              </span>
+                              <span className="text-[10px] text-on-surface-variant flex items-center gap-1 font-mono ml-0.5">
                                 {evt.device === 'mobile' ? <Smartphone className="w-3 h-3 text-emerald-400" /> : <Monitor className="w-3 h-3 text-sky-400" />}
                               </span>
                             </div>

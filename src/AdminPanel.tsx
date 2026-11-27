@@ -739,6 +739,18 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
             <div className="hidden md:block h-6 w-px bg-outline-variant/50"></div>
             <nav className="flex items-center gap-4 overflow-x-auto w-full md:w-auto pb-1 md:pb-0 no-scrollbar justify-start">
               <button 
+                onClick={() => { setView('analytics'); }} 
+                className={`text-sm font-semibold whitespace-nowrap transition-colors flex items-center gap-1.5 ${view === 'analytics' ? 'text-primary' : 'text-on-surface-variant hover:text-on-surface'}`}
+              >
+                <TrendingUp className="w-4 h-4 text-primary" /> Métricas
+              </button>
+              <button 
+                onClick={() => { setView('random-picker'); }} 
+                className={`text-sm font-semibold whitespace-nowrap transition-colors flex items-center gap-1.5 ${view === 'random-picker' ? 'text-primary' : 'text-on-surface-variant hover:text-on-surface'}`}
+              >
+                <Dices className="w-4 h-4 text-primary" /> Sorteo Aleatorio
+              </button>
+              <button 
                 onClick={() => { setView('figures-list'); setEditingFigure(null); }} 
                 className={`text-sm font-semibold whitespace-nowrap transition-colors ${view.startsWith('figure') ? 'text-primary' : 'text-on-surface-variant hover:text-on-surface'}`}
               >
@@ -755,18 +767,6 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                 className={`text-sm font-semibold whitespace-nowrap transition-colors ${view.startsWith('designer') ? 'text-primary' : 'text-on-surface-variant hover:text-on-surface'}`}
               >
                 Diseñadores
-              </button>
-              <button 
-                onClick={() => { setView('analytics'); }} 
-                className={`text-sm font-semibold whitespace-nowrap transition-colors flex items-center gap-1.5 ${view === 'analytics' ? 'text-primary' : 'text-on-surface-variant hover:text-on-surface'}`}
-              >
-                <TrendingUp className="w-4 h-4 text-primary" /> Métricas
-              </button>
-              <button 
-                onClick={() => { setView('random-picker'); }} 
-                className={`text-sm font-semibold whitespace-nowrap transition-colors flex items-center gap-1.5 ${view === 'random-picker' ? 'text-primary' : 'text-on-surface-variant hover:text-on-surface'}`}
-              >
-                <Dices className="w-4 h-4 text-primary" /> Sorteo Aleatorio
               </button>
               <button 
                 onClick={() => { setView('telegram'); }} 

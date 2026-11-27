@@ -38,7 +38,13 @@ declare global {
 }
 
 export type TrafficSource = 'instagram' | 'whatsapp' | 'direct' | 'other';
+export type TrafficSourceDetail = 'link' | 'history' | 'feed' | 'dm' | 'other';
 export type DeviceType = 'mobile' | 'desktop';
+
+export interface TrafficAttribution {
+  source: TrafficSource;
+  sourceDetail: TrafficSourceDetail;
+}
 
 // Safe wrapper to trigger Google Analytics (gtag.js) and Firebase Analytics events
 async function safeLogTrackingEvent(eventName: string, params?: Record<string, any>, bypassExclusion = false) {
@@ -70,6 +76,11 @@ export interface DailyAnalyticsData {
   viewsFromWhatsApp: number;
   viewsFromDirect: number;
   viewsFromOther: number;
+  viewsFromIgLink?: number;
+  viewsFromIgHistory?: number;
+  viewsFromIgFeed?: number;
+  viewsFromIgDm?: number;
+  viewsFromWaMsg?: number;
   deviceMobile: number;
   deviceDesktop: number;
   whatsappTotalClicks: number;
@@ -84,6 +95,7 @@ export interface AnalyticsEventItem {
   id?: string;
   type: 'visit' | 'figure_view' | 'whatsapp_click' | 'instagram_click' | 'search' | 'category_click';
   source: TrafficSource;
+  sourceDetail?: TrafficSourceDetail;
   device: DeviceType;
   figureId?: string;
   figureTitle?: string;
@@ -101,52 +113,181 @@ function getTodayKey(): string {
   return `${year}-${month}-${day}`;
 }
 
-export function detectTrafficSource(): TrafficSource {
-  if (typeof window === 'undefined') return 'direct';
+const ATTRIBUTION_STORAGE_KEY = 'ippolav_traffic_attribution_v1';
+
+function mapPlacementToken(raw: string): TrafficSourceDetail | null {
+  const val = raw.toLowerCase().trim();
+  if (!val) return null;
+
+  if (
+    val === 'history' ||
+    val === 'historia' ||
+    val === 'historias' ||
+    val === 'story' ||
+    val === 'stories' ||
+    val === 'ig_story' ||
+    val === 'ig_history' ||
+    val === 'estado' ||
+    val === 'estados'
+  ) {
+    return 'history';
+  }
+  if (
+    val === 'feed' ||
+    val === 'post' ||
+    val === 'posts' ||
+    val === 'reel' ||
+    val === 'reels' ||
+    val === 'publicacion' ||
+    val === 'ig_feed'
+  ) {
+    return 'feed';
+  }
+  if (
+    val === 'dm' ||
+    val === 'msg' ||
+    val === 'mensaje' ||
+    val === 'mensajes' ||
+    val === 'chat' ||
+    val === 'inbox' ||
+    val === 'direct_msg' ||
+    val === 'ig_dm'
+  ) {
+    return 'dm';
+  }
+  if (
+    val === 'link' ||
+    val === 'bio' ||
+    val === 'perfil' ||
+    val === 'profile' ||
+    val === 'web'
+  ) {
+    return 'link';
+  }
+  return null;
+}
+
+export function detectTrafficAttribution(): TrafficAttribution {
+  if (typeof window === 'undefined') return { source: 'direct', sourceDetail: 'link' };
 
   try {
     const url = new URL(window.location.href);
     const searchParams = url.searchParams;
-    const utmSource = (searchParams.get('utm_source') || '').toLowerCase();
-    const utmMedium = (searchParams.get('utm_medium') || '').toLowerCase();
-    const hasIgShid = searchParams.has('igshid') || searchParams.has('igsh');
-    const hasFbClid = searchParams.has('fbclid');
+    const rawHash = url.hash.replace(/^#\/?/, '');
+    const hashParams = rawHash ? new URLSearchParams(rawHash.startsWith('?') ? rawHash.slice(1) : rawHash) : null;
 
-    if (
-      utmSource.includes('instagram') || 
-      utmMedium.includes('instagram') || 
-      hasIgShid || 
+    const getParam = (key: string) => (searchParams.get(key) || hashParams?.get(key) || '').toLowerCase().trim();
+    const hasParam = (key: string) => searchParams.has(key) || Boolean(hashParams?.has(key));
+
+    const igParam = getParam('ig');
+    const waParam = getParam('wa');
+    const utmSource = getParam('utm_source');
+    const utmMedium = getParam('utm_medium');
+    const utmCampaign = getParam('utm_campaign');
+    const srcParam = getParam('src') || getParam('from');
+    const hasIgShid = hasParam('igshid') || hasParam('igsh');
+    const hasFbClid = hasParam('fbclid');
+
+    let explicitAttribution: TrafficAttribution | null = null;
+
+    // 1. Parámetros simples dedicados (?ig=history, ?ig=feed, ?ig=dm, ?ig=link)
+    if (igParam) {
+      explicitAttribution = {
+        source: 'instagram',
+        sourceDetail: mapPlacementToken(igParam) || 'link',
+      };
+    } else if (waParam) {
+      // Parámetro simple de WhatsApp (?wa=1, ?wa=msg, ?wa=link, ?wa=history)
+      explicitAttribution = {
+        source: 'whatsapp',
+        sourceDetail: mapPlacementToken(waParam) || 'dm',
+      };
+    } else if (
+      utmSource.includes('whatsapp') ||
+      utmSource === 'wa' ||
+      utmMedium.includes('whatsapp') ||
+      srcParam === 'wa' ||
+      srcParam === 'whatsapp'
+    ) {
+      explicitAttribution = {
+        source: 'whatsapp',
+        sourceDetail: mapPlacementToken(utmMedium) || mapPlacementToken(utmCampaign) || mapPlacementToken(srcParam) || 'dm',
+      };
+    } else if (
+      utmSource.includes('instagram') ||
+      utmSource === 'ig' ||
+      utmMedium.includes('instagram') ||
+      srcParam === 'ig' ||
+      srcParam === 'instagram' ||
+      hasIgShid ||
       hasFbClid
     ) {
-      return 'instagram';
+      explicitAttribution = {
+        source: 'instagram',
+        sourceDetail: mapPlacementToken(utmMedium) || mapPlacementToken(utmCampaign) || mapPlacementToken(srcParam) || 'link',
+      };
+    } else if (utmMedium) {
+      const mapped = mapPlacementToken(utmMedium);
+      if (mapped) {
+        explicitAttribution = {
+          source: 'instagram',
+          sourceDetail: mapped,
+        };
+      }
     }
 
-    if (utmSource.includes('whatsapp') || utmMedium.includes('whatsapp') || searchParams.has('wa')) {
-      return 'whatsapp';
+    if (explicitAttribution) {
+      try {
+        sessionStorage.setItem(ATTRIBUTION_STORAGE_KEY, JSON.stringify(explicitAttribution));
+      } catch {
+        // Ignore storage errors
+      }
+      return explicitAttribution;
     }
 
+    // 2. Recuperar atribución persistida en la sesión (evita perder el origen si el usuario busca o abre figuras)
+    try {
+      const stored = sessionStorage.getItem(ATTRIBUTION_STORAGE_KEY);
+      if (stored) {
+        const parsed = JSON.parse(stored) as TrafficAttribution;
+        if (parsed && parsed.source && parsed.sourceDetail) {
+          return parsed;
+        }
+      }
+    } catch {
+      // Ignore storage errors
+    }
+
+    // 3. Detección por referrer si aún no hay parámetros explícitos
     const referrer = (document.referrer || '').toLowerCase();
+    let inferred: TrafficAttribution;
+
     if (!referrer) {
-      return 'direct';
+      inferred = { source: 'direct', sourceDetail: 'link' };
+    } else if (referrer.includes('instagram.com') || referrer.includes('l.instagram.com') || referrer.includes('ig.me')) {
+      inferred = { source: 'instagram', sourceDetail: 'link' };
+    } else if (referrer.includes('whatsapp.com') || referrer.includes('wa.me') || referrer.includes('web.whatsapp.com')) {
+      inferred = { source: 'whatsapp', sourceDetail: 'dm' };
+    } else if (referrer.includes(window.location.hostname)) {
+      inferred = { source: 'direct', sourceDetail: 'link' };
+    } else {
+      inferred = { source: 'other', sourceDetail: 'other' };
     }
 
-    if (referrer.includes('instagram.com') || referrer.includes('l.instagram.com') || referrer.includes('ig.me')) {
-      return 'instagram';
+    try {
+      sessionStorage.setItem(ATTRIBUTION_STORAGE_KEY, JSON.stringify(inferred));
+    } catch {
+      // Ignore storage errors
     }
 
-    if (referrer.includes('whatsapp.com') || referrer.includes('wa.me') || referrer.includes('web.whatsapp.com')) {
-      return 'whatsapp';
-    }
-
-    const currentHost = window.location.hostname;
-    if (referrer.includes(currentHost)) {
-      return 'direct';
-    }
-
-    return 'other';
+    return inferred;
   } catch {
-    return 'direct';
+    return { source: 'direct', sourceDetail: 'link' };
   }
+}
+
+export function detectTrafficSource(): TrafficSource {
+  return detectTrafficAttribution().source;
 }
 
 export function detectDeviceType(): DeviceType {
@@ -167,22 +308,24 @@ export async function trackPageView(metaPixelId?: string, bypassExclusion = fals
   if (metaPixelId) {
     initMetaPixel(metaPixelId, bypassExclusion);
   }
+  const { source, sourceDetail } = detectTrafficAttribution();
+
   trackPixelPageView(bypassExclusion);
   safeLogTrackingEvent('page_view', {
     page_location: window.location.href,
-    traffic_source: detectTrafficSource(),
+    traffic_source: source,
+    traffic_detail: sourceDetail,
   }, bypassExclusion);
 
   try {
-    const sessionKey = 'ippolav_session_tracked_' + getTodayKey();
+    const today = getTodayKey();
+    const sessionKey = `ippolav_session_tracked_${today}_${source}_${sourceDetail}`;
     if (sessionStorage.getItem(sessionKey)) {
-      return; // Already tracked in daily Firestore doc for this session today
+      return; // Already tracked in daily Firestore doc for this session/source today
     }
     sessionStorage.setItem(sessionKey, '1');
 
-    const source = detectTrafficSource();
     const device = detectDeviceType();
-    const today = getTodayKey();
 
     const dailyRef = doc(db, 'analytics_daily', today);
     const sourceField = 
@@ -190,12 +333,23 @@ export async function trackPageView(metaPixelId?: string, bypassExclusion = fals
       source === 'whatsapp' ? 'viewsFromWhatsApp' :
       source === 'direct' ? 'viewsFromDirect' : 'viewsFromOther';
 
+    const detailCounterUpdate: Record<string, any> = {};
+    if (source === 'instagram') {
+      if (sourceDetail === 'history') detailCounterUpdate.viewsFromIgHistory = increment(1);
+      else if (sourceDetail === 'feed') detailCounterUpdate.viewsFromIgFeed = increment(1);
+      else if (sourceDetail === 'dm') detailCounterUpdate.viewsFromIgDm = increment(1);
+      else detailCounterUpdate.viewsFromIgLink = increment(1);
+    } else if (source === 'whatsapp') {
+      detailCounterUpdate.viewsFromWaMsg = increment(1);
+    }
+
     const deviceField = device === 'mobile' ? 'deviceMobile' : 'deviceDesktop';
 
     await setDoc(dailyRef, {
       date: today,
       viewsTotal: increment(1),
       [sourceField]: increment(1),
+      ...detailCounterUpdate,
       [deviceField]: increment(1),
       updatedAt: serverTimestamp(),
     }, { merge: true });
@@ -204,6 +358,7 @@ export async function trackPageView(metaPixelId?: string, bypassExclusion = fals
     await addDoc(collection(db, 'analytics_events'), {
       type: 'visit',
       source,
+      sourceDetail,
       device,
       timestamp: serverTimestamp(),
     });
@@ -232,7 +387,7 @@ export async function trackFigureView(
   }, bypassExclusion);
 
   try {
-    const source = detectTrafficSource();
+    const { source, sourceDetail } = detectTrafficAttribution();
     const device = detectDeviceType();
     const today = getTodayKey();
 
@@ -256,6 +411,7 @@ export async function trackFigureView(
     await addDoc(collection(db, 'analytics_events'), {
       type: 'figure_view',
       source,
+      sourceDetail,
       device,
       figureId: figure.id,
       figureTitle: figure.title,
@@ -296,7 +452,7 @@ export async function trackWhatsAppClick(
   }, bypassExclusion);
 
   try {
-    const source = detectTrafficSource();
+    const { source, sourceDetail } = detectTrafficAttribution();
     const device = detectDeviceType();
     const today = getTodayKey();
 
@@ -320,6 +476,7 @@ export async function trackWhatsAppClick(
     await addDoc(collection(db, 'analytics_events'), {
       type: 'whatsapp_click',
       source,
+      sourceDetail,
       device,
       figureId: figure.id,
       figureTitle: figure.title,
@@ -350,7 +507,7 @@ export async function trackInstagramClick(
   }, bypassExclusion);
 
   try {
-    const source = detectTrafficSource();
+    const { source, sourceDetail } = detectTrafficAttribution();
     const device = detectDeviceType();
     const today = getTodayKey();
 
@@ -374,6 +531,7 @@ export async function trackInstagramClick(
     await addDoc(collection(db, 'analytics_events'), {
       type: 'instagram_click',
       source,
+      sourceDetail,
       device,
       figureId: figure.id,
       figureTitle: figure.title,
@@ -434,7 +592,7 @@ export async function trackSearchQuery(term: string, bypassExclusion = false): P
   }, bypassExclusion);
 
   try {
-    const source = detectTrafficSource();
+    const { source, sourceDetail } = detectTrafficAttribution();
     const device = detectDeviceType();
     const today = getTodayKey();
 
@@ -455,6 +613,7 @@ export async function trackSearchQuery(term: string, bypassExclusion = false): P
     await addDoc(collection(db, 'analytics_events'), {
       type: 'search',
       source,
+      sourceDetail,
       device,
       searchTerm: cleaned,
       timestamp: serverTimestamp(),

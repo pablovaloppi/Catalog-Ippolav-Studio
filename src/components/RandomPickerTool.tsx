@@ -30,7 +30,9 @@ import {
   Undo2,
   ZoomIn,
   Maximize2,
-  Share2
+  Share2,
+  Copy,
+  Link2
 } from 'lucide-react';
 import { ProductModal } from './ProductModal';
 
@@ -62,6 +64,26 @@ export function RandomPickerTool({ categories, designers }: RandomPickerToolProp
   const [showHistory, setShowHistory] = useState(false);
   const [historySearch, setHistorySearch] = useState('');
   const [isResettingAll, setIsResettingAll] = useState(false);
+  const [storyLinkCopied, setStoryLinkCopied] = useState(false);
+
+  const STORY_TRACKING_URL = 'https://catalog-ippolav-studio.vercel.app/?ig=history';
+
+  const handleCopyStoryLink = async () => {
+    try {
+      await navigator.clipboard.writeText(STORY_TRACKING_URL);
+    } catch {
+      const ta = document.createElement('textarea');
+      ta.value = STORY_TRACKING_URL;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+    }
+    setStoryLinkCopied(true);
+    setTimeout(() => setStoryLinkCopied(false), 2500);
+  };
 
   // Real-time listener for figures to keep selected/unselected state synchronized
   useEffect(() => {
@@ -307,6 +329,42 @@ export function RandomPickerTool({ categories, designers }: RandomPickerToolProp
 
   return (
     <div className="space-y-8 animate-in fade-in duration-300">
+      {/* Top Quick Copy Button for Instagram Stories */}
+      <div className="bg-surface-container border border-pink-500/35 rounded-2xl p-3.5 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <div className="w-9 h-9 rounded-xl bg-pink-500/15 border border-pink-500/30 flex items-center justify-center text-pink-400 shrink-0">
+            <Link2 className="w-4 h-4" />
+          </div>
+          <div className="min-w-0">
+            <span className="text-xs font-bold text-on-surface block">Link para Historia de Instagram</span>
+            <code className="text-[11px] font-mono text-primary truncate block">
+              {STORY_TRACKING_URL}
+            </code>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={handleCopyStoryLink}
+          className={`inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold border transition-all active:scale-95 shrink-0 cursor-pointer ${
+            storyLinkCopied
+              ? 'bg-emerald-950/85 border-emerald-500/60 text-emerald-300 shadow-sm'
+              : 'gold-shimmer text-on-primary-fixed border-primary/50 hover:brightness-110 shadow-md'
+          }`}
+        >
+          {storyLinkCopied ? (
+            <>
+              <Check className="w-4 h-4" />
+              <span>¡Link copiado!</span>
+            </>
+          ) : (
+            <>
+              <Copy className="w-4 h-4" />
+              <span>Copiar link para Historia IG</span>
+            </>
+          )}
+        </button>
+      </div>
+
       {/* Header Section */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-outline-variant/30 pb-5">
         <div>
